@@ -1,0 +1,38 @@
+# Cotare (DrawCAD) — stack pentru Dockhand / docker compose
+# Imaginea e construită și testată de GitHub Actions la fiecare push pe main.
+# Toate valorile ${...} se pot suprascrie din variabilele stack-ului (vezi .env.example).
+
+name: cotare
+
+services:
+  cotare:
+    image: ghcr.io/gg64nou/drawcad:${COTARE_TAG:-latest}
+    container_name: cotare
+    restart: unless-stopped
+    pull_policy: always
+    ports:
+      - "${COTARE_PORT:-8080}:8080"
+    volumes:
+      # documentele încărcate și starea lor (cotele, setările)
+      - ${COTARE_DATA_DIR:-/mnt/user/appdata/cotare}:/data
+    environment:
+      PUID: ${PUID:-99}
+      PGID: ${PGID:-100}
+      COTARE_MAX_UPLOAD_MB: ${COTARE_MAX_UPLOAD_MB:-200}
+      COTARE_MAX_RENDER_PX: ${COTARE_MAX_RENDER_PX:-12000}
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      # butonul WebUI din pagina Docker a Unraid
+      net.unraid.docker.webui: "http://[IP]:[PORT:8080]/"

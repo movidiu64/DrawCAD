@@ -13,47 +13,44 @@ Originalul nu se modifică. Adnotările se păstrează separat și se aplică ab
 
 ## Instalare
 
-### Docker Compose
+Imaginea `ghcr.io/gg64nou/drawcad:latest` e construită de GitHub Actions la fiecare push pe `main`, după ce trec testele și testul în browser pe container. Pentru instalare e suficient `compose.yaml`.
+
+### Cu Dockhand (stack din Git)
+
+1. **Acces la repo.** Pe GitHub creează un token fine-grained, doar pentru `DrawCAD`, cu **Contents: Read-only**. În Dockhand adaugă-l la credențialele Git (HTTPS).
+2. **Acces la imagine.** Imaginea e privată, ca și repo-ul. Creează un token classic cu `read:packages` și adaugă în Dockhand registry-ul `ghcr.io` (utilizator `gg64nou`, parola = tokenul).
+3. **Stack nou din Git:**
+   - repository: `https://github.com/gg64nou/DrawCAD.git`
+   - ramura: `main`
+   - fișierul compose: `compose.yaml`
+4. **Variabile ale stack-ului** (opțional, au valori implicite; lista completă e în `.env.example`):
+   - `COTARE_PORT=8080`
+   - `COTARE_DATA_DIR=/mnt/user/appdata/cotare`
+   - `PUID=99`, `PGID=100`
+5. **Deploy.** Aplicația pornește pe `http://<ip>:8080`.
+
+Pentru sincronizare automată la push, setează în Dockhand webhook-ul stack-ului și adaugă-l în GitHub la **Settings → Webhooks** al repo-ului. Imaginea nouă se ia la redeploy, pentru că `compose.yaml` are `pull_policy: always`.
+
+Dacă pull-ul imaginii eșuează cu `unauthorized`, ai două variante:
+- rulezi o dată pe server `docker login ghcr.io -u gg64nou` cu tokenul `read:packages`;
+- faci publică doar imaginea (codul rămâne privat), din GitHub, la **Packages → drawcad → Package settings**.
+
+### Cu Dockhand (stack lipit manual)
+
+Creează un stack nou și lipește conținutul din `compose.yaml`. Pașii 2 și 4 de mai sus rămân valabili.
+
+### Cu docker compose din linia de comandă
 
 ```bash
-mkdir data && sudo chown 99:100 data     # containerul rulează ca nobody:users
-docker compose up -d --build
+cp .env.example .env          # opțional: ajustează portul și folderul de date
+docker compose up -d          # cu imaginea din GHCR
+# sau, fără GHCR, construind local din sursă:
+docker compose -f compose.build.yaml up -d --build
 ```
 
-Aplicația pornește pe `http://<ip>:8080`.
+### Folderul de date și permisiuni
 
-### Unraid, cu imaginea construită de GitHub Actions
-
-La fiecare push pe `main`, GitHub Actions rulează testele, construiește imaginea, o testează în browser și o publică în `ghcr.io/gg64nou/drawcad:latest`. Repository-ul fiind privat, imaginea e privată și ea, deci Unraid trebuie autentificat o singură dată:
-
-1. Pe GitHub creează un token (classic) cu dreptul `read:packages`.
-2. În terminalul Unraid:
-
-   ```bash
-   docker login ghcr.io -u gg64nou      # parola = tokenul
-   ```
-
-3. În **Docker → Add Container**, completează:
-   - **Repository:** `ghcr.io/gg64nou/drawcad:latest`
-   - **Port:** container `8080` → host, de exemplu `8080`
-   - **Path:** container `/data` → host `/mnt/user/appdata/cotare`
-
-Actualizarea se face din Unraid cu **Check for updates**, apoi **Apply update**.
-
-### Unraid, construind imaginea local
-
-1. Copiază folderul proiectului pe server, de exemplu în `/mnt/user/appdata/cotare-src`.
-2. Construiește imaginea din terminalul Unraid:
-
-   ```bash
-   cd /mnt/user/appdata/cotare-src
-   docker build -t cotare:latest .
-   ```
-
-3. În **Docker → Add Container**, completează:
-   - **Repository:** `cotare:latest`
-   - **Port:** container `8080` → host, de exemplu `8080`
-   - **Path:** container `/data` → host `/mnt/user/appdata/cotare`
+Containerul pornește ca root doar cât să creeze folderul de date și să-i dea proprietarul `PUID:PGID`, implicit `99:100` (nobody:users pe Unraid). Apoi rulează aplicația ca acel utilizator. Nu mai e nevoie de `chown` manual. Dacă folosești `user:` în compose, folderul trebuie să fie deja scriibil de acel utilizator.
 
 Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală (sau în spatele unui reverse proxy cu login).
 
@@ -61,7 +58,10 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 
 | Variabilă | Implicit | Rol |
 |---|---|---|
-| `COTARE_DATA` | `/data` | documentele încărcate și starea lor |
+| `COTARE_TAG` | `latest` | tag-ul imaginii; un SHA de commit fixează versiunea |
+| `COTARE_PORT` | `8080` | portul de pe server |
+| `COTARE_DATA_DIR` | `/mnt/user/appdata/cotare` | folderul de date de pe server |
+| `PUID` / `PGID` | `99` / `100` | utilizatorul cu care rulează aplicația |
 | `COTARE_MAX_UPLOAD_MB` | `200` | dimensiunea maximă a unui fișier încărcat |
 | `COTARE_MAX_RENDER_PX` | `12000` | latura maximă, în pixeli, a randării unei pagini |
 
