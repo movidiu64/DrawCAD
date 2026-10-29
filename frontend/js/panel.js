@@ -89,7 +89,7 @@ export class Panel {
   headHtml(a) {
     const b = this.app.builtOf(a);
     let sub = a.layer === "rev" ? "strat Revizii" : a.type === "white" || a.type === "redact" ? "aplicat la export" : "strat Adăugate";
-    if (b && b.measured != null) sub += ` · măsurat ${fmtNum(b.measured, ",", 2)} mm`;
+    if (b && b.measured != null) sub += ` · măsurat ${fmtNum(b.measured, ",", 2)}${b.unit === "°" ? "°" : " mm"}`;
     return `<div class="sec"><div class="h">Selecție</div><div class="title">${esc(TYPE_NAMES[a.type] || a.type)}</div><div class="sub">${esc(sub)}</div></div>`;
   }
 
@@ -108,13 +108,17 @@ export class Panel {
   tolHtml(a, b) {
     const t = a.tol || { mode: "none" };
     const S = this.app.settings;
-    const seg = [["none", "Fără"], ["pm", "±"], ["dev", "Abateri"], ["iso", "ISO 286"]]
+    const deg = a.type === "ang";
+    const u = deg ? "°" : "mm";
+    const modes = [["none", "Fără"], ["pm", "±"], ["dev", "Abateri"]];
+    if (!deg) modes.push(["iso", "ISO 286"]);
+    const seg = modes
       .map(([k, l]) => `<button data-act="tolmode" data-v="${k}" class="${t.mode === k ? "on" : ""}">${l}</button>`)
       .join("");
     let body = "";
     if (t.mode === "none") body = `<div class="sub">Se aplică toleranța generală din cartuș.</div>`;
     if (t.mode === "pm") {
-      body = `<div class="field"><label for="tPm">Toleranță simetrică ± (mm)</label><input type="text" class="mono" id="tPm" data-f="pm" value="${t.pm != null ? fmtNum(t.pm, ",", 4) : ""}" placeholder="0,1"></div>`;
+      body = `<div class="field"><label for="tPm">Toleranță simetrică ± (${u})</label><input type="text" class="mono" id="tPm" data-f="pm" value="${t.pm != null ? fmtNum(t.pm, ",", 4) : ""}" placeholder="${deg ? "0,5" : "0,1"}"></div>`;
     }
     if (t.mode === "dev") {
       body = `<div class="row"><div class="field"><label for="tUp">Abatere superioară</label><input type="text" class="mono" id="tUp" data-f="up" value="${t.up != null ? fmtNum(t.up, ",", 4) : ""}" placeholder="+0,015"></div>
@@ -155,7 +159,16 @@ export class Panel {
       <div class="row"><div class="field" style="flex:0 0 76px"><label for="dPre">Prefix</label><select id="dPre" data-f="prefix">${popts}</select></div>
       <div class="field"><label for="dNom">Nominal (mm)</label><input type="text" class="mono" id="dNom" data-f="nominal" value="${a.nominal != null ? fmtNum(a.nominal, ",", 4) : ""}" placeholder="${b ? fmtNum(b.nominal, ",", 2) : ""}"></div></div>
       <div class="field"><label for="dOver">Text înlocuitor (opțional)</label><input type="text" id="dOver" data-f="textOverride" value="${esc(a.textOverride || "")}" placeholder="ex.: 4× M8, 2 găuri Ø6"></div>
-      <div class="row">${orient}</div></div>
+      <div class="row">${orient}${a.textShift != null ? `<button class="ghost" data-act="autotext" style="align-self:flex-end;height:34px">Text automat</button>` : ""}</div></div>
+      ${this.tolHtml(a, b)}`;
+  }
+
+  html_ang(a) {
+    const b = this.app.builtOf(a);
+    return `<div class="sec"><div class="h">Valoare</div>
+      <div class="field"><label for="dNom">Nominal (°)</label><input type="text" class="mono" id="dNom" data-f="nominal" value="${a.nominal != null ? fmtNum(a.nominal, ",", 4) : ""}" placeholder="${b ? fmtNum(b.nominal, ",", 2) : ""}"></div>
+      <div class="field"><label for="dOver">Text înlocuitor (opțional)</label><input type="text" id="dOver" data-f="textOverride" value="${esc(a.textOverride || "")}" placeholder="ex.: 30°15'"></div>
+      <div class="sub">Sectorul se alege din poziția arcului: trage de pătrățelul de pe arc în celălalt unghi (suplementar sau opus).</div></div>
       ${this.tolHtml(a, b)}`;
   }
 
@@ -296,7 +309,7 @@ export class Panel {
 
   refreshTol() {
     const a = this.app.selected();
-    if (!a || (a.type !== "dim" && a.type !== "rad")) return;
+    if (!a || !["dim", "rad", "ang"].includes(a.type)) return;
     const active = document.activeElement && document.activeElement.id;
     const pos = document.activeElement && document.activeElement.selectionStart;
     this.render();
@@ -327,6 +340,9 @@ export class Panel {
         break;
       case "isodisp":
         upd((a) => { a.tol = { ...(a.tol || {}), disp: v }; });
+        break;
+      case "autotext":
+        upd((x) => { x.textShift = null; });
         break;
       case "orient":
         upd((a) => { a.orient = v; });
@@ -390,6 +406,10 @@ export class Panel {
         nominal: a.nominal ?? (own ? own.nominal : null),
       };
       if (a.type === "rad") tmp.prefix = a.prefix ?? "R";
+      if (a.type === "ang") {
+        tmp.deg = true;
+        tmp.prefix = "";
+      }
       prims = build(tmp, S, this.app.measure).prims.filter((p) => p.t === "T");
     }
     let x0 = Infinity;

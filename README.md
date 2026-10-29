@@ -2,7 +2,7 @@
 
 Aplicație web self-hosted (Docker) pentru a adăuga pe un PDF sau pe un scan:
 
-- **cote** liniare, aliniate, de diametru și de rază, plus teșituri, linii de indicație și text liber;
+- **cote** liniare, aliniate, de diametru, de rază și unghiulare, plus teșituri, linii de indicație și text liber;
 - **toleranțe**: ±, abateri, câmpuri ISO 286 cu calcul automat (ex. `Ø25k6 (+0,015/+0,002)`);
 - **GD&T** după ISO 1101: cele 14 caracteristici, Ø, modificatori Ⓜ Ⓛ Ⓟ Ⓕ CZ, baze A/B/C, plus simboluri de bază;
 - **revizii**: cotă tăiată + valoare nouă + triunghi de revizie;
@@ -22,7 +22,25 @@ docker compose up -d --build
 
 Aplicația pornește pe `http://<ip>:8080`.
 
-### Unraid
+### Unraid, cu imaginea construită de GitHub Actions
+
+La fiecare push pe `main`, GitHub Actions rulează testele, construiește imaginea, o testează în browser și o publică în `ghcr.io/gg64nou/drawcad:latest`. Repository-ul fiind privat, imaginea e privată și ea, deci Unraid trebuie autentificat o singură dată:
+
+1. Pe GitHub creează un token (classic) cu dreptul `read:packages`.
+2. În terminalul Unraid:
+
+   ```bash
+   docker login ghcr.io -u gg64nou      # parola = tokenul
+   ```
+
+3. În **Docker → Add Container**, completează:
+   - **Repository:** `ghcr.io/gg64nou/drawcad:latest`
+   - **Port:** container `8080` → host, de exemplu `8080`
+   - **Path:** container `/data` → host `/mnt/user/appdata/cotare`
+
+Actualizarea se face din Unraid cu **Check for updates**, apoi **Apply update**.
+
+### Unraid, construind imaginea local
 
 1. Copiază folderul proiectului pe server, de exemplu în `/mnt/user/appdata/cotare-src`.
 2. Construiește imaginea din terminalul Unraid:
@@ -75,6 +93,7 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 | R | rază | K | calibrare scară |
 | C | teșitură | T | text |
 | L | linie de indicație | F | potrivește pagina |
+| U | cotă unghiulară | | |
 
 **Taste generale:**
 - Ctrl+Z / Ctrl+Y: anulează / refă
@@ -84,6 +103,10 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 - Space + tragere, sau butonul din mijloc: mută foaia
 
 **Editare:** la o adnotare selectată, pătrățelele mută punctele, iar cercul alb mută textul cotei de-a lungul liniei. Tragerea de corp mută toată adnotarea.
+
+**Textul cotelor:** dacă eticheta nu încape între săgeți, se mută automat lângă săgeată, iar linia de cotă se prelungește până sub text. Dacă muți textul manual, butonul „Text automat” readuce poziționarea automată.
+
+**Cota unghiulară (U):** dai click pe vârf, pe un punct de pe fiecare latură, apoi pe poziția arcului. Poziția arcului alege unul din cele patru sectoare: unghiul, suplementul sau opusul lor.
 
 **Ștergere din original:** după ce tragi zona, dialogul arată obiectele găsite și o previzualizare înainte/după. Ai trei moduri:
 - **Selecție pe obiecte:** bifezi exact ce se elimină. E modul recomandat.
@@ -128,7 +151,7 @@ Frontend-ul calculează o singură dată geometria fiecărei cote și o trimite 
 
 ```bash
 cd backend && python -m unittest discover -s tests      # API: deschidere, snap, ștergere, export, redeschidere
-cd frontend && npm test                                 # ISO 286: 31 de cazuri din tabelele standard + formatare
+cd frontend && npm test                                 # ISO 286 (31 de cazuri din tabele), geometria cotelor
 python tools/e2e_smoke.py http://127.0.0.1:8080 out     # browser: flux complet cu Playwright
 ```
 
@@ -136,10 +159,8 @@ python tools/e2e_smoke.py http://127.0.0.1:8080 out     # browser: flux complet 
 
 ## Limitări cunoscute
 
-- **Cota unghiulară** nu e încă implementată.
 - **ISO 286** acoperă literele d–s și D–S, treptele IT1–IT16 și nominalele până la 500 mm. Literele a/b/c, j, t–zc nu sunt incluse.
 - **Ștergerea pe obiecte** elimină obiecte PDF întregi. Dacă un contur e un singur obiect care trece prin zonă, nu poate fi tăiat parțial: modul „Tot din zonă” îl acoperă cu alb.
 - **Textul exportat de AutoCAD cu fonturi SHX** apare în PDF ca linii, nu ca text. În dialogul de ștergere se vede ca „Linie / contur”.
-- **Textul unei cote mai lung decât linia de cotă** nu se mută automat în afară; se mută cu cercul alb.
 - **Adnotările se pot așeza doar orizontal sau vertical** (plus cotele aliniate). Nu există încă text rotit la unghi oarecare.
 - **Fără autentificare și fără editare simultană** a aceluiași document de către mai mulți utilizatori.

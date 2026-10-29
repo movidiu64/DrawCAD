@@ -55,6 +55,14 @@ export const TOOLS = [
       if (pts.length === 1) return { line: [pts[0], cur] };
       return this.make([pts[0], pts[1], cur], app);
     } },
+  { id: "dimAng", label: "Unghi", key: "U", group: "Cote", icon: "M4 20h16M4 20L17 6M12 20a8 8 0 0 0-2.6-5.9",
+    kind: "clicks", n: 4, hint: "Vârful → un punct pe prima latură → un punct pe a doua → poziția arcului (alege sectorul)",
+    make: (pts) => ({ type: "ang", v: pts[0], p1: pts[1], p2: pts[2], p3: pts[3], nominal: null, tol: { mode: "none" } }),
+    preview(pts, cur) {
+      if (pts.length === 1) return { line: [pts[0], cur] };
+      if (pts.length === 2) return { lines: [[pts[0], pts[1]], [pts[0], cur]] };
+      return this.make([pts[0], pts[1], pts[2], cur]);
+    } },
   { id: "chamfer", label: "Teșitură", key: "C", group: "Cote", icon: "M4 20V10l6-6h10M13 13l-5-5", kind: "clicks", n: 2,
     hint: "Click pe muchia teșită → poziția textului",
     make: (pts) => ({ type: "lead", pts: [pts[0], pts[1]], text: "1×45°", arrow: "arrow" }),

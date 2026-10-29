@@ -23,6 +23,7 @@ export const DEFAULT_SETTINGS = {
 export const TYPE_NAMES = {
   dim: "Cotă",
   rad: "Cotă rază",
+  ang: "Cotă unghiulară",
   lead: "Linie de indicație",
   text: "Text",
   gdt: "Cadru GD&T",
@@ -118,23 +119,28 @@ export function labelRuns(a, S, measure, nominal, prefix) {
     x += h * 0.22;
   };
 
-  const main = a.textOverride && a.textOverride.trim() ? a.textOverride.trim() : prefix + fmtNum(nominal, sep);
+  const deg = a.type === "ang" || a.deg === true;
+  const unit = deg ? "°" : "";
+  // abateri: mm cu minim 3 zecimale; la unghiuri, grade fără zerouri inutile
+  const fd = (v) => (deg ? (v > 0 ? "+" : v < 0 ? "-" : "") + fmtNum(Math.abs(v), sep, 3) + "°" : fmtSigned(v, sep));
+  const fabs = (v) => (deg ? fmtNum(Math.abs(v), sep, 3) + "°" : fmtSigned(Math.abs(v), sep).slice(1));
+  const main = a.textOverride && a.textOverride.trim() ? a.textOverride.trim() : prefix + fmtNum(nominal, sep, deg ? 2 : 3) + unit;
   const t = a.tol || { mode: "none" };
   const space = S.codeSpace ? " " : "";
 
   if (t.mode === "pm" && t.pm) {
-    push(main + "±" + fmtSigned(Math.abs(t.pm), sep).slice(1));
+    push(main + "±" + fabs(t.pm));
   } else if (t.mode === "dev" && (t.up != null || t.lo != null)) {
     const up = t.up || 0;
     const lo = t.lo || 0;
     if (Math.abs(up + lo) < 1e-9 && up !== 0) {
-      push(main + "±" + fmtSigned(Math.abs(up), sep).slice(1));
+      push(main + "±" + fabs(up));
     } else {
       push(main);
       gap();
-      stack(fmtSigned(up, sep), fmtSigned(lo, sep));
+      stack(fd(up), fd(lo));
     }
-  } else if (t.mode === "iso" && t.fit) {
+  } else if (t.mode === "iso" && t.fit && !deg) {
     iso = deviations(nominal, t.fit);
     const disp = t.disp || S.isoDisplay;
     if (!iso.ok) {
@@ -259,7 +265,18 @@ function buildDim(a, S, measure) {
   const lab = labelRuns(a, S, measure, nominal, a.prefix || "");
   const { tu, ang, up } = textAngle(dir);
   const mid0 = mul(add(A, B), 0.5);
-  const mid = add(mid0, mul(tu, a.textShift || 0));
+  // textul care nu încape între săgeți se mută lângă săgeată, pe prelungirea liniei de cotă
+  let shift = a.textShift;
+  if (shift == null) {
+    const fits = lab.w + 2 * S.aw * 1.1 <= Ld;
+    shift = fits ? 0 : Ld / 2 + (inside ? S.aw * 0.8 : S.aw * 2.6) + lab.w / 2;
+  }
+  const half = Ld / 2 + (inside ? 0 : S.aw * 2.2);
+  const lo = shift - lab.w / 2 - S.h * 0.3;
+  const hi = shift + lab.w / 2 + S.h * 0.3;
+  if (hi > half) prims.push(lineP(add(mid0, mul(tu, half)), add(mid0, mul(tu, hi)), S, c));
+  if (lo < -half) prims.push(lineP(add(mid0, mul(tu, -half)), add(mid0, mul(tu, lo)), S, c));
+  const mid = add(mid0, mul(tu, shift));
   const lift = Math.max(0.6 * K, 0.3 * S.h);
   const origin = add(sub(mid, mul(tu, lab.w / 2)), mul(up, lift));
   prims.push(...placeRuns(lab, origin, tu, up, ang, c));
@@ -314,6 +331,95 @@ function buildRad(a, S, measure) {
       { k: "c", p: a.c },
       { k: "p", p: a.p },
       { k: "p3", p: a.p3 },
+    ],
+  };
+}
+
+// unghi „pe ecran” (sens trigonometric, y în jos) al unui vector
+const angOf = (v) => Math.atan2(-v[1], v[0]);
+const TAU = Math.PI * 2;
+const wrap = (x) => ((x % TAU) + TAU) % TAU;
+const polar = (c, r, th) => [c[0] + r * Math.cos(th), c[1] - r * Math.sin(th)];
+
+/**
+ * Sectorul unghiular care conține direcția p3, dintre cele patru formate de cele două drepte
+ * prin vârf. Întoarce { s, e, sweep, legS, legE } — capetele în radiani, sens trigonometric,
+ * și pentru fiecare capăt indicele laturii (0/1) și dacă e direcția laturii sau opusa ei.
+ */
+export function angleSector(v, p1, p2, p3) {
+  const a1 = angOf(sub(p1, v));
+  const a2 = angOf(sub(p2, v));
+  const dirs = [
+    { th: wrap(a1), leg: 0, rev: false },
+    { th: wrap(a2), leg: 1, rev: false },
+    { th: wrap(a1 + Math.PI), leg: 0, rev: true },
+    { th: wrap(a2 + Math.PI), leg: 1, rev: true },
+  ].sort((x, y) => x.th - y.th);
+  const t = wrap(angOf(sub(p3, v)));
+  for (let i = 0; i < 4; i++) {
+    const s = dirs[i];
+    const e = dirs[(i + 1) % 4];
+    const sweep = wrap(e.th - s.th) || TAU;
+    if (wrap(t - s.th) <= sweep + 1e-9) return { s: s.th, e: s.th + sweep, sweep, ends: [s, e] };
+  }
+  return { s: dirs[0].th, e: dirs[1].th, sweep: wrap(dirs[1].th - dirs[0].th), ends: [dirs[0], dirs[1]] };
+}
+
+function buildAng(a, S, measure) {
+  const c = a.layer || "add";
+  const V = a.v;
+  const legs = [a.p1, a.p2];
+  const sec = angleSector(V, a.p1, a.p2, a.p3);
+  const r = Math.max(len(sub(a.p3, V)), S.aw * 2);
+  const measured = (sec.sweep * 180) / Math.PI;
+  const prims = [];
+
+  // linii ajutătoare pe direcțiile laturilor, până dincolo de arc
+  for (const end of sec.ends) {
+    const th = end.th;
+    const d = [Math.cos(th), -Math.sin(th)];
+    const legLen = end.rev ? 0 : len(sub(legs[end.leg], V));
+    if (r > legLen + S.gap) {
+      prims.push(lineP(add(V, mul(d, legLen + S.gap)), add(V, mul(d, r + S.over)), S, c));
+    }
+  }
+
+  // arcul de cotă, ca polilinie
+  const arcLen = r * sec.sweep;
+  const inside = arcLen >= 2.4 * S.aw + S.h * 0.5;
+  const ext = inside ? 0 : (S.aw * 2.2) / r;
+  const s0 = sec.s - ext;
+  const s1 = sec.e + ext;
+  const n = Math.max(8, Math.ceil(((s1 - s0) * 180) / Math.PI / 3));
+  const pts = [];
+  for (let i = 0; i <= n; i++) pts.push(...polar(V, r, s0 + ((s1 - s0) * i) / n));
+  prims.push({ t: "P", p: pts, w: S.lw, c });
+  const tanAt = (th, forward) => (forward ? [-Math.sin(th), -Math.cos(th)] : [Math.sin(th), Math.cos(th)]);
+  const tipS = polar(V, r, sec.s);
+  const tipE = polar(V, r, sec.e);
+  prims.push(...arrowP(tipS, tanAt(sec.s, !inside), S, c), ...arrowP(tipE, tanAt(sec.e, inside), S, c));
+
+  // valoarea: orizontală, în afara arcului, pe bisectoare
+  const nominal = a.nominal != null ? a.nominal : round(measured, 2);
+  const lab = labelRuns(a, S, measure, nominal, "");
+  const mid = (sec.s + sec.e) / 2 + (a.textShift || 0) / r;
+  const u = [Math.cos(mid), -Math.sin(mid)];
+  const hb = S.h * 0.9;
+  const extent = Math.abs(u[0]) * (lab.w / 2) + Math.abs(u[1]) * hb;
+  const cpt = add(V, mul(u, r + Math.max(0.6 * K, 0.3 * S.h) + extent));
+  const origin = [cpt[0] - lab.w / 2, cpt[1] + S.h / 2];
+  prims.push(...placeRuns(lab, origin, [1, 0], [0, -1], 0, c));
+  return {
+    prims,
+    measured,
+    nominal,
+    iso: null,
+    unit: "°",
+    handles: [
+      { k: "v", p: V },
+      { k: "p1", p: a.p1 },
+      { k: "p2", p: a.p2 },
+      { k: "p3", p: polar(V, r, (sec.s + sec.e) / 2), move: true },
     ],
   };
 }
@@ -518,7 +624,7 @@ function buildRedact(a) {
   return { prims, handles: [{ k: "r0", p: [a.r[0], a.r[1]] }, { k: "r1", p: [a.r[2], a.r[3]] }] };
 }
 
-const BUILDERS = { dim: buildDim, rad: buildRad, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact };
+const BUILDERS = { dim: buildDim, rad: buildRad, ang: buildAng, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact };
 
 export function build(a, S, measure) {
   const fn = BUILDERS[a.type];
@@ -637,7 +743,7 @@ export function setHandle(a, k, pt, built) {
 
 export function moveAnnot(a, dx, dy) {
   const mv = (p) => (p ? [p[0] + dx, p[1] + dy] : p);
-  for (const k of ["p1", "p2", "p3", "c", "p", "target", "pos"]) if (a[k]) a[k] = mv(a[k]);
+  for (const k of ["p1", "p2", "p3", "c", "p", "v", "target", "pos"]) if (a[k]) a[k] = mv(a[k]);
   if (a.pts) a.pts = a.pts.map(mv);
   if (a.r) a.r = [a.r[0] + dx, a.r[1] + dy, a.r[2] + dx, a.r[3] + dy];
 }

@@ -97,7 +97,17 @@ def main(url, out):
         click(60.5, 83)
         click(48, 72)
 
-        # 7. ștergere reală: textul Ø30 și linia lui de cotă
+        # 7. cotă unghiulară de 30°
+        page.keyboard.press("Escape")
+        page.keyboard.press("u")
+        click(30, 150)
+        click(70, 150)
+        click(64.641, 130)
+        click(54.15, 143.53)
+        ang = page.evaluate("(() => { const a = window.cotare.selected(); return window.cotare.builtOf(a).measured; })()")
+        assert abs(ang - 30) < 0.01, ang
+
+        # 8. ștergere reală: textul Ø30 și linia lui de cotă
         page.keyboard.press("x")
         x0, y0 = scr(160, 77)
         x1, y1 = scr(167.5, 113)
@@ -118,7 +128,7 @@ def main(url, out):
         page.screenshot(path=str(out / "editor.png"))
 
         kinds = page.evaluate("window.cotare.annots.map(a => a.type)")
-        assert len(kinds) == 7, kinds
+        assert len(kinds) == 8, kinds
 
         # export
         page.click("#btnExport")
@@ -131,7 +141,7 @@ def main(url, out):
 
         # redeschidere: cotele revin editabile
         page.set_input_files("#fileInput", str(path))
-        page.wait_for_function("window.cotare.annots.length === 7")
+        page.wait_for_function("window.cotare.annots.length === 8")
         b.close()
 
     import pypdfium2 as pdfium
@@ -139,7 +149,7 @@ def main(url, out):
     img = doc[0].render(scale=3).to_pil()
     img.save(out / "export_p1.png")
     # decupaj pe zona arborelui
-    img.crop((int(25 * MM * 3), int(38 * MM * 3), int(195 * MM * 3), int(135 * MM * 3))).save(out / "export_zoom.png")
+    img.crop((int(20 * MM * 3), int(38 * MM * 3), int(195 * MM * 3), int(160 * MM * 3))).save(out / "export_zoom.png")
     txt = doc[0].get_textpage().get_text_range()
     print("TEXT:", " | ".join(t for t in txt.split() if t))
     print("ERORI CONSOLĂ:", errors or "niciuna")

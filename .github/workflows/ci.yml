@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Dependențe Python
+        run: pip install -r backend/requirements.txt
+      - name: Teste backend
+        working-directory: backend
+        run: python -m unittest discover -s tests -v
+      - name: Teste frontend (ISO 286, geometrie cote)
+        working-directory: frontend
+        run: npm test
+
+  docker:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Numele imaginii
+        id: img
+        run: echo "name=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - name: Construiește imaginea
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: ${{ steps.img.outputs.name }}:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Pornește containerul
+        run: |
+          docker run -d --name cotare -p 8080:8080 ${{ steps.img.outputs.name }}:test
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8080/api/health && break; sleep 1; done
+          curl -sf http://127.0.0.1:8080/api/health
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Test în browser pe container
+        run: |
+          pip install -r backend/requirements.txt playwright
+          python -m playwright install --with-deps chromium
+          python tools/e2e_smoke.py http://127.0.0.1:8080 e2e_out
+      - name: Jurnal container
+        if: always()
+        run: docker logs cotare
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e
+          path: e2e_out
+      - name: Publică imaginea în GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker tag ${{ steps.img.outputs.name }}:test ${{ steps.img.outputs.name }}:latest
+          docker tag ${{ steps.img.outputs.name }}:test ${{ steps.img.outputs.name }}:${{ github.sha }}
+          docker push ${{ steps.img.outputs.name }}:latest
+          docker push ${{ steps.img.outputs.name }}:${{ github.sha }}

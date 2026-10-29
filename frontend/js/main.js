@@ -581,7 +581,9 @@ class App {
     let prims = null;
     if (this.clicks.length && t.preview) {
       const pv = t.preview(this.clicks, pt, this);
-      if (pv && pv.line) prims = [{ t: "L", p: [...pv.line[0], ...pv.line[1]], w: 0.6, c: "preview", dash: true }];
+      if (pv && (pv.line || pv.lines)) {
+        prims = (pv.lines || [pv.line]).map((l) => ({ t: "L", p: [...l[0], ...l[1]], w: 0.6, c: "preview", dash: true }));
+      }
       else if (pv) prims = build({ ...pv, layer: "add" }, this.S(), this.measure).prims;
     }
     this.view.overlay = { prims, snap: sn };

@@ -115,6 +115,10 @@ def build(path):
     arrow(180, 50, 0)
     c.drawCentredString(mm(120), Y(48.8), "118")
 
+    # detaliu cu unghi de 30° (pentru cota unghiulară)
+    line(30, 150, 70, 150, 0.5)
+    line(30, 150, 64.641, 130, 0.5)
+
     # vedere laterală: cerc Ø40 (Bézier)
     c.setLineWidth(mm(0.5))
     c.circle(mm(240), Y(95), mm(20))
