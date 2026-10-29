@@ -1,6 +1,6 @@
 // Aplicația: stare, unelte, evenimente, salvare, export.
 import * as api from "./api.js";
-import { build, derive, hit, setHandle, moveAnnot, annotSnapPoints, exportPrims, K, fmtNum, newId } from "./annots.js";
+import { build, derive, hit, setHandle, moveAnnot, annotSnapPoints, exportPrims, K, fmtNum, newId, scaleAnchor, SCALE_MIN, SCALE_MAX } from "./annots.js";
 import { View, SnapIndex, COLORS } from "./view.js";
 import { Panel } from "./panel.js";
 import { TOOLS, TOOL_BY_ID, TOOL_BY_KEY, finalize } from "./tools.js";
@@ -494,6 +494,8 @@ class App {
         this.startSelectDrag(raw, sx, sy);
         return;
       }
+      // înainte de primul click al unei unelte, pătrățelele selecției au prioritate
+      if (!this.clicks.length && this.tryHandleDrag(sx, sy, true)) return;
       const anchor = this.clicks[this.clicks.length - 1];
       const { pt } = this.snapPoint(raw, e, anchor);
       if (t.kind === "rect") {
@@ -543,6 +545,18 @@ class App {
         this.showCoords(pt);
         return;
       }
+      if (d && d.kind === "scale") {
+        if (!d.pushed) {
+          this.pushHistory();
+          d.pushed = true;
+        }
+        const a = this.annots.find((x) => x.id === d.id);
+        const k = d.s0 * (Math.hypot(raw[0] - d.anchor[0], raw[1] - d.anchor[1]) / d.d0);
+        a.scale = Math.round(Math.min(SCALE_MAX, Math.max(SCALE_MIN, k)) * 20) / 20;
+        this.setHint(`Mărime ${Math.round(a.scale * 100)}% · eliberează pentru a fixa`);
+        this.view.redraw();
+        return;
+      }
       if (d && d.kind === "move") {
         const dx = raw[0] - d.last[0];
         const dy = raw[1] - d.last[1];
@@ -581,7 +595,8 @@ class App {
         $("canvas").style.cursor = this.tool === "pan" ? "grab" : this.tool === "select" ? "default" : "crosshair";
         return;
       }
-      if (d.kind === "handle" || d.kind === "move") {
+      if (d.kind === "handle" || d.kind === "move" || d.kind === "scale") {
+        if (d.kind === "scale") this.setHint(TOOL_BY_ID[this.tool].hint);
         this.view.overlay = null;
         if (d.pushed) {
           this.panel.render();
@@ -618,18 +633,7 @@ class App {
 
   startSelectDrag(raw, sx, sy) {
     const v = this.view;
-    const sel = this.selected();
-    if (sel && sel.page === this.page) {
-      const built = this.builtOf(sel);
-      for (const h of built.handles || []) {
-        if (!h.p) continue;
-        const [hx, hy] = v.toScreen(h.p);
-        if (Math.hypot(hx - sx, hy - sy) <= 9) {
-          this.drag = { kind: "handle", id: sel.id, k: h.k, anchor: h.k === "p2" ? sel.p1 : h.k === "p1" ? sel.p2 : null };
-          return;
-        }
-      }
-    }
+    if (this.tryHandleDrag(sx, sy)) return;
     const tol = 5 / v.zoom;
     const items = this.visibleBuilt();
     for (let i = items.length - 1; i >= 0; i--) {
@@ -641,6 +645,32 @@ class App {
       }
     }
     if (this.selectedId) this.select(null);
+  }
+
+  /**
+   * Un click pe pătrățelele adnotării selectate o editează. Cu altă unealtă activă contează doar
+   * pătrățelul de mărire: capetele trebuie să rămână libere pentru cote înlănțuite din același punct.
+   */
+  tryHandleDrag(sx, sy, onlyScale = false) {
+    const v = this.view;
+    const sel = this.selected();
+    if (sel && sel.page === this.page) {
+      const built = this.builtOf(sel);
+      for (const h of built.handles || []) {
+        if (!h.p) continue;
+        const [hx, hy] = v.toScreen(h.p);
+        if (Math.hypot(hx - sx, hy - sy) <= 9 && h.k === "sc") {
+          const an = scaleAnchor(sel);
+          this.drag = { kind: "scale", id: sel.id, anchor: an, d0: Math.max(1e-3, Math.hypot(h.p[0] - an[0], h.p[1] - an[1])), s0: sel.scale || 1 };
+          return true;
+        }
+        if (Math.hypot(hx - sx, hy - sy) <= 9 && !onlyScale) {
+          this.drag = { kind: "handle", id: sel.id, k: h.k, anchor: h.k === "p2" ? sel.p1 : h.k === "p1" ? sel.p2 : null };
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   updateOverlay(pt, sn) {

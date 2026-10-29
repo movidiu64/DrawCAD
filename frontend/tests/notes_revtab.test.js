@@ -43,3 +43,31 @@ test("caracterele fără glifă sunt înlocuite consecvent", async () => {
   const b = build({ type: "text", p: [0, 0], text: "a…b" }, S, measure);
   assert.equal(texts(b)[0].txt, "a...b");
 });
+
+test("text și linie de indicație pe mai multe rânduri", () => {
+  const t = texts(build({ type: "text", p: [0, 100], text: "Rândul 1\nRândul 2", angle: 0 }, S, measure));
+  assert.deepEqual(t.map((p) => p.txt), ["Rândul 1", "Rândul 2"]);
+  assert.ok(t[1].p[1] > t[0].p[1], "al doilea rând trebuie să fie sub primul");
+  const v = texts(build({ type: "text", p: [0, 100], text: "A\nB", angle: 90 }, S, measure));
+  assert.ok(v[1].p[0] > v[0].p[0], "la text vertical rândurile avansează spre dreapta");
+  const l = texts(build({ type: "lead", pts: [[0, 0], [50, -20]], text: "4× M8\n↧12", arrow: "arrow" }, S, measure));
+  assert.deepEqual(l.map((p) => p.txt), ["4× M8", "↧12"]);
+  assert.ok(l[1].p[1] > l[0].p[1] && l[1].p[1] < -20, "ultimul rând stă pe umăr, primul deasupra");
+});
+
+test("mărire / micșorare pe adnotare", () => {
+  const base = { type: "rough", target: [100, 100], pos: null, val: "Ra 1,6", kind: "remove", rot: 0 };
+  const b1 = build(base, S, measure);
+  const b05 = build({ ...base, scale: 0.5 }, S, measure);
+  const h = (b) => b.bbox[3] - b.bbox[1];
+  assert.ok(Math.abs(h(b05) / h(b1) - 0.5) < 0.02, `${h(b05)} / ${h(b1)}`);
+  // vârful rămâne pe suprafață; pătrățelul de mărire e în colțul opus ancorei
+  assert.ok(Math.abs(b05.bbox[3] - 100) < 1e-6);
+  const sc = b1.handles.find((x) => x.k === "sc");
+  assert.ok(sc && sc.p[1] < 100);
+  // tabelul de revizii rămâne ancorat în colțul dreapta-jos
+  const rt = { type: "revtab", p: [500, 400], rows: [{ rev: "1", desc: "x", date: "29.10.2026", name: "OV" }], scale: 0.7 };
+  const brt = build(rt, S, measure);
+  assert.ok(Math.abs(brt.bbox[2] - 500) < 1 && Math.abs(brt.bbox[3] - 400) < 1);
+  assert.ok(build({ ...rt, scale: 1 }, S, measure).bbox[1] < brt.bbox[1], "la 70% tabelul e mai scund");
+});

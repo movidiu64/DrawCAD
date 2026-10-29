@@ -364,6 +364,20 @@ export class View {
       ctx.fillStyle = h.k === "tx" ? "#ffffff" : COLORS.sel;
       ctx.strokeStyle = h.k === "tx" ? COLORS.sel : "#ffffff";
       ctx.lineWidth = 1.2 / this.zoom;
+      if (h.k === "sc") {
+        // pătrățelul de mărire: contur alb cu săgeată diagonală
+        const q = s * 1.15;
+        ctx.fillStyle = "#ffffff";
+        ctx.strokeStyle = COLORS.sel;
+        ctx.lineWidth = 1.6 / this.zoom;
+        ctx.fillRect(h.p[0] - q / 2, h.p[1] - q / 2, q, q);
+        ctx.strokeRect(h.p[0] - q / 2, h.p[1] - q / 2, q, q);
+        ctx.beginPath();
+        ctx.moveTo(h.p[0] - q * 0.3, h.p[1] - q * 0.3);
+        ctx.lineTo(h.p[0] + q * 0.3, h.p[1] + q * 0.3);
+        ctx.stroke();
+        continue;
+      }
       if (h.k === "tx") {
         ctx.beginPath();
         ctx.arc(h.p[0], h.p[1], s * 0.6, 0, Math.PI * 2);

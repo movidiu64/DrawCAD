@@ -115,6 +115,10 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 
 **Editare:** la o adnotare selectată, pătrățelele mută punctele, iar cercul alb mută textul cotei de-a lungul liniei. Tragerea de corp mută toată adnotarea.
 
+**Mărime:** orice adnotare selectată (cote, rugozitate, GD&T, bază, tabel de revizii etc.) are în colț un pătrățel alb cu diagonală. Tragi de el spre ancoră ca să micșorezi sau în sens opus ca să mărești, între 30% și 500%. Același lucru se face din panou, cu butoanele −/+ sau 50…200%. Se scalează textul, săgețile și distanțele; grosimea liniilor rămâne. Pătrățelul de mărire merge și cu altă unealtă activă.
+
+**Text pe mai multe rânduri:** câmpurile de text, linie de indicație și note acceptă Enter pentru rând nou. La text, înălțimea se alege direct în mm (2,5 / 3,5 / 5 / 7 / 10).
+
 **Textul cotelor:** dacă eticheta nu încape între săgeți, se mută automat lângă săgeată, iar linia de cotă se prelungește până sub text. Dacă muți textul manual, butonul „Text automat” readuce poziționarea automată.
 
 **Simboluri în text:** sub câmpurile de text sunt butoane pentru ⌀ ⌴ (lamaj) ⌵ (teșire) ↧ (adâncime) ± ° × √, pentru indicații de găuri și filete de tipul `4× M8 ↧12`.

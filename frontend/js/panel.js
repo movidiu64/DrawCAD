@@ -1,5 +1,5 @@
 // Panoul de proprietăți din dreapta.
-import { TYPE_NAMES, fmtNum, parseNum, build, derive, K } from "./annots.js";
+import { TYPE_NAMES, fmtNum, parseNum, build, derive, K, SCALABLE, SCALE_MIN, SCALE_MAX } from "./annots.js";
 import { fmtDev } from "./iso286.js";
 import { GDT_SYMBOLS, GDT_BY_ID, MODIFIERS, symbolPrims } from "./gdt.js";
 import { drawPrims } from "./view.js";
@@ -98,12 +98,30 @@ export class Panel {
     const layer = a.type === "white" || a.type === "redact" ? "" : `<div class="sec"><div class="h">Strat</div><div class="seg">
         <button data-act="layer" data-v="add" class="${a.layer !== "rev" ? "on" : ""}">Adăugat</button>
         <button data-act="layer" data-v="rev" class="${a.layer === "rev" ? "on" : ""}">Revizie</button></div></div>`;
-    return `${layer}<div class="btns"><button class="danger" data-act="delete">Șterge adnotarea</button></div>`;
+    return `${this.scaleHtml(a)}${layer}<div class="btns"><button class="danger" data-act="delete">Șterge adnotarea</button></div>`;
   }
 
   symRow(target) {
     const syms = [["⌀", "Diametru"], ["⌴", "Lamaj"], ["⌵", "Teșire / con"], ["↧", "Adâncime"], ["±", "Plus-minus"], ["°", "Grad"], ["×", "Ori / pe"], ["√", "Rădăcină"]];
     return `<div class="pills sym">${syms.map(([ch, t]) => `<button data-ins="${ch}" data-target="${target}" title="${t}" aria-label="Inserează ${t}">${ch}</button>`).join("")}</div>`;
+  }
+
+  textHeights(a) {
+    const base = this.app.settings.textH || 3.5;
+    const cur = base * (a.scale || 1) * (a.size || 1);
+    return [2.5, 3.5, 5, 7, 10].map((mm) => `<button data-act="theight" data-v="${mm}" class="${Math.abs(cur - mm) < 0.02 ? "on" : ""}">${fmtNum(mm, ",", 1)}</button>`).join("");
+  }
+
+  scaleHtml(a) {
+    if (!SCALABLE.has(a.type) || a.type === "text" || a.type === "note") return "";
+    const k = a.scale || 1;
+    const opts = [0.5, 0.7, 0.85, 1, 1.2, 1.5, 2];
+    return `<div class="sec"><div class="h">Mărime</div>
+      <div class="row"><button class="ghost" data-act="scalestep" data-v="-0.1" aria-label="Micșorează" style="width:40px;padding:0">−</button>
+        <span class="mono" style="min-width:60px;text-align:center;font-size:15px">${Math.round(k * 100)}%</span>
+        <button class="ghost" data-act="scalestep" data-v="0.1" aria-label="Mărește" style="width:40px;padding:0">+</button></div>
+      <div class="pills">${opts.map((v) => `<button data-act="scale" data-v="${v}" class="${Math.abs(k - v) < 0.001 ? "on" : ""}">${Math.round(v * 100)}%</button>`).join("")}</div>
+      <div class="sub">Sau trage de pătrățelul alb din colțul adnotării selectate.</div></div>`;
   }
 
   previewBox() {
@@ -222,8 +240,8 @@ export class Panel {
       <div class="opts">${tpl.map((t) => `<button data-act="ntpl" data-v="${esc(t)}">${esc(t)}</button>`).join("")}</div></div>
       <div class="sec"><div class="h">Aspect</div>
       <div class="seg"><button data-act="nnum" class="${a.numbered ? "on" : ""}">Numerotate</button><button data-act="nframe" class="${a.frame ? "on" : ""}">Cu chenar</button></div>
-      <div class="field"><span class="lbl">Înălțime text</span><div class="seg">
-        ${[[0.715, "2,5"], [1, "3,5"], [1.43, "5"]].map(([v, l]) => `<button data-act="tsize" data-v="${v}" class="${Math.abs((a.size || 1) - v) < 0.01 ? "on" : ""}">${l}</button>`).join("")}</div></div></div>`;
+      <div class="field"><span class="lbl">Înălțime text (mm)</span><div class="seg">
+        ${this.textHeights(a)}</div></div></div>`;
   }
 
   html_revtab(a) {
@@ -249,7 +267,7 @@ export class Panel {
 
   html_lead(a) {
     return `<div class="sec"><div class="h">Text</div>
-      <div class="field"><label for="lTxt">Conținut</label><input type="text" id="lTxt" data-f="text" value="${esc(a.text)}"></div>
+      <div class="field"><label for="lTxt">Conținut (Enter = rând nou)</label><textarea id="lTxt" data-f="text" rows="3" spellcheck="false">${esc(a.text)}</textarea></div>
       ${this.symRow("#lTxt")}
       <div class="pills">${["1×45°", "0,5×45°", "2×45°", "Ra 1,6", "Ra 0,8", "M8", "Ra 3,2"].map((t) => `<button data-act="settext" data-v="${esc(t)}">${esc(t)}</button>`).join("")}</div>
       <div class="field"><span class="lbl">Capăt</span><div class="seg">
@@ -260,10 +278,10 @@ export class Panel {
 
   html_text(a) {
     return `<div class="sec"><div class="h">Text</div>
-      <div class="field"><label for="tTxt">Conținut</label><input type="text" id="tTxt" data-f="text" value="${esc(a.text)}"></div>
+      <div class="field"><label for="tTxt">Conținut (Enter = rând nou)</label><textarea id="tTxt" data-f="text" rows="3" spellcheck="false">${esc(a.text)}</textarea></div>
       ${this.symRow("#tTxt")}
-      <div class="row"><div class="field"><span class="lbl">Înălțime</span><div class="seg">
-        ${[[0.715, "2,5"], [1, "3,5"], [1.43, "5"], [2, "7"]].map(([v, l]) => `<button data-act="tsize" data-v="${v}" class="${Math.abs((a.size || 1) - v) < 0.01 ? "on" : ""}">${l}</button>`).join("")}</div></div></div>
+      <div class="row"><div class="field"><span class="lbl">Înălțime text (mm)</span><div class="seg">
+        ${this.textHeights(a)}</div></div></div>
       <div class="field"><span class="lbl">Orientare</span><div class="seg">
         <button data-act="tangle" data-v="0" class="${!a.angle ? "on" : ""}">Orizontal</button>
         <button data-act="tangle" data-v="90" class="${a.angle === 90 ? "on" : ""}">Vertical</button></div></div></div>`;
@@ -487,6 +505,21 @@ export class Panel {
         break;
       case "arrowk":
         upd((a) => { a.arrow = v; });
+        break;
+      case "theight":
+        upd((x) => {
+          x.scale = Math.round((Number(v) / (app.settings.textH || 3.5)) * 1000) / 1000;
+          delete x.size;
+        });
+        break;
+      case "scale":
+        upd((x) => { x.scale = Number(v); });
+        break;
+      case "scalestep":
+        upd((x) => {
+          const k = Math.round(((x.scale || 1) + Number(v)) * 100) / 100;
+          x.scale = Math.min(SCALE_MAX, Math.max(SCALE_MIN, k));
+        });
         break;
       case "tsize":
         upd((a) => { a.size = Number(v); });

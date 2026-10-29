@@ -113,6 +113,8 @@ def main(url, out):
         click(125, 75)
         click(125, 75)
         page.click("[data-act=rval][data-v='Ra 1,6']")
+        page.click("[data-act=scale][data-v='0.7']")
+        assert page.evaluate("window.cotare.selected().scale") == 0.7
         # 9. copiere + lipire: a doua rugozitate pe treapta Ø30
         page.keyboard.press("v")  # rugozitatea nou creată rămâne selectată
         page.keyboard.press("Control+c")
@@ -143,6 +145,25 @@ def main(url, out):
         assert rows and rows[0]["rev"] == "1" and "120" in rows[0]["desc"], rows
         page.fill("[data-row='0'][data-col='name']", "OV")
         page.press("[data-row='0'][data-col='name']", "Escape")
+        # micșorare prin tragere de pătrățelul din colț, spre ancoră (colțul cartușului)
+        hx, hy, ax, ay = page.evaluate("""(() => { const app = window.cotare, a = app.selected();
+            const h = app.builtOf(a).handles.find(q => q.k === 'sc'); const r = document.getElementById('canvas').getBoundingClientRect();
+            const s1 = app.view.toScreen(h.p), s2 = app.view.toScreen(a.p);
+            return [s1[0] + r.left, s1[1] + r.top, s2[0] + r.left, s2[1] + r.top]; })()""")
+        page.mouse.move(hx, hy)
+        page.mouse.down()
+        page.mouse.move((hx + ax) / 2, (hy + ay) / 2, steps=6)
+        page.mouse.up()
+        sc = page.evaluate("window.cotare.selected().scale")
+        assert 0.4 <= sc <= 0.6, sc
+        page.keyboard.press("Escape")
+        # text pe două rânduri
+        page.keyboard.press("t")
+        click(25, 112)
+        page.fill("#tTxt", "Text pe\ndouă rânduri")
+        page.press("#tTxt", "Escape")
+        n_lines = page.evaluate("window.cotare.builtOf(window.cotare.selected()).prims.filter(p => p.t === 'T').length")
+        assert n_lines == 2, n_lines
         page.evaluate("() => { const v = window.cotare.view; v.zoom = 2.2; v.panX = -25*72/25.4*2.2; v.panY = -38*72/25.4*2.2; v.afterZoom(); }")
         page.wait_for_timeout(300)
 
@@ -167,7 +188,7 @@ def main(url, out):
         page.screenshot(path=str(out / "editor.png"))
 
         kinds = page.evaluate("window.cotare.annots.map(a => a.type)")
-        assert len(kinds) == 12, kinds
+        assert len(kinds) == 13, kinds
 
         # export
         page.click("#btnExport")
@@ -180,7 +201,7 @@ def main(url, out):
 
         # redeschidere: cotele revin editabile
         page.set_input_files("#fileInput", str(path))
-        page.wait_for_function("window.cotare.annots.length === 12")
+        page.wait_for_function("window.cotare.annots.length === 13")
         b.close()
 
     import pypdfium2 as pdfium

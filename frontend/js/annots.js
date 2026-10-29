@@ -554,7 +554,7 @@ function buildRevtab(a, S, measure) {
   const pad = 0.6 * h;
   const rows = a.rows || [];
   const widths = REVTAB_COLS.map((col) => {
-    let w = col.minMm * K;
+    let w = col.minMm * K * (a.scale || 1);
     w = Math.max(w, measure(col.title, F) + 2 * pad);
     for (const r of rows) w = Math.max(w, measure(String(r[col.key] || ""), F) + 2 * pad);
     return w;
@@ -598,28 +598,43 @@ function buildRevtab(a, S, measure) {
 function buildLead(a, S, measure) {
   const c = a.layer || "add";
   const [P0, P1] = a.pts;
-  const txt = a.text || "";
-  const w = measure(txt, S.F);
+  // text pe mai multe rânduri: ultimul rând stă pe umăr, celelalte deasupra
+  const lines = noteLines(a).map((l) => l.replace(/\s+$/, ""));
+  const widths = lines.map((l) => measure(l, S.F));
+  const w = Math.max(0, ...widths);
   const side = P1[0] >= P0[0] ? 1 : -1;
   const pad = S.h * 0.3;
+  const pitch = 1.7 * S.h;
   const P2 = [P1[0] + side * (w + 2 * pad), P1[1]];
   const prims = [lineP(P0, P1, S, c), lineP(P1, P2, S, c)];
   const d = norm(sub(P0, P1)) || [-1, 0];
   if (a.arrow === "dot") prims.push({ t: "C", p: P0, r: S.aw * 0.18, fill: true, nostroke: true, w: S.lw, c });
   else if (a.arrow !== "none") prims.push(...arrowP(P0, d, { ...S, arrow: "closed" }, c));
   const x0 = Math.min(P1[0], P2[0]) + pad;
-  prims.push({ t: "T", p: [x0, P1[1] - S.h * 0.35], s: S.F, a: 0, txt, tw: w, c });
+  const yLast = P1[1] - S.h * 0.35;
+  lines.forEach((txt, i) => {
+    if (!txt) return;
+    const y = yLast - (lines.length - 1 - i) * pitch;
+    prims.push({ t: "T", p: [x0, y], s: S.F, a: 0, txt, tw: widths[i], c });
+  });
   return { prims, handles: [{ k: "pts.0", p: P0 }, { k: "pts.1", p: P1 }] };
 }
 
 function buildText(a, S, measure) {
   const c = a.layer || "add";
   const s = S.F * (a.size || 1);
-  const w = measure(a.text || "", s);
-  return {
-    prims: [{ t: "T", p: a.p, s, a: a.angle || 0, txt: a.text || "", tw: w, c }],
-    handles: [{ k: "p", p: a.p }],
-  };
+  const h = S.h * (a.size || 1);
+  const ang = a.angle || 0;
+  const th = (ang * Math.PI) / 180;
+  const down = [Math.sin(th), Math.cos(th)]; // direcția „rândul următor” pe ecran
+  const prims = [];
+  noteLines(a).forEach((raw, i) => {
+    const txt = raw.replace(/\s+$/, "");
+    if (!txt) return;
+    const p = [a.p[0] + down[0] * i * 1.7 * h, a.p[1] + down[1] * i * 1.7 * h];
+    prims.push({ t: "T", p, s, a: ang, txt, tw: measure(txt, s), c });
+  });
+  return { prims, handles: [{ k: "p", p: a.p }] };
 }
 
 export function gdtValueText(a, S) {
@@ -804,13 +819,43 @@ export function fontSafe(txt) {
   return String(txt ?? "").replace(GLYPH_RE, (ch) => GLYPH_SUBST[ch]);
 }
 
+export const SCALABLE = new Set(["dim", "rad", "ang", "rough", "lead", "text", "note", "gdt", "datum", "strike", "revtab"]);
+export const SCALE_MIN = 0.3;
+export const SCALE_MAX = 5;
+
+/** Setările pentru o adnotare mărită/micșorată: text, săgeți și distanțe; grosimea liniilor rămâne. */
+export function scaledS(S, k) {
+  if (!k || Math.abs(k - 1) < 1e-9) return S;
+  return { ...S, h: S.h * k, F: S.F * k, aw: S.aw * k, gap: S.gap * k, over: S.over * k };
+}
+
+/** Punctul fix la mărire: ancora principală a adnotării. */
+export function scaleAnchor(a) {
+  return a.target || a.p || a.pos || a.v || a.c || (a.pts && a.pts[1]) || a.p1 || (a.r && [a.r[0], a.r[1]]) || [0, 0];
+}
+
 export function build(a, S, measure) {
   const fn = BUILDERS[a.type];
   if (!fn) return { prims: [], handles: [] };
   const safeMeasure = (t, s) => measure(fontSafe(t), s);
-  const b = fn(a, S, safeMeasure);
+  const b = fn(a, scaledS(S, a.scale || 1), safeMeasure);
   for (const p of b.prims) if (p.t === "T") p.txt = fontSafe(p.txt);
   b.bbox = primsBBox(b.prims);
+  if (b.bbox && SCALABLE.has(a.type)) {
+    // pătrățelul de mărire: colțul casetei cel mai depărtat de ancoră
+    const an = scaleAnchor(a);
+    const [x0, y0, x1, y1] = b.bbox;
+    let best = null;
+    let bd = -1;
+    for (const q of [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]) {
+      const d = Math.hypot(q[0] - an[0], q[1] - an[1]);
+      if (d > bd) {
+        bd = d;
+        best = q;
+      }
+    }
+    b.handles = [...(b.handles || []), { k: "sc", p: best }];
+  }
   return b;
 }
 
@@ -930,7 +975,7 @@ export function moveAnnot(a, dx, dy) {
 
 /** Puncte ale adnotărilor, oferite ca țintă de snap. */
 export function annotSnapPoints(built) {
-  return (built.handles || []).filter((h) => h.p && h.k !== "tx").map((h) => h.p);
+  return (built.handles || []).filter((h) => h.p && h.k !== "tx" && h.k !== "sc").map((h) => h.p);
 }
 
 /** Primitive pentru export: fără elementele care există doar în editor. */
