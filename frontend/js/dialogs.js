@@ -53,14 +53,78 @@ function ago(ts) {
   return d.toLocaleDateString("ro-RO");
 }
 
-export function recentHtml(docs) {
+function daysLeft(expires) {
+  if (!expires) return "";
+  const d = Math.ceil((expires * 1000 - Date.now()) / 86400000);
+  if (d <= 1) return " · se șterge mâine";
+  return ` · se șterge în ${d} zile`;
+}
+
+export function recentHtml(docs, retentionDays) {
   if (!docs.length) return "";
-  return `<div class="ttl">Recente</div>` + docs.slice(0, 8).map((d) => `
-    <button data-doc="${d.id}">
-      <span class="badge ${d.kind === "image" ? "img" : "pdf"}">${d.kind === "image" ? "IMG" : "PDF"}</span>
-      <span style="flex:1;display:flex;flex-direction:column;gap:2px;min-width:0"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}</span>
-      <span class="muted" style="font-size:12px">${(d.pages || []).length} pagini · ${ago(d.updated)}</span></span>
-    </button>`).join("");
+  const note = retentionDays > 0
+    ? `<div class="sub" style="margin:6px 4px">Documentele stau pe server ${fmtNum(retentionDays, ",", 1)} zile de la ultima folosire, apoi se șterg automat. Ce ai exportat pe PC nu e afectat.</div>`
+    : "";
+  return `<div class="ttl">Recente</div>` + docs.slice(0, 12).map((d) => `
+    <div class="item">
+      <button class="open" data-doc="${d.id}">
+        <span class="badge ${d.kind === "image" ? "img" : "pdf"}">${d.kind === "image" ? "IMG" : "PDF"}</span>
+        <span style="flex:1;display:flex;flex-direction:column;gap:2px;min-width:0"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}</span>
+        <span class="muted" style="font-size:12px">${(d.pages || []).length} pagini · ${ago(d.updated)}${daysLeft(d.expires)}</span></span>
+      </button>
+      <button class="icon del" data-del="${d.id}" data-name="${esc(d.name)}" title="Șterge de pe server" aria-label="Șterge ${esc(d.name)} de pe server"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></button>
+    </div>`).join("") + note;
+}
+
+/** Leagă butoanele din lista de recente: deschidere și ștergere (cu confirmare). */
+export function bindRecent(container, app, onOpen) {
+  container.querySelectorAll("[data-doc]").forEach((b) => b.addEventListener("click", () => {
+    if (onOpen) onOpen();
+    app.loadDoc(b.dataset.doc);
+  }));
+  container.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", async () => {
+    if (!window.confirm(`Ștergi „${b.dataset.name}” de pe server? Cotele nesalvate în PDF se pierd.`)) return;
+    try {
+      await api.deleteDoc(b.dataset.del);
+      b.closest(".item").remove();
+      toast("Document șters de pe server");
+    } catch (e) {
+      toast(e.message);
+    }
+  }));
+}
+
+// ------------------------------------------------------------------ închidere document
+export function closeDialog(app) {
+  const exp = app.doc && app.doc.expires ? new Date(app.doc.expires * 1000).toLocaleDateString("ro-RO") : null;
+  const dlg = showModal(`
+    <h2>Închizi documentul?</h2>
+    <div class="note">Ai modificări care nu au fost exportate în PDF. Cotele sunt salvate automat pe server${exp ? ` și le regăsești la Recente până pe <b>${exp}</b>` : ""}, dar fișierul PDF pe calculator îl ai doar dacă exporți.</div>
+    <div class="cards">
+      <button class="card on" id="cExport"><b>Exportă PDF și închide</b><span>Salvezi PDF-ul pe calculator, apoi documentul se închide.</span></button>
+      <button class="card" id="cClose"><b>Închide fără export</b><span>Lucrul rămâne pe server; îl redeschizi din Recente.</span></button>
+      <button class="card" id="cDelete"><b>Închide și șterge de pe server</b><span style="color:var(--bad)">Cotele neexportate se pierd definitiv.</span></button>
+    </div>
+    <div class="foot"><button class="ghost" data-close>Anulează</button></div>`);
+  dlg.querySelector("#cExport").addEventListener("click", () => {
+    closeModal();
+    exportDialog(app, { afterExport: () => app.doClose() });
+  });
+  dlg.querySelector("#cClose").addEventListener("click", () => {
+    closeModal();
+    app.doClose();
+  });
+  dlg.querySelector("#cDelete").addEventListener("click", async () => {
+    try {
+      await api.deleteDoc(app.doc.id);
+    } catch (e) {
+      toast(e.message);
+      return;
+    }
+    closeModal();
+    app.doClose();
+    toast("Document închis și șters de pe server");
+  });
 }
 
 // ------------------------------------------------------------------ deschidere
@@ -80,17 +144,14 @@ export async function openDialog(app) {
         <input type="text" id="dDpi" class="mono" placeholder="din fișier / 300" style="width:140px"></div>
         <span class="muted" style="font-size:12px">La scanuri, scara exactă se fixează apoi cu Calibrare (K).</span>
       </div>
-      <div class="recent" style="width:auto">${recentHtml(docs) || `<span class="muted">Niciun document deschis încă.</span>`}</div>
+      <div class="recent" style="width:auto">${recentHtml(docs, app.retentionDays) || `<span class="muted">Niciun document deschis încă.</span>`}</div>
     </div>
     <div class="foot"><button class="ghost" data-close>Închide</button></div>`);
   dlg.querySelector("#dPick").addEventListener("click", () => {
     app.pendingDpi = parseNum(dlg.querySelector("#dDpi").value);
     document.getElementById("fileInput").click();
   });
-  dlg.querySelectorAll("[data-doc]").forEach((b) => b.addEventListener("click", () => {
-    closeModal();
-    app.loadDoc(b.dataset.doc);
-  }));
+  bindRecent(dlg, app, closeModal);
   const drop = dlg.querySelector("#dDrop");
   drop.addEventListener("dragover", (e) => e.preventDefault());
   drop.addEventListener("drop", (e) => {
@@ -104,7 +165,7 @@ export async function openDialog(app) {
 }
 
 // ------------------------------------------------------------------ export
-export function exportDialog(app) {
+export function exportDialog(app, opts = {}) {
   const base = app.doc.name.replace(/\.[^.]+$/, "");
   const rev = app.settings.revNo || "1";
   const suggested = /_rev\d+$/i.test(base) ? base.replace(/_rev\d+$/i, `_rev${rev}`) : `${base}_rev${rev}`;
@@ -149,7 +210,9 @@ export function exportDialog(app) {
       closeModal();
       const removed = Object.values(report).reduce((s, r) => s + (r.removed || 0), 0);
       const partial = Object.values(report).reduce((s, r) => s + (r.partial || 0), 0);
+      app.markExported();
       toast(`Exportat ${a.download}${removed ? ` · ${removed} obiecte eliminate` : ""}${partial ? ` · ${partial} parțial în zonă, acoperite` : ""}`);
+      if (opts.afterExport) opts.afterExport();
     } catch (e) {
       dlg.querySelector("#eMsg").textContent = e.message;
       btn.disabled = false;

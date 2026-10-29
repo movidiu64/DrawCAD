@@ -71,6 +71,7 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 | `PUID` / `PGID` | `99` / `100` | utilizatorul cu care rulează aplicația |
 | `COTARE_MAX_UPLOAD_MB` | `200` | dimensiunea maximă a unui fișier încărcat |
 | `COTARE_MAX_RENDER_PX` | `12000` | latura maximă, în pixeli, a randării unei pagini |
+| `COTARE_RETENTION_DAYS` | `30` | zile după care un document nefolosit se șterge de pe server; `0` = niciodată |
 
 ## Utilizare
 
@@ -135,6 +136,17 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 - **Selecție pe obiecte:** bifezi exact ce se elimină. E modul recomandat.
 - **Doar textul:** elimină valorile, iar liniile de cotă rămân.
 - **Tot din zonă:** elimină ce e complet în zonă și acoperă cu alb ce trece doar parțial.
+
+**Închidere și păstrare pe server:**
+- **Butonul ✕** de lângă numele documentului îl închide și te întoarce la pagina de start.
+- **Fără modificări neexportate**, documentul se închide direct. Altfel te întreabă:
+  - **Exportă PDF și închide:** salvezi PDF-ul pe calculator, apoi documentul se închide;
+  - **Închide fără export:** lucrul rămâne pe server și îl redeschizi din Recente;
+  - **Închide și șterge de pe server.**
+- **Salvarea pe server** e automată, la fiecare modificare, și se face și la închiderea tab-ului.
+- **Cât stau documentele pe server:** `COTARE_RETENTION_DAYS` zile (implicit 30) de la ultima folosire; deschiderea unui document resetează termenul. Curățarea rulează la pornire și apoi la 6 ore.
+- **În Recente** vezi câte zile mai are fiecare document. Butonul coș îl șterge imediat.
+- **PDF-urile exportate pe calculator** nu sunt afectate de această curățare.
 
 **Redeschidere:** un PDF exportat cu „strat editabil” se poate redeschide. Cotele revin editabile, iar originalul este recuperat din fișier, deci nimic nu se desenează de două ori.
 

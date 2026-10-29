@@ -20,6 +20,7 @@ services:
       PGID: ${PGID:-100}
       COTARE_MAX_UPLOAD_MB: ${COTARE_MAX_UPLOAD_MB:-200}
       COTARE_MAX_RENDER_PX: ${COTARE_MAX_RENDER_PX:-12000}
+      COTARE_RETENTION_DAYS: ${COTARE_RETENTION_DAYS:-30}
     security_opt:
       - no-new-privileges:true
     healthcheck:

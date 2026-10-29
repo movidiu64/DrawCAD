@@ -123,6 +123,25 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(meta["kind"], "image")
         self.assertAlmostEqual(meta["pages"][0]["w"], 595.2, delta=0.5)
 
+    def test_retention_cleanup(self):
+        from app import main as m
+        meta = self.open_sample()
+        self.assertIsNotNone(meta["expires"])
+        keep = self.open_sample()
+        d = Path(TMP) / "docs" / meta["id"]
+        mj = json.loads((d / "meta.json").read_text("utf-8"))
+        old = time.time() - (m.RETENTION_DAYS + 1) * 86400
+        mj["updated"] = mj["created"] = old
+        mj.pop("accessed", None)
+        (d / "meta.json").write_text(json.dumps(mj), "utf-8")
+        removed = m.cleanup_expired()
+        self.assertIn(meta["id"], removed)
+        self.assertFalse(d.exists())
+        self.assertTrue((Path(TMP) / "docs" / keep["id"]).exists())
+        # deschiderea prelungește durata
+        got = self.req("GET", f"/api/doc/{keep['id']}")
+        self.assertGreater(got["expires"], time.time() + (m.RETENTION_DAYS - 1) * 86400)
+
     def test_state_save(self):
         meta = self.open_sample()
         self.req("PUT", f"/api/doc/{meta['id']}/state", {"v": 1, "annots": []})

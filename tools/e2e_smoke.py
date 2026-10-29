@@ -202,6 +202,21 @@ def main(url, out):
         # redeschidere: cotele revin editabile
         page.set_input_files("#fileInput", str(path))
         page.wait_for_function("window.cotare.annots.length === 13")
+        # închidere fără modificări: direct la pagina de start
+        page.click("#btnClose")
+        page.wait_for_function("window.cotare.doc === null && !document.getElementById('emptyState').hidden")
+        assert page.evaluate("document.querySelectorAll('#recentList [data-doc]').length") >= 1
+        # redeschidere din Recente, o modificare, apoi închidere cu întrebare
+        page.click("#recentList [data-doc]")
+        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 13")
+        page.wait_for_timeout(300)
+        page.keyboard.press("t")
+        click(100, 30)
+        page.press("#tTxt", "Escape")
+        page.click("#btnClose")
+        page.wait_for_selector("#cClose")
+        page.click("#cClose")
+        page.wait_for_function("window.cotare.doc === null")
         b.close()
 
     import pypdfium2 as pdfium

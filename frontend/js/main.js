@@ -44,6 +44,11 @@ class App {
 
   async init() {
     await document.fonts.load("16px osifont").catch(() => {});
+    try {
+      this.retentionDays = (await (await fetch("api/health")).json()).retentionDays;
+    } catch (_) {
+      this.retentionDays = 0;
+    }
     this.buildToolbar();
     this.bindUi();
     this.bindCanvas();
@@ -78,6 +83,9 @@ class App {
       this.pendingDpi = null;
     });
     $("btnExport").addEventListener("click", () => this.doc && dlg.exportDialog(this));
+    $("btnClose").addEventListener("click", () => this.closeDoc());
+    // salvarea în așteptare nu se pierde la închiderea tab-ului
+    window.addEventListener("pagehide", () => this.flushSaveBeacon());
     $("btnSettings").addEventListener("click", () => this.doc && dlg.settingsDialog(this));
     $("btnUndo").addEventListener("click", () => this.doUndo());
     $("btnRedo").addEventListener("click", () => this.doRedo());
@@ -102,14 +110,15 @@ class App {
   async refreshRecent() {
     try {
       const docs = await api.listDocs();
-      $("recentList").innerHTML = dlg.recentHtml(docs);
-      $("recentList").querySelectorAll("[data-doc]").forEach((b) => b.addEventListener("click", () => this.loadDoc(b.dataset.doc)));
+      $("recentList").innerHTML = dlg.recentHtml(docs, this.retentionDays);
+      dlg.bindRecent($("recentList"), this);
     } catch (_) { /* fără listă */ }
   }
 
   updateButtons() {
     const has = !!this.doc;
     $("btnExport").disabled = !has;
+    $("btnClose").hidden = !has;
     $("btnSettings").disabled = !has;
     $("btnUndo").disabled = !this.undo.length;
     $("btnRedo").disabled = !this.redo.length;
@@ -174,6 +183,7 @@ class App {
     this.redo = [];
     this.cache.clear();
     this.selectedId = null;
+    this.unexported = false;
     $("docName").textContent = meta.name;
     $("docMeta").textContent = `${meta.kind === "image" ? "imagine" : "PDF"} · ${meta.pages.length} ${meta.pages.length === 1 ? "pagină" : "pagini"}`;
     document.title = `${meta.name} — Cotare`;
@@ -207,11 +217,68 @@ class App {
     return { v: 1, settings: this.settings, annots: this.annots };
   }
 
+  async flushSave() {
+    if (!this.doc || !this.saveTimer) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    try {
+      await api.saveState(this.doc.id, this.stateJson());
+    } catch (e) {
+      dlg.toast(`Salvare eșuată: ${e.message}`);
+    }
+  }
+
+  flushSaveBeacon() {
+    if (!this.doc || !this.saveTimer) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    const blob = new Blob([JSON.stringify(this.stateJson())], { type: "application/json" });
+    navigator.sendBeacon(`api/doc/${this.doc.id}/state`, blob);
+  }
+
+  markExported() {
+    this.unexported = false;
+  }
+
+  async closeDoc() {
+    if (!this.doc) return;
+    await this.flushSave();
+    if (this.unexported && this.annots.length) dlg.closeDialog(this);
+    else this.doClose();
+  }
+
+  doClose() {
+    clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    this.doc = null;
+    this.annots = [];
+    this.selectedId = null;
+    this.clicks = [];
+    this.undo = [];
+    this.redo = [];
+    this.cache.clear();
+    this.unexported = false;
+    this.view.overlay = null;
+    this.view.clear();
+    $("pageTabs").innerHTML = "";
+    $("docName").textContent = "Niciun document";
+    $("docMeta").textContent = "";
+    document.title = "Cotare — editor PDF pentru desene tehnice";
+    try {
+      localStorage.removeItem("cotare.lastDoc");
+    } catch (_) { /* stocare indisponibilă */ }
+    this.setTool("select");
+    this.panel.render();
+    this.updateButtons();
+    this.refreshRecent();
+  }
+
   scheduleSave() {
     clearTimeout(this.saveTimer);
     const id = this.doc && this.doc.id;
     if (!id) return;
     this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
       api.saveState(id, this.stateJson()).catch((e) => dlg.toast(`Salvare automată eșuată: ${e.message}`));
     }, 700);
   }
@@ -231,6 +298,7 @@ class App {
   }
 
   changed() {
+    this.unexported = true;
     this.view.redraw();
     this.scheduleSave();
     this.updateButtons();

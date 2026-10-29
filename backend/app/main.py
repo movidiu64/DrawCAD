@@ -1,7 +1,10 @@
 """Server HTTP: API pentru documente + frontend static."""
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -24,6 +27,8 @@ DATA_DIR = Path(os.environ.get("COTARE_DATA", "/data"))
 FRONTEND_DIR = Path(os.environ.get("COTARE_FRONTEND", Path(__file__).resolve().parents[2] / "frontend"))
 MAX_UPLOAD = int(os.environ.get("COTARE_MAX_UPLOAD_MB", "200")) * 1024 * 1024
 MAX_RENDER_PX = int(os.environ.get("COTARE_MAX_RENDER_PX", "12000"))
+# documentele nefolosite atâtea zile se șterg automat (0 = niciodată)
+RETENTION_DAYS = float(os.environ.get("COTARE_RETENTION_DAYS", "30"))
 
 DOCS = DATA_DIR / "docs"
 _ID_RE = re.compile(r"^[a-f0-9]{32}$")
@@ -142,7 +147,7 @@ async def api_open(request: Request):
         _write_json(d / "meta.json", meta)
         if state is not None:
             _write_json(d / "state.json", state)
-        return {**meta, "state": state}
+        return {**meta, "expires": _expires(meta), "state": state}
 
     try:
         res = await run_in_threadpool(work)
@@ -159,9 +164,47 @@ async def api_docs(request: Request):
         for d in DOCS.iterdir():
             m = _read_json(d / "meta.json")
             if m:
-                out.append({k: m.get(k) for k in ("id", "name", "kind", "updated", "pages")})
+                item = {k: m.get(k) for k in ("id", "name", "kind", "updated", "pages")}
+                item["updated"] = _last_used(m)
+                item["expires"] = _expires(m)
+                out.append(item)
     out.sort(key=lambda m: m.get("updated") or 0, reverse=True)
     return JSONResponse(out[:30])
+
+
+def _last_used(meta: dict) -> float:
+    return max(meta.get("updated") or 0, meta.get("accessed") or 0, meta.get("created") or 0)
+
+
+def _expires(meta: dict):
+    if RETENTION_DAYS <= 0:
+        return None
+    return _last_used(meta) + RETENTION_DAYS * 86400
+
+
+def cleanup_expired(now: float | None = None) -> list[str]:
+    """Șterge documentele nefolosite de mai mult de RETENTION_DAYS zile."""
+    if RETENTION_DAYS <= 0 or not DOCS.is_dir():
+        return []
+    now = now or time.time()
+    removed = []
+    for d in DOCS.iterdir():
+        if not d.is_dir() or not _ID_RE.match(d.name):
+            continue
+        meta = _read_json(d / "meta.json")
+        if meta is None:
+            # document incomplet (încărcare întreruptă): după o zi se curăță
+            last = d.stat().st_mtime
+            if now - last < 86400:
+                continue
+        elif now < _expires(meta):
+            continue
+        shutil.rmtree(d, ignore_errors=True)
+        _bytes_cache.pop(d.name, None)
+        removed.append(d.name)
+    if removed:
+        logging.getLogger("cotare").info("curățare: %d documente expirate șterse", len(removed))
+    return removed
 
 
 async def api_doc(request: Request):
@@ -175,7 +218,9 @@ async def api_doc(request: Request):
         shutil.rmtree(d, ignore_errors=True)
         _bytes_cache.pop(doc_id, None)
         return JSONResponse({"ok": True})
-    return JSONResponse({**meta, "state": _read_json(d / "state.json")})
+    meta["accessed"] = time.time()
+    _write_json(d / "meta.json", meta)
+    return JSONResponse({**meta, "expires": _expires(meta), "state": _read_json(d / "state.json")})
 
 
 async def api_state(request: Request):
@@ -289,7 +334,7 @@ async def api_export(request: Request):
 
 
 async def api_health(request: Request):
-    return JSONResponse({"ok": True})
+    return JSONResponse({"ok": True, "retentionDays": RETENTION_DAYS})
 
 
 routes = [
@@ -297,7 +342,7 @@ routes = [
     Route("/api/open", api_open, methods=["POST"]),
     Route("/api/docs", api_docs),
     Route("/api/doc/{doc_id}", api_doc, methods=["GET", "DELETE"]),
-    Route("/api/doc/{doc_id}/state", api_state, methods=["PUT"]),
+    Route("/api/doc/{doc_id}/state", api_state, methods=["PUT", "POST"]),  # POST pentru sendBeacon
     Route("/api/doc/{doc_id}/page/{n:int}/render", api_render),
     Route("/api/doc/{doc_id}/page/{n:int}/preview", api_preview, methods=["POST"]),
     Route("/api/doc/{doc_id}/page/{n:int}/snap", api_snap),
@@ -306,5 +351,20 @@ routes = [
     Mount("/", app=StaticFiles(directory=str(FRONTEND_DIR), html=True), name="static"),
 ]
 
+@contextlib.asynccontextmanager
+async def lifespan(_app):
+    async def periodic():
+        while True:
+            with contextlib.suppress(Exception):
+                await run_in_threadpool(cleanup_expired)
+            await asyncio.sleep(6 * 3600)
+
+    task = asyncio.create_task(periodic())
+    try:
+        yield
+    finally:
+        task.cancel()
+
+
 DOCS.mkdir(parents=True, exist_ok=True)
-app = Starlette(routes=routes)
+app = Starlette(routes=routes, lifespan=lifespan)
