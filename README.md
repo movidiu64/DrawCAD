@@ -160,6 +160,17 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 
 **Redeschidere:** un PDF exportat cu „strat editabil” se poate redeschide. Cotele revin editabile, iar originalul este recuperat din fișier, deci nimic nu se desenează de două ori.
 
+## Date ISO 286
+
+Toleranțele IT și abaterile fundamentale (`frontend/js/iso286_data.js`) sunt preluate din TechTools, unde au fost:
+- citite din ISO 286-2:2010 (Tabelul 1 și Tabelele 8, 17–32) și verificate față de ISO 286-1:2010;
+- validate prin recalcularea tuturor celor 5907 abateri limită tipărite până la 500 mm. 5896 coincid exact; celelalte 11 sunt greșeli de tipar din ISO 286-2.
+
+Calculul urmează regulile ISO 286-1:2010:
+- Δ pentru alezajele K…ZC în treptele fine;
+- cazul special M6 la 250–315 mm;
+- JS/js = ±IT/2, fără rotunjirea la valoare pară din ediția 1988.
+
 ## Arhitectură
 
 ```
@@ -196,7 +207,7 @@ Frontend-ul calculează o singură dată geometria fiecărei cote și o trimite 
 
 ```bash
 cd backend && python -m unittest discover -s tests      # API: deschidere, snap, ștergere, export, redeschidere
-cd frontend && npm test                                 # ISO 286 (38 de cazuri din tabele), geometria cotelor
+cd frontend && npm test                                 # ISO 286 (42 de cazuri din tabele), geometria cotelor
 python tools/e2e_smoke.py http://127.0.0.1:8080 out     # browser: flux complet cu Playwright
 ```
 
@@ -204,7 +215,7 @@ python tools/e2e_smoke.py http://127.0.0.1:8080 out     # browser: flux complet 
 
 ## Limitări cunoscute
 
-- **ISO 286** acoperă arborii d, e, f, g, h, j (j5–j7), js, k, m, n, p, r, s, t (peste 24 mm), u și alezajele D–H, JS, K, M, N, P, R, S, T, U, cu treptele IT1–IT16 și nominale până la 500 mm. Nu sunt incluse a/b/c, J (tabelat separat), v–zc.
+- **ISO 286**: literele a–zc pentru arbori și alezaje, mai puțin t, v și y; treptele IT1–IT18; nominale până la 500 mm (fără 500–3150 mm).
 - **Ștergerea pe obiecte** elimină obiecte PDF întregi. Dacă un contur e un singur obiect care trece prin zonă, nu poate fi tăiat parțial: modul „Tot din zonă” îl acoperă cu alb.
 - **Textul exportat de AutoCAD cu fonturi SHX** apare în PDF ca linii, nu ca text. În dialogul de ștergere se vede ca „Linie / contur”.
 - **Adnotările se pot așeza doar orizontal sau vertical** (plus cotele aliniate). Nu există încă text rotit la unghi oarecare.

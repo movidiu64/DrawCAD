@@ -32,15 +32,18 @@ const CASES = [
   [25, "F7", 41, 20],
   [10, "G7", 20, 5],
   [25, "js6", 6.5, -6.5],
-  [25, "js7", 10, -10],
-  [25, "JS7", 10, -10],
+  [25, "js7", 10.5, -10.5], // ISO 286-1:2010: ±IT/2, fără rotunjire la par
+  [25, "JS7", 10.5, -10.5],
   [25, "M9", -8, -60],
   [25, "j6", 9, -4],
   [25, "j7", 13, -8],
   [20, "j5", 5, -4],
   [30, "u6", 61, 48],
   [50, "u6", 86, 70],
-  [40, "t6", 64, 48],
+  [25, "J7", 12, -9],
+  [25, "a11", -300, -430],
+  [20, "x6", 67, 54],
+  [2, "j8", 8, -6],
   [20, "U7", -33, -54],
 ];
 
@@ -55,12 +58,15 @@ for (const [D, fit, up, lo] of CASES) {
 
 test("câmpuri invalide", () => {
   assert.equal(parseFit("Js7"), null);
-  assert.equal(parseFit("x7"), null);
+  assert.equal(parseFit("q7"), null);
+  assert.equal(parseFit("t6"), null);
   assert.equal(deviations(600, "H7").ok, false);
   assert.equal(deviations(25, "H20").ok, false);
-  assert.equal(deviations(20, "t6").ok, false); // t începe de la 24 mm
-  assert.equal(deviations(25, "j8").ok, false);
-  assert.equal(deviations(25, "J7").ok, false);
+  assert.equal(deviations(40, "t6").ok, false); // t, v, y nu sunt incluse
+  assert.equal(deviations(25, "j8").ok, false); // j8 doar până la 3 mm
+  assert.equal(deviations(25, "J9").ok, false); // J9+ = JS
+  assert.equal(deviations(25, "K9").ok, false); // K peste IT8 doar ≤ 3 mm
+  assert.equal(deviations(25, "P2").ok, false); // alezajele cu Δ încep de la treapta 3
 });
 
 test("formatare abateri", () => {
