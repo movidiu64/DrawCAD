@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cotare — editor PDF pentru desene tehnice</title>
+<link rel="stylesheet" href="css/app.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f2a93b' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M3 5v14M21 5v14M3 12h18M3 12l4-2.5M3 12l4 2.5M21 12l-4-2.5M21 12l-4 2.5'/%3E%3C/svg%3E">
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div class="brand">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f2a93b" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 5v14M21 5v14M3 12h18M3 12l4-2.5M3 12l4 2.5M21 12l-4-2.5M21 12l-4 2.5"/></svg>
+      <span>Cotare</span>
+    </div>
+    <div class="sep"></div>
+    <div class="docname">
+      <span id="docName">Niciun document</span>
+      <span id="docMeta" class="muted"></span>
+    </div>
+    <div class="grow"></div>
+    <button class="icon" id="btnUndo" title="Anulează (Ctrl+Z)" aria-label="Anulează"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+    <button class="icon" id="btnRedo" title="Refă (Ctrl+Y)" aria-label="Refă"><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
+    <div class="zoom">
+      <button id="btnZoomOut" aria-label="Micșorează">−</button>
+      <span id="zoomLbl">100%</span>
+      <button id="btnZoomIn" aria-label="Mărește">+</button>
+      <button id="btnFit" class="txt">Potrivește</button>
+    </div>
+    <button class="ghost" id="btnSettings">Setări</button>
+    <button class="ghost" id="btnOpen">Deschide</button>
+    <button class="primary" id="btnExport">Exportă PDF</button>
+  </header>
+
+  <div class="body">
+    <nav class="tools" id="tools" aria-label="Unelte"></nav>
+
+    <main class="center">
+      <div class="pagetabs" id="pageTabs"></div>
+      <div class="viewport" id="viewport">
+        <canvas id="canvas"></canvas>
+        <div class="empty" id="emptyState">
+          <div class="drop">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#a3acb7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5M4 15v4h16v-4"/></svg>
+            <strong>Trage aici un PDF sau o imagine</strong>
+            <span class="muted">PDF · PNG · JPG · TIFF — originalul nu se modifică</span>
+            <button class="ghost" id="btnOpen2">Alege fișier</button>
+          </div>
+          <div class="recent" id="recentList"></div>
+        </div>
+      </div>
+    </main>
+
+    <aside class="panel" id="panel" aria-label="Proprietăți"></aside>
+  </div>
+
+  <footer class="status">
+    <span id="stCoords" class="mono">X — · Y — mm</span>
+    <span id="stHint" class="hint"></span>
+    <label class="chk"><input type="checkbox" id="stSnap" checked> Snap</label>
+    <label class="chk"><input type="checkbox" id="stOrtho"> Ortho (Shift)</label>
+    <span id="stScale"></span>
+  </footer>
+</div>
+
+<div class="modal" id="modal" hidden>
+  <div class="dialog" id="dialog" role="dialog" aria-modal="true"></div>
+</div>
+<input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,application/pdf,image/*" hidden>
+<div class="toast" id="toast" hidden></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

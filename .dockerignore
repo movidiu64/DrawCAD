@@ -1,0 +1,6 @@
+data
+**/__pycache__
+**/*.pyc
+e2e_out
+frontend/node_modules
+.git

@@ -1,0 +1,7 @@
+starlette==1.7.0
+uvicorn==0.54.0
+pypdfium2==5.13.0
+pikepdf==10.16.0
+reportlab==5.0.1
+img2pdf==0.6.3
+pillow==12.3.0

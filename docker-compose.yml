@@ -1,0 +1,13 @@
+services:
+  cotare:
+    build: .
+    image: cotare:latest
+    container_name: cotare
+    ports:
+      - "8080:8080"
+    volumes:
+      # pe Unraid: /mnt/user/appdata/cotare
+      - ./data:/data
+    environment:
+      - COTARE_MAX_UPLOAD_MB=200
+    restart: unless-stopped

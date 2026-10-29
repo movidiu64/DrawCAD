@@ -1,0 +1,9 @@
+{
+  "name": "cotare-frontend",
+  "private": true,
+  "type": "module",
+  "description": "Frontend fără build: module ES servite direct de backend",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  }
+}
