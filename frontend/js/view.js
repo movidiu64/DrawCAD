@@ -326,16 +326,23 @@ export class View {
       ctx.drawImage(this.img, 0, 0, this.pageW, this.pageH);
     }
     const app = this.app;
-    const sel = app.selectedId;
+    const single = app.sel.size === 1;
     for (const { a, built } of app.visibleBuilt()) {
-      if (a.id === sel) {
-        // contur de selecție sub desen
+      const on = app.isSelected(a.id);
+      if (on) {
+        // contur de selecție sub desen; textul primește o casetă
         ctx.globalAlpha = 0.35;
         drawPrims(ctx, built.prims.filter((p) => p.t !== "T" && p.t !== "R"), z, () => COLORS.sel, 5);
+        if (!single && built.bbox) {
+          const [x0, y0, x1, y1] = built.bbox;
+          ctx.fillStyle = COLORS.sel;
+          ctx.globalAlpha = 0.12;
+          ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+        }
         ctx.globalAlpha = 1;
       }
       drawPrims(ctx, built.prims, z);
-      if (a.id === sel) this.drawHandles(built);
+      if (on && single) this.drawHandles(built);
     }
     const ov = this.overlay;
     if (ov) {

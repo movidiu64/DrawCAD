@@ -1,6 +1,6 @@
 // ISO 286-1/-2: toleranțe fundamentale (IT) și abateri fundamentale.
 // Valori în µm. Intervale „peste a până la b inclusiv”. Domeniu: 0 < D ≤ 500 mm.
-// Litere acoperite: arbori d e f g h js k m n p r s; alezaje D E F G H JS K M N P R S.
+// Litere acoperite: arbori d e f g h j js k m n p r s t u; alezaje D E F G H JS K M N P R S T U.
 
 const RANGES = [3, 6, 10, 18, 30, 50, 80, 120, 180, 250, 315, 400, 500];
 
@@ -47,8 +47,23 @@ const SHAFT_EI_FINE = {
       [355, 190], [400, 208], [450, 232], [500, 252]],
 };
 
-export const SUPPORTED_SHAFT = ["d", "e", "f", "g", "h", "js", "k", "m", "n", "p", "r", "s"];
-export const SUPPORTED_HOLE = SUPPORTED_SHAFT.map((l) => l.toUpperCase());
+// u: ajustaje presate; t: există doar peste 24 mm
+SHAFT_EI_FINE.u = [[3, 18], [6, 23], [10, 28], [18, 33], [24, 41], [30, 48], [40, 60], [50, 70], [65, 87], [80, 102],
+  [100, 124], [120, 144], [140, 170], [160, 190], [180, 210], [200, 236], [225, 258], [250, 284], [280, 315],
+  [315, 350], [355, 390], [400, 435], [450, 490], [500, 540]];
+SHAFT_EI_FINE.t = [[24, null], [30, 41], [40, 48], [50, 54], [65, 66], [80, 75], [100, 91], [120, 104], [140, 122],
+  [160, 134], [180, 146], [200, 166], [225, 180], [250, 196], [280, 218], [315, 240], [355, 268], [400, 294],
+  [450, 330], [500, 360]];
+
+// j: abatere inferioară tabelată separat pentru j5/j6 și j7 (ISO 286-2)
+const SHAFT_J_EI = {
+  5: [-2, -2, -2, -3, -4, -5, -7, -9, -11, -13, -16, -18, -20],
+  6: [-2, -2, -2, -3, -4, -5, -7, -9, -11, -13, -16, -18, -20],
+  7: [-4, -4, -5, -6, -8, -10, -12, -15, -18, -21, -26, -28, -32],
+};
+
+export const SUPPORTED_SHAFT = ["d", "e", "f", "g", "h", "j", "js", "k", "m", "n", "p", "r", "s", "t", "u"];
+export const SUPPORTED_HOLE = ["D", "E", "F", "G", "H", "JS", "K", "M", "N", "P", "R", "S", "T", "U"];
 
 function rangeIndex(D) {
   for (let i = 0; i < RANGES.length; i++) if (D <= RANGES[i] + 1e-9) return i;
@@ -94,7 +109,7 @@ export function parseFit(str) {
   const grade = parseInt(m[2], 10);
   const isHole = letters[0] === letters[0].toUpperCase();
   const norm = letters.toLowerCase();
-  if (!SUPPORTED_SHAFT.includes(norm)) return null;
+  if (isHole ? !SUPPORTED_HOLE.includes(letters) : !SUPPORTED_SHAFT.includes(letters)) return null;
   if (isHole && letters !== letters.toUpperCase()) return null; // „Js” nu e valid
   if (!isHole && letters !== letters.toLowerCase()) return null;
   return { letter: norm, grade, isHole, code: letters + grade };
@@ -108,7 +123,10 @@ export function deviations(nominal, fitStr) {
   const D = Number(nominal);
   if (!(D > 0) || D > 500) return { ok: false, error: "Nominal în afara domeniului 0–500 mm" };
   const f = parseFit(fitStr);
-  if (!f) return { ok: false, error: "Câmp necunoscut (ex.: H7, k6, js6)" };
+  if (!f) {
+    if (/^\s*J\d/.test(fitStr || "")) return { ok: false, error: "J nu e inclus (valori tabelate separat); folosește JS sau abateri" };
+    return { ok: false, error: "Câmp necunoscut (ex.: H7, k6, js6, u6)" };
+  }
   const i = rangeIndex(D);
   const it = IT[f.grade] ? IT[f.grade][i] : null;
   if (it == null) return { ok: false, error: "Treaptă IT neacoperită (1–16)" };
@@ -121,12 +139,16 @@ export function deviations(nominal, fitStr) {
       const h = jsHalf(it, f.grade);
       upper = h;
       lower = -h;
+    } else if (L === "j") {
+      if (!SHAFT_J_EI[f.grade]) return { ok: false, error: "j există doar ca j5, j6, j7" };
+      lower = SHAFT_J_EI[f.grade][i];
+      upper = lower + it;
     } else if (SHAFT_ES[L]) {
       upper = SHAFT_ES[L][i];
       lower = upper - it;
     } else {
       const ei = shaftEi(L, f.grade, D, i);
-      if (ei == null) return { ok: false, error: "Abatere necunoscută" };
+      if (ei == null) return { ok: false, error: L === "t" ? "t există doar peste 24 mm" : "Abatere necunoscută" };
       lower = ei;
       upper = ei + it;
     }
@@ -141,8 +163,9 @@ export function deviations(nominal, fitStr) {
       upper = lower + it;
     } else {
       // K, M, N (≤ IT8) și P, R, S (≤ IT7): ES = −ei + Δ, Δ = IT(n) − IT(n−1)
-      const useDelta = (["k", "m", "n"].includes(L) && f.grade <= 8) || (["p", "r", "s"].includes(L) && f.grade <= 7);
+      const useDelta = (["k", "m", "n"].includes(L) && f.grade <= 8) || (["p", "r", "s", "t", "u"].includes(L) && f.grade <= 7);
       const ei = L === "k" ? SHAFT_EI.k[i] : shaftEi(L, f.grade, D, i);
+      if (ei == null) return { ok: false, error: L === "t" ? "T există doar peste 24 mm" : "Abatere necunoscută" };
       let ES;
       if (L === "k" && f.grade > 8) ES = 0;
       else if (L === "n" && f.grade > 8) ES = 0;

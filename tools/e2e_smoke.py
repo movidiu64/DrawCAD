@@ -167,6 +167,27 @@ def main(url, out):
         page.evaluate("() => { const v = window.cotare.view; v.zoom = 2.2; v.panX = -25*72/25.4*2.2; v.panY = -38*72/25.4*2.2; v.afterZoom(); }")
         page.wait_for_timeout(300)
 
+        # selecție multiplă: Ctrl+A, apoi dreptunghi peste detaliul cu unghi și deplasare cu săgeata
+        page.keyboard.press("v")
+        page.keyboard.press("Control+a")
+        n_all = page.evaluate("window.cotare.sel.size")
+        assert n_all == page.evaluate("window.cotare.annots.filter(a => a.page === 0).length"), n_all
+        page.keyboard.press("Escape")
+        x0, y0 = scr(45, 130)
+        x1, y1 = scr(78, 156)
+        page.mouse.move(x0, y0)
+        page.mouse.down()
+        page.mouse.move(x1, y1, steps=5)
+        page.mouse.up()
+        kinds_sel = page.evaluate("window.cotare.selectedAll().map(a => a.type)")
+        assert "ang" in kinds_sel, kinds_sel
+        v_before = page.evaluate("window.cotare.annots.find(a => a.type === 'ang').v[0]")
+        page.keyboard.press("ArrowRight")
+        v_after = page.evaluate("window.cotare.annots.find(a => a.type === 'ang').v[0]")
+        assert abs((v_after - v_before) - 0.5 * MM) < 1e-6, (v_before, v_after)
+        page.keyboard.press("Control+z")
+        page.keyboard.press("Escape")
+
         # 13. ștergere reală: textul Ø30 și linia lui de cotă
         page.keyboard.press("x")
         x0, y0 = scr(160, 77)

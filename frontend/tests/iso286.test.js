@@ -35,6 +35,13 @@ const CASES = [
   [25, "js7", 10, -10],
   [25, "JS7", 10, -10],
   [25, "M9", -8, -60],
+  [25, "j6", 9, -4],
+  [25, "j7", 13, -8],
+  [20, "j5", 5, -4],
+  [30, "u6", 61, 48],
+  [50, "u6", 86, 70],
+  [40, "t6", 64, 48],
+  [20, "U7", -33, -54],
 ];
 
 for (const [D, fit, up, lo] of CASES) {
@@ -51,6 +58,9 @@ test("câmpuri invalide", () => {
   assert.equal(parseFit("x7"), null);
   assert.equal(deviations(600, "H7").ok, false);
   assert.equal(deviations(25, "H20").ok, false);
+  assert.equal(deviations(20, "t6").ok, false); // t începe de la 24 mm
+  assert.equal(deviations(25, "j8").ok, false);
+  assert.equal(deviations(25, "J7").ok, false);
 });
 
 test("formatare abateri", () => {

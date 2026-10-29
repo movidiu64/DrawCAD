@@ -16,6 +16,7 @@ class App {
     this.annots = [];
     this.settings = dlg.storedDefaults();
     this.selectedId = null;
+    this.sel = new Set();
     this.tool = "select";
     this.clicks = [];
     this.undo = [];
@@ -183,6 +184,7 @@ class App {
     this.redo = [];
     this.cache.clear();
     this.selectedId = null;
+    this.sel = new Set();
     this.unexported = false;
     $("docName").textContent = meta.name;
     $("docMeta").textContent = `${meta.kind === "image" ? "imagine" : "PDF"} · ${meta.pages.length} ${meta.pages.length === 1 ? "pagină" : "pagini"}`;
@@ -196,6 +198,7 @@ class App {
     this.page = n;
     this.clicks = [];
     this.selectedId = null;
+    this.sel = new Set();
     const p = this.doc.pages[n];
     this.view.setPage(this.doc.id, n, p.w, p.h);
     this.renderTabs();
@@ -253,6 +256,7 @@ class App {
     this.doc = null;
     this.annots = [];
     this.selectedId = null;
+    this.sel = new Set();
     this.clicks = [];
     this.undo = [];
     this.redo = [];
@@ -309,7 +313,8 @@ class App {
     this.redo.push(JSON.stringify(this.annots));
     this.annots = JSON.parse(this.undo.pop());
     this.lastHistKey = null;
-    if (!this.selected()) this.selectedId = null;
+    this.sel = new Set([...this.sel].filter((id) => this.annots.some((a) => a.id === id)));
+    if (!this.selected()) this.selectedId = this.sel.size ? [...this.sel][0] : null;
     this.panel.render();
     this.changed();
   }
@@ -319,7 +324,8 @@ class App {
     this.undo.push(JSON.stringify(this.annots));
     this.annots = JSON.parse(this.redo.pop());
     this.lastHistKey = null;
-    if (!this.selected()) this.selectedId = null;
+    this.sel = new Set([...this.sel].filter((id) => this.annots.some((a) => a.id === id)));
+    if (!this.selected()) this.selectedId = this.sel.size ? [...this.sel][0] : null;
     this.panel.render();
     this.changed();
   }
@@ -358,8 +364,37 @@ class App {
     return this.annots.find((a) => a.id === this.selectedId) || null;
   }
 
+  /** Adnotările selectate (una sau mai multe), în ordinea din document. */
+  selectedAll() {
+    return this.annots.filter((a) => this.sel.has(a.id));
+  }
+
+  isSelected(id) {
+    return this.sel.has(id);
+  }
+
   select(id) {
     this.selectedId = id;
+    this.sel = new Set(id ? [id] : []);
+    this.panel.render();
+    this.view.redraw();
+  }
+
+  selectMany(ids, add = false) {
+    const next = add ? new Set(this.sel) : new Set();
+    for (const id of ids) next.add(id);
+    this.sel = next;
+    this.selectedId = next.size ? [...next][next.size - 1] : null;
+    this.panel.render();
+    this.view.redraw();
+  }
+
+  toggleSelect(id) {
+    const next = new Set(this.sel);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    this.sel = next;
+    this.selectedId = next.has(id) ? id : next.size ? [...next][next.size - 1] : null;
     this.panel.render();
     this.view.redraw();
   }
@@ -369,6 +404,15 @@ class App {
     if (!a) return;
     this.pushHistory(key ? `${a.id}:${key}` : null);
     fn(a);
+    this.changed();
+  }
+
+  /** Aceeași modificare pe toate adnotările selectate (un singur pas de anulare). */
+  updateMany(fn) {
+    const list = this.selectedAll();
+    if (!list.length) return;
+    this.pushHistory();
+    list.forEach(fn);
     this.changed();
   }
 
@@ -389,29 +433,27 @@ class App {
   }
 
   deleteSelected() {
-    const a = this.selected();
-    if (!a) return;
+    const ids = new Set(this.sel);
+    if (!ids.size) return;
     this.pushHistory();
-    this.annots = this.annots.filter((x) => x.id !== a.id);
-    this.cache.delete(a.id);
-    this.selectedId = null;
-    this.panel.render();
+    this.annots = this.annots.filter((x) => !ids.has(x.id));
+    ids.forEach((id) => this.cache.delete(id));
+    this.select(null);
     this.changed();
   }
 
   // ------------------------------------------------------------ copiere / lipire
   copySelected(silent) {
-    const a = this.selected();
-    if (!a) return false;
-    if (a.type === "redact") {
-      dlg.toast("Ștergerile din original țin de obiectele de sub ele și nu se copiază.");
-      return false;
-    }
-    this.clip = JSON.stringify(a);
+    const list = this.selectedAll();
+    if (!list.length) return false;
+    const keep = list.filter((a) => a.type !== "redact");
+    if (keep.length < list.length) dlg.toast("Ștergerile din original țin de obiectele de sub ele și nu se copiază.");
+    if (!keep.length) return false;
+    this.clip = JSON.stringify(keep);
     try {
       localStorage.setItem("cotare.clip", this.clip);
     } catch (_) { /* stocare indisponibilă */ }
-    if (!silent) dlg.toast("Copiat · Ctrl+V lipește la cursor");
+    if (!silent) dlg.toast(`${keep.length === 1 ? "Copiat" : `Copiate ${keep.length} adnotări`} · Ctrl+V lipește la cursor`);
     return true;
   }
 
@@ -424,12 +466,18 @@ class App {
       } catch (_) { /* stocare indisponibilă */ }
     }
     if (!raw) return;
-    const src = JSON.parse(raw);
-    delete src.id;
-    const a = finalize(src);
-    a.id = newId();
-    a.page = this.page;
-    const anchor = (build(a, this.S(), this.measure).handles || []).find((h) => h.p);
+    let src = JSON.parse(raw);
+    if (!Array.isArray(src)) src = [src];
+    const items = src.map((x) => {
+      const c = { ...x };
+      delete c.id;
+      const a = finalize(c);
+      a.id = newId();
+      a.page = this.page;
+      return a;
+    });
+    // grupul se mută ca întreg: ancora primei adnotări ajunge la cursor
+    const anchor = (build(items[0], this.S(), this.measure).handles || []).find((h) => h.p);
     let dx = 5 * K;
     let dy = 5 * K;
     const p = this.lastPt;
@@ -438,8 +486,18 @@ class App {
       dx = p[0] - anchor.p[0];
       dy = p[1] - anchor.p[1];
     }
-    moveAnnot(a, dx, dy);
-    this.addAnnot(a);
+    if (items.length === 1) {
+      moveAnnot(items[0], dx, dy);
+      this.addAnnot(items[0]);
+      return;
+    }
+    this.pushHistory();
+    for (const a of items) {
+      moveAnnot(a, dx, dy);
+      this.annots.push(a);
+    }
+    this.selectMany(items.map((a) => a.id));
+    this.changed();
   }
 
   revRowsFromStrikes(ensureOne, existing = []) {
@@ -486,6 +544,7 @@ class App {
       na.page = this.page;
       this.annots.push(na);
       this.selectedId = na.id;
+      this.sel = new Set([na.id]);
     } else {
       const cur = this.annots.find((x) => x.id === a.id);
       if (cur) Object.assign(cur, patch);
@@ -559,7 +618,7 @@ class App {
       if (e.button !== 0) return;
       const t = TOOL_BY_ID[this.tool];
       if (t.kind === "select") {
-        this.startSelectDrag(raw, sx, sy);
+        this.startSelectDrag(raw, sx, sy, e);
         return;
       }
       // înainte de primul click al unei unelte, pătrățelele selecției au prioritate
@@ -633,9 +692,14 @@ class App {
           this.pushHistory();
           d.pushed = true;
         }
-        const a = this.annots.find((x) => x.id === d.id);
-        moveAnnot(a, dx, dy);
+        for (const a of this.annots) if (d.ids.includes(a.id)) moveAnnot(a, dx, dy);
         d.last = raw;
+        this.view.redraw();
+        return;
+      }
+      if (d && d.kind === "marquee") {
+        const crossing = raw[0] < d.start[0];
+        this.view.overlay = { rect: [d.start[0], d.start[1], raw[0], raw[1]], rectColor: crossing ? "#3ccf8e" : "#4c9aff" };
         this.view.redraw();
         return;
       }
@@ -672,6 +736,32 @@ class App {
         }
         return;
       }
+      if (d.kind === "marquee") {
+        const [sx2, sy2] = pos(e);
+        const end = this.view.toPage(sx2, sy2);
+        this.view.overlay = null;
+        const x0 = Math.min(d.start[0], end[0]);
+        const x1 = Math.max(d.start[0], end[0]);
+        const y0 = Math.min(d.start[1], end[1]);
+        const y1 = Math.max(d.start[1], end[1]);
+        if ((x1 - x0) * this.view.zoom < 4 && (y1 - y0) * this.view.zoom < 4) {
+          if (!d.add) this.select(null);
+          else this.view.redraw();
+          return;
+        }
+        // stânga→dreapta: doar ce e complet în dreptunghi; dreapta→stânga: tot ce atinge
+        const crossing = end[0] < d.start[0];
+        const ids = [];
+        for (const { a, built } of this.visibleBuilt()) {
+          const b = built.bbox;
+          if (!b) continue;
+          const inside = b[0] >= x0 && b[2] <= x1 && b[1] >= y0 && b[3] <= y1;
+          const touch = !(b[2] < x0 || b[0] > x1 || b[3] < y0 || b[1] > y1);
+          if (crossing ? touch : inside) ids.push(a.id);
+        }
+        this.selectMany(ids, d.add);
+        return;
+      }
       if (d.kind === "rect") {
         const [sx, sy] = pos(e);
         const raw = this.view.toPage(sx, sy);
@@ -699,20 +789,25 @@ class App {
     });
   }
 
-  startSelectDrag(raw, sx, sy) {
+  startSelectDrag(raw, sx, sy, e) {
     const v = this.view;
-    if (this.tryHandleDrag(sx, sy)) return;
+    if (!e.shiftKey && this.sel.size <= 1 && this.tryHandleDrag(sx, sy)) return;
     const tol = 5 / v.zoom;
     const items = this.visibleBuilt();
     for (let i = items.length - 1; i >= 0; i--) {
       const { a, built } = items[i];
       if (hit(built, a, raw, tol)) {
-        if (this.selectedId !== a.id) this.select(a.id);
-        this.drag = { kind: "move", id: a.id, last: raw, sx, sy };
+        if (e.shiftKey) {
+          this.toggleSelect(a.id);
+          return;
+        }
+        if (!this.sel.has(a.id)) this.select(a.id);
+        this.drag = { kind: "move", ids: [...this.sel], last: raw, sx, sy };
         return;
       }
     }
-    if (this.selectedId) this.select(null);
+    // zonă goală: dreptunghi de selecție
+    this.drag = { kind: "marquee", start: raw, add: e.shiftKey };
   }
 
   /**
@@ -790,6 +885,11 @@ class App {
         if (this.doc) dlg.exportDialog(this);
         return;
       }
+      if ((e.ctrlKey || e.metaKey) && k === "a") {
+        e.preventDefault();
+        if (this.doc) this.selectMany(this.annots.filter((a) => a.page === this.page).map((a) => a.id));
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && k === "c") {
         if (this.copySelected()) e.preventDefault();
         return;
@@ -819,6 +919,17 @@ class App {
           this.view.redraw();
         } else if (this.selectedId) this.select(null);
         else this.setTool("select");
+        return;
+      }
+      if (e.key.startsWith("Arrow") && this.sel.size) {
+        // deplasare fină: 0,5 mm, cu Shift 5 mm
+        e.preventDefault();
+        const step = (e.shiftKey ? 5 : 0.5) * K;
+        const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+        const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+        this.pushHistory("nudge");
+        for (const a of this.selectedAll()) moveAnnot(a, dx, dy);
+        this.changed();
         return;
       }
       if (e.key === "Delete" || e.key === "Backspace") {

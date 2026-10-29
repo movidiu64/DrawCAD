@@ -109,12 +109,22 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 - Ctrl+Z / Ctrl+Y: anulează / refă
 - Ctrl+C / Ctrl+V: copiază adnotarea selectată / o lipește la cursor
 - Ctrl+D: duplică adnotarea selectată, decalat cu 5 mm
+- Ctrl+A: selectează toate adnotările de pe pagină
+- săgeți: mută selecția cu 0,5 mm (cu Shift: 5 mm)
 - Delete: șterge adnotarea selectată
 - Esc: renunță la operația curentă
 - rotița mouse-ului: zoom
 - Space + tragere, sau butonul din mijloc: mută foaia
 
 **Editare:** la o adnotare selectată, pătrățelele mută punctele, iar cercul alb mută textul cotei de-a lungul liniei. Tragerea de corp mută toată adnotarea.
+
+**Selecție multiplă:**
+- **Shift+click** adaugă sau scoate o adnotare din selecție.
+- **Dreptunghi tras pe o zonă goală** selectează:
+  - de la stânga la dreapta: doar ce e complet înăuntru;
+  - de la dreapta la stânga: tot ce atinge (ca în AutoCAD).
+- **Grupul selectat** se mută trăgând de oricare dintre adnotări sau cu săgețile. Se copiază, se duplică și se șterge împreună.
+- **Din panou** setezi pentru tot grupul mărimea și stratul.
 
 **Mărime:** orice adnotare selectată (cote, rugozitate, GD&T, bază, tabel de revizii etc.) are în colț un pătrățel alb cu diagonală. Tragi de el spre ancoră ca să micșorezi sau în sens opus ca să mărești, între 30% și 500%. Același lucru se face din panou, cu butoanele −/+ sau 50…200%. Se scalează textul, săgețile și distanțele; grosimea liniilor rămâne. Pătrățelul de mărire merge și cu altă unealtă activă.
 
@@ -186,7 +196,7 @@ Frontend-ul calculează o singură dată geometria fiecărei cote și o trimite 
 
 ```bash
 cd backend && python -m unittest discover -s tests      # API: deschidere, snap, ștergere, export, redeschidere
-cd frontend && npm test                                 # ISO 286 (31 de cazuri din tabele), geometria cotelor
+cd frontend && npm test                                 # ISO 286 (38 de cazuri din tabele), geometria cotelor
 python tools/e2e_smoke.py http://127.0.0.1:8080 out     # browser: flux complet cu Playwright
 ```
 
@@ -194,7 +204,7 @@ python tools/e2e_smoke.py http://127.0.0.1:8080 out     # browser: flux complet 
 
 ## Limitări cunoscute
 
-- **ISO 286** acoperă literele d–s și D–S, treptele IT1–IT16 și nominalele până la 500 mm. Literele a/b/c, j, t–zc nu sunt incluse.
+- **ISO 286** acoperă arborii d, e, f, g, h, j (j5–j7), js, k, m, n, p, r, s, t (peste 24 mm), u și alezajele D–H, JS, K, M, N, P, R, S, T, U, cu treptele IT1–IT16 și nominale până la 500 mm. Nu sunt incluse a/b/c, J (tabelat separat), v–zc.
 - **Ștergerea pe obiecte** elimină obiecte PDF întregi. Dacă un contur e un singur obiect care trece prin zonă, nu poate fi tăiat parțial: modul „Tot din zonă” îl acoperă cu alb.
 - **Textul exportat de AutoCAD cu fonturi SHX** apare în PDF ca linii, nu ca text. În dialogul de ștergere se vede ca „Linie / contur”.
 - **Adnotările se pot așeza doar orizontal sau vertical** (plus cotele aliniate). Nu există încă text rotit la unghi oarecare.

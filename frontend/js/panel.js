@@ -31,10 +31,75 @@ export class Panel {
       this.bind();
       return;
     }
+    if (this.app.sel.size > 1) {
+      this.el.innerHTML = this.groupHtml();
+      this.bindGroup();
+      return;
+    }
     const fn = this[`html_${a.type}`];
     this.el.innerHTML = this.headHtml(a) + (fn ? fn.call(this, a) : "") + this.footHtml(a);
     this.bind();
     this.drawPreview(a);
+  }
+
+  // -------------------------------------------------------------- selecție multiplă
+  groupHtml() {
+    const list = this.app.selectedAll();
+    const counts = {};
+    for (const a of list) counts[a.type] = (counts[a.type] || 0) + 1;
+    const summary = Object.entries(counts).map(([t, n]) => `${esc(TYPE_NAMES[t] || t)}: ${n}`).join(" · ");
+    const scalable = list.filter((a) => SCALABLE.has(a.type));
+    const layered = list.filter((a) => a.type !== "white" && a.type !== "redact");
+    const allRev = layered.length && layered.every((a) => a.layer === "rev");
+    const allAdd = layered.length && layered.every((a) => a.layer !== "rev");
+    return `<div class="sec"><div class="h">Selecție multiplă</div><div class="title">${list.length} adnotări</div><div class="sub">${summary}</div></div>
+      ${scalable.length ? `<div class="sec"><div class="h">Mărime (${scalable.length} adnotări)</div>
+        <div class="row"><button class="ghost" data-g="step" data-v="-0.1" style="width:40px;padding:0" aria-label="Micșorează toate">−</button>
+        <button class="ghost" data-g="step" data-v="0.1" style="width:40px;padding:0" aria-label="Mărește toate">+</button></div>
+        <div class="pills">${[0.5, 0.7, 0.85, 1, 1.2, 1.5, 2].map((v) => `<button data-g="scale" data-v="${v}">${Math.round(v * 100)}%</button>`).join("")}</div></div>` : ""}
+      ${layered.length ? `<div class="sec"><div class="h">Strat</div><div class="seg">
+        <button data-g="layer" data-v="add" class="${allAdd ? "on" : ""}">Adăugat</button>
+        <button data-g="layer" data-v="rev" class="${allRev ? "on" : ""}">Revizie</button></div></div>` : ""}
+      <div class="sec"><div class="btns">
+        <button class="ghost" data-g="copy">Copiază</button><button class="ghost" data-g="dup">Duplică</button>
+        <button class="danger" data-g="del">Șterge ${list.length}</button></div>
+      <div class="note">Trage de oricare dintre ele pentru a muta grupul · săgețile mută cu 0,5 mm (Shift: 5 mm) · Shift+click adaugă sau scoate din selecție · Esc renunță.</div></div>`;
+  }
+
+  bindGroup() {
+    const app = this.app;
+    this.el.querySelectorAll("[data-g]").forEach((b) => b.addEventListener("click", () => {
+      const v = b.dataset.v;
+      switch (b.dataset.g) {
+        case "step":
+          app.updateMany((a) => {
+            if (SCALABLE.has(a.type)) a.scale = Math.min(SCALE_MAX, Math.max(SCALE_MIN, Math.round(((a.scale || 1) + Number(v)) * 100) / 100));
+          });
+          break;
+        case "scale":
+          app.updateMany((a) => {
+            if (SCALABLE.has(a.type)) a.scale = Number(v);
+          });
+          break;
+        case "layer":
+          app.updateMany((a) => {
+            if (a.type !== "white" && a.type !== "redact") a.layer = v;
+          });
+          break;
+        case "copy":
+          app.copySelected();
+          break;
+        case "dup":
+          if (app.copySelected(true)) app.paste(true);
+          return;
+        case "del":
+          app.deleteSelected();
+          return;
+        default:
+          break;
+      }
+      this.render();
+    }));
   }
 
   // -------------------------------------------------------------- fără selecție
@@ -49,7 +114,8 @@ export class Panel {
       <b>V</b> selecție · <b>H</b> mută · <b>D</b> liniară · <b>A</b> aliniată · <b>O</b> diametru · <b>R</b> rază · <b>U</b> unghi · <b>C</b> teșitură · <b>L</b> indicație · <b>T</b> text<br>
       <b>G</b> GD&amp;T · <b>B</b> bază · <b>Q</b> rugozitate · <b>S</b> taie cota · <b>W</b> acoperă · <b>X</b> șterge · <b>K</b> calibrare<br>
       <b>Shift</b> ortho · <b>Alt</b> fără snap · <b>Esc</b> renunță · <b>Del</b> șterge selecția<br>
-      <b>Ctrl+C / Ctrl+V</b> copiază / lipește la cursor · <b>Ctrl+D</b> duplică<br>
+      <b>Ctrl+C / Ctrl+V</b> copiază / lipește la cursor · <b>Ctrl+D</b> duplică · <b>Ctrl+A</b> selectează tot<br>
+      <b>Shift+click</b> sau dreptunghi pe zonă goală = selecție multiplă · <b>săgeți</b> mută 0,5 mm<br>
       <b>Ctrl+Z / Ctrl+Y</b> anulează / refă · <b>F</b> potrivește · rotița = zoom · Space+tragere = mută</div></div>`;
   }
 
