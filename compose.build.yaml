@@ -1,4 +1,5 @@
-# Variantă care construiește imaginea local din sursă (fără GHCR):
+# Variantă care construiește imaginea pe server, din sursă (fără registry, fără token GHCR).
+# Potrivită pentru Dockhand cu stack din Git: fișierul compose = compose.build.yaml.
 #   docker compose -f compose.build.yaml up -d --build
 
 name: cotare
@@ -7,12 +8,14 @@ services:
   cotare:
     build: .
     image: cotare:local
+    # reconstruiește la fiecare deploy, ca un redeploy după git sync să ia codul nou
+    pull_policy: build
     container_name: cotare
     restart: unless-stopped
     ports:
       - "${COTARE_PORT:-8080}:8080"
     volumes:
-      - ${COTARE_DATA_DIR:-./data}:/data
+      - ${COTARE_DATA_DIR:-/mnt/user/appdata/cotare}:/data
     environment:
       PUID: ${PUID:-99}
       PGID: ${PGID:-100}
@@ -20,3 +23,10 @@ services:
       COTARE_MAX_RENDER_PX: ${COTARE_MAX_RENDER_PX:-12000}
     security_opt:
       - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      net.unraid.docker.webui: "http://[IP]:[PORT:8080]/"

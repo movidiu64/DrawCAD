@@ -15,25 +15,30 @@ Originalul nu se modifică. Adnotările se păstrează separat și se aplică ab
 
 Imaginea `ghcr.io/gg64nou/drawcad:latest` e construită de GitHub Actions la fiecare push pe `main`, după ce trec testele și testul în browser pe container. Pentru instalare e suficient `compose.yaml`.
 
-### Cu Dockhand (stack din Git)
+### Cu Dockhand (stack din Git) — recomandat
 
-1. **Acces la repo.** Pe GitHub creează un token fine-grained, doar pentru `DrawCAD`, cu **Contents: Read-only**. În Dockhand adaugă-l la credențialele Git (HTTPS).
-2. **Acces la imagine.** Imaginea e privată, ca și repo-ul. Creează un token classic cu `read:packages` și adaugă în Dockhand registry-ul `ghcr.io` (utilizator `gg64nou`, parola = tokenul).
-3. **Stack nou din Git:**
+Dockhand clonează repo-ul și construiește imaginea direct pe server. Nu e nevoie de registry și nici de token pentru `ghcr.io`.
+
+1. **Acces la repo.** Pe GitHub creează un token fine-grained, doar pentru `DrawCAD`, cu **Contents: Read-only**. În Dockhand adaugă-l la credențialele Git: utilizator `gg64nou`, parola = tokenul.
+2. **Stack nou din Git:**
    - repository: `https://github.com/gg64nou/DrawCAD.git`
    - ramura: `main`
-   - fișierul compose: `compose.yaml`
-4. **Variabile ale stack-ului** (opțional, au valori implicite; lista completă e în `.env.example`):
+   - fișierul compose: **`compose.build.yaml`**
+3. **Variabile ale stack-ului** (opțional; lista completă e în `.env.example`):
    - `COTARE_PORT=8080`
-   - `COTARE_DATA_DIR=/mnt/user/appdata/cotare`
+   - `COTARE_DATA_DIR=/mnt/user/appdata/cotare` — cale absolută pe server, nu relativă
    - `PUID=99`, `PGID=100`
-5. **Deploy.** Aplicația pornește pe `http://<ip>:8080`.
+4. **Deploy.** Primul build durează 1–2 minute. Aplicația pornește pe `http://<ip>:8080`.
 
-Pentru sincronizare automată la push, setează în Dockhand webhook-ul stack-ului și adaugă-l în GitHub la **Settings → Webhooks** al repo-ului. Imaginea nouă se ia la redeploy, pentru că `compose.yaml` are `pull_policy: always`.
+La fiecare redeploy după un git sync imaginea se reconstruiește (`pull_policy: build`). Pentru sincronizare automată la push, setează în Dockhand webhook-ul stack-ului și adaugă-l în GitHub la **Settings → Webhooks** al repo-ului.
 
-Dacă pull-ul imaginii eșuează cu `unauthorized`, ai două variante:
-- rulezi o dată pe server `docker login ghcr.io -u gg64nou` cu tokenul `read:packages`;
-- faci publică doar imaginea (codul rămâne privat), din GitHub, la **Packages → drawcad → Package settings**.
+### Cu Dockhand și imaginea gata construită din GHCR
+
+Fișierul compose este `compose.yaml`. Imaginea e privată, deci daemonul Docker trebuie să primească credențiale la pull. Tokenul trebuie să fie classic, cu `read:packages`, pentru că GitHub Packages nu acceptă tokenuri fine-grained.
+
+Dacă pull-ul dă `unauthorized` chiar cu registry-ul `ghcr.io` adăugat în Dockhand, înseamnă că acesta nu trimite credențialele la deploy-ul stack-ului. Atunci folosește varianta cu build de mai sus.
+
+Pachetul poate fi făcut și public, dar imaginea conține tot codul aplicației.
 
 ### Cu Dockhand (stack lipit manual)
 
