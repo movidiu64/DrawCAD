@@ -739,6 +739,11 @@ def _overlay_pdf(page_specs, color_mode) -> bytes:
             c.setStrokeColorRGB(*col)
             c.setFillColorRGB(*col)
             c.setLineWidth(float(p.get("w", 0.7)))
+            dp = p.get("dp")
+            if dp and all(isinstance(v, (int, float)) and v >= 0 for v in dp) and sum(dp) > 0:
+                c.setDash([float(v) for v in dp], 0)
+            else:
+                c.setDash([], 0)
             if t == "L":
                 x1, y1, x2, y2 = p["p"]
                 a = g.from_vis(x1, y1)

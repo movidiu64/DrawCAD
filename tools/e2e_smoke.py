@@ -202,6 +202,22 @@ def main(url, out):
         page.click("#rOk")
         page.wait_for_timeout(200)
 
+        # 14. desen: o linie întreruptă și axele cercului din vederea laterală
+        page.keyboard.press("Escape")
+        page.keyboard.press("f")
+        page.wait_for_timeout(300)
+        page.keyboard.press("i")
+        page.click('[data-st="preset"][data-v="hid"]')
+        click(40, 172)
+        click(80, 172)
+        page.keyboard.press("Escape")
+        page.click('[data-tool="cross"]')
+        click(240, 95)
+        click(260, 95)
+        page.keyboard.press("Escape")
+        shapes = page.evaluate("window.cotare.annots.filter(a => a.type === 'shape').map(a => a.kind + ':' + a.ltype)")
+        assert shapes == ["line:dash", "cross:chain"], shapes
+
         # selectează cota Ø25 pentru captură
         page.keyboard.press("v")
         click(75, 90)
@@ -209,7 +225,7 @@ def main(url, out):
         page.screenshot(path=str(out / "editor.png"))
 
         kinds = page.evaluate("window.cotare.annots.map(a => a.type)")
-        assert len(kinds) == 13, kinds
+        assert len(kinds) == 15, kinds
 
         # export
         page.click("#btnExport")
@@ -222,14 +238,14 @@ def main(url, out):
 
         # redeschidere: cotele revin editabile
         page.set_input_files("#fileInput", str(path))
-        page.wait_for_function("window.cotare.annots.length === 13")
+        page.wait_for_function("window.cotare.annots.length === 15")
         # închidere fără modificări: direct la pagina de start
         page.click("#btnClose")
         page.wait_for_function("window.cotare.doc === null && !document.getElementById('emptyState').hidden")
         page.wait_for_function("document.querySelectorAll('#recentList [data-doc]').length >= 1", timeout=5000)
         # redeschidere din Recente, o modificare, apoi închidere cu întrebare
         page.click("#recentList [data-doc]")
-        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 13")
+        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 15")
         page.wait_for_timeout(300)
         page.keyboard.press("t")
         click(100, 30)

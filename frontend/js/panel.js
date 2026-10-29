@@ -1,9 +1,10 @@
 // Panoul de proprietăți din dreapta.
-import { TYPE_NAMES, fmtNum, parseNum, build, derive, K, SCALABLE, SCALE_MIN, SCALE_MAX } from "./annots.js";
+import { typeName, fmtNum, parseNum, build, derive, K, SCALABLE, SCALE_MIN, SCALE_MAX } from "./annots.js";
+import { LTYPES, LTYPE_BY_ID, WIDTHS, PRESETS, resizeShape } from "./shapes.js";
 import { fmtDev } from "./iso286.js";
 import { GDT_SYMBOLS, GDT_BY_ID, MODIFIERS, symbolPrims } from "./gdt.js";
 import { drawPrims } from "./view.js";
-import { TOOL_BY_ID } from "./tools.js";
+import { TOOL_BY_ID, DRAW_TOOLS } from "./tools.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
@@ -46,8 +47,8 @@ export class Panel {
   groupHtml() {
     const list = this.app.selectedAll();
     const counts = {};
-    for (const a of list) counts[a.type] = (counts[a.type] || 0) + 1;
-    const summary = Object.entries(counts).map(([t, n]) => `${esc(TYPE_NAMES[t] || t)}: ${n}`).join(" · ");
+    for (const a of list) counts[typeName(a)] = (counts[typeName(a)] || 0) + 1;
+    const summary = Object.entries(counts).map(([t, n]) => `${esc(t)}: ${n}`).join(" · ");
     const scalable = list.filter((a) => SCALABLE.has(a.type));
     const layered = list.filter((a) => a.type !== "white" && a.type !== "redact");
     const allRev = layered.length && layered.every((a) => a.layer === "rev");
@@ -113,6 +114,7 @@ export class Panel {
     return `<div class="sec"><div class="h">Taste</div><div class="keys">
       <b>V</b> selecție · <b>H</b> mută · <b>D</b> liniară · <b>A</b> aliniată · <b>O</b> diametru · <b>R</b> rază · <b>U</b> unghi · <b>C</b> teșitură · <b>L</b> indicație · <b>T</b> text<br>
       <b>G</b> GD&amp;T · <b>B</b> bază · <b>Q</b> rugozitate · <b>S</b> taie cota · <b>W</b> acoperă · <b>X</b> șterge · <b>K</b> calibrare<br>
+      <b>I</b> linie · <b>P</b> polilinie · <b>J</b> dreptunghi · <b>Y</b> cerc · <b>Z</b> arc · <b>Enter</b> termină polilinia<br>
       <b>Shift</b> ortho · <b>Alt</b> fără snap · <b>Esc</b> renunță · <b>Del</b> șterge selecția<br>
       <b>Ctrl+C / Ctrl+V</b> copiază / lipește la cursor · <b>Ctrl+D</b> duplică · <b>Ctrl+A</b> selectează tot<br>
       <b>Shift+click</b> sau dreptunghi pe zonă goală = selecție multiplă · <b>săgeți</b> mută 0,5 mm<br>
@@ -138,6 +140,7 @@ export class Panel {
         ${d.fromExport ? `<div class="note">Deschis dintr-un export anterior: cotele sunt editabile, originalul a fost recuperat din fișier.</div>` : ""}
       </div>
       <div class="sec"><div class="h">Unealta activă</div><div class="title" style="font-size:14px">${esc(tool ? tool.label : "")}</div><div class="note">${esc(tool ? tool.hint : "")}</div></div>
+      ${tool && DRAW_TOOLS.has(tool.id) && tool.id !== "cross" && tool.id !== "hatch" ? this.styleHtml(app.drawStyle, "tool") : ""}
       <div class="sec"><div class="h">Scara desenului</div>
         <div class="row"><div class="field"><label for="dScale">mm reali / mm hârtie</label><input type="text" class="mono" id="dScale" value="${fmtNum(S.scale, ",", 4)}"></div>
         <button class="ghost" data-act="calib" style="align-self:flex-end">Calibrează</button></div>
@@ -157,7 +160,7 @@ export class Panel {
     const b = this.app.builtOf(a);
     let sub = a.layer === "rev" ? "strat Revizii" : a.type === "white" || a.type === "redact" ? "aplicat la export" : "strat Adăugate";
     if (b && b.measured != null) sub += ` · măsurat ${fmtNum(b.measured, ",", 2)}${b.unit === "°" ? "°" : " mm"}`;
-    return `<div class="sec"><div class="h">Selecție</div><div class="title">${esc(TYPE_NAMES[a.type] || a.type)}</div><div class="sub">${esc(sub)}</div></div>`;
+    return `<div class="sec"><div class="h">Selecție</div><div class="title">${esc(typeName(a))}</div><div class="sub">${esc(sub)}</div></div>`;
   }
 
   footHtml(a) {
@@ -384,6 +387,55 @@ export class Panel {
       <div class="note">Valoarea veche rămâne lizibilă, tăiată cu o linie, iar cea nouă se scrie alături cu triunghiul de revizie.</div></div>`;
   }
 
+  // -------------------------------------------------------------- desen
+  styleHtml(st, scope) {
+    const lt = st.ltype || "cont";
+    const sample = (t) => {
+      const d = t.pat ? t.pat.map((v) => Math.max(v * 0.9, 1.4)).join(" ") : "";
+      return `<svg viewBox="0 0 64 8" aria-hidden="true"><line x1="2" y1="4" x2="62" y2="4" stroke="currentColor" stroke-width="1.6" ${d ? `stroke-dasharray="${d}"` : ""}/></svg>`;
+    };
+    const preset = PRESETS.find((p) => p.ltype === lt && Math.abs(p.w - (st.w ?? 0.25)) < 1e-6);
+    return `<div class="sec"><div class="h">Tip de linie${scope === "tool" ? " pentru desen" : ""}</div>
+      <div class="ltypes">${LTYPES.map((t) => `<button data-st="ltype" data-scope="${scope}" data-v="${t.id}" class="${lt === t.id ? "on" : ""}" title="ISO 128-20 tip ${t.code}">${sample(t)}<span>${esc(t.name)}</span></button>`).join("")}</div>
+      <div class="field"><span class="lbl">Grosime (mm)</span><div class="pills">${WIDTHS.map((w) => `<button data-st="w" data-scope="${scope}" data-v="${w}" class="${Math.abs((st.w ?? 0.25) - w) < 1e-6 ? "on" : ""}">${fmtNum(w, ",", 2)}</button>`).join("")}</div></div>
+      ${lt !== "cont" ? `<div class="field"><span class="lbl">Scara modelului</span><div class="pills">${[0.5, 1, 2, 3, 4].map((v) => `<button data-st="lscale" data-scope="${scope}" data-v="${v}" class="${Math.abs((st.lscale || 1) - v) < 1e-6 ? "on" : ""}">${fmtNum(v, ",", 1)}×</button>`).join("")}</div>
+        <div class="sub">1× = lungimile din ISO 128-20 (liniuță 12d, linie lungă 24d, gol 3d); se ajustează ca linia să înceapă și să se termine cu liniuță.</div></div>` : ""}
+      <div class="lbl">Utilizări (ISO 128-24)</div>
+      <div class="opts">${PRESETS.map((p) => `<button data-st="preset" data-scope="${scope}" data-v="${p.id}" class="${preset && preset.id === p.id ? "on" : ""}">${esc(p.name)} <span class="muted">· ${p.code} · ${fmtNum(p.w, ",", 2)}</span></button>`).join("")}</div></div>`;
+  }
+
+  html_shape(a) {
+    const b = this.app.builtOf(a);
+    const inf = (b && b.info) || {};
+    const num = (id, f, label, v, dec = 2) => `<div class="field"><label for="${id}">${label}</label><input type="text" class="mono" id="${id}" data-shf="${f}" value="${v != null ? fmtNum(v, ",", dec) : ""}"></div>`;
+    let geo = "";
+    if (a.kind === "line") geo = `<div class="row">${num("shLen", "len", "Lungime (mm)", inf.len)}${num("shAng", "ang", "Unghi (°)", inf.ang, 2)}</div>`;
+    if (a.kind === "rect") geo = `<div class="row">${num("shW", "w", "Lățime (mm)", inf.w)}${num("shH", "h", "Înălțime (mm)", inf.h)}</div>`;
+    if (a.kind === "circle" || a.kind === "cross") geo = `<div class="row">${num("shD", "d", "Diametru (mm)", inf.r * 2)}</div>`;
+    if (a.kind === "cross") {
+      geo += `<div class="field"><span class="lbl">Depășire contur (mm)</span><div class="pills">${[2, 3, 5].map((v) => `<button data-act="shset" data-k="ext" data-v="${v}" class="${(a.ext ?? 3) === v ? "on" : ""}">${v}</button>`).join("")}</div></div>
+        <div class="field"><span class="lbl">Orientare</span><div class="seg"><button data-act="shset" data-k="rot" data-v="0" class="${!a.rot ? "on" : ""}">+</button><button data-act="shset" data-k="rot" data-v="45" class="${a.rot === 45 ? "on" : ""}">×</button></div></div>`;
+    }
+    if (a.kind === "arc") {
+      geo = `<div class="row">${num("shR", "r", "Rază (mm)", inf.r)}<div class="field"><span class="lbl">Deschidere</span><div class="mono" style="padding:8px 0">${fmtNum(inf.sweep, ",", 2)}°</div></div></div>
+        <div class="btns"><button class="ghost" data-act="shflip">Arcul complementar</button></div>`;
+    }
+    if (a.kind === "poly") {
+      geo = `<div class="sub">${inf.n} vârfuri · lungime ${fmtNum(inf.len, ",", 2)} mm</div>
+        <div class="seg"><button data-act="shset" data-k="closed" data-v="0" class="${!a.closed ? "on" : ""}">Deschisă</button><button data-act="shset" data-k="closed" data-v="1" class="${a.closed ? "on" : ""}">Închisă</button></div>`;
+    }
+    if (a.kind === "hatch") {
+      const ang = a.angle ?? 45;
+      const sp = a.sp ?? 2;
+      geo = `<div class="field"><span class="lbl">Unghi</span><div class="pills">${[45, 135, 30, 60, 0, 90].map((v) => `<button data-act="shset" data-k="angle" data-v="${v}" class="${ang === v ? "on" : ""}">${v}°</button>`).join("")}</div></div>
+        <div class="field"><span class="lbl">Pas (mm)</span><div class="pills">${[1, 1.5, 2, 3, 4, 5].map((v) => `<button data-act="shset" data-k="sp" data-v="${v}" class="${sp === v ? "on" : ""}">${fmtNum(v, ",", 1)}</button>`).join("")}</div></div>
+        <div class="row">${num("shAngle", "angle", "Unghi exact (°)", ang, 1)}${num("shSp", "sp", "Pas exact (mm)", sp, 2)}</div>
+        <div class="seg"><button data-act="shtog" data-k="cross" class="${a.cross ? "on" : ""}">Încrucișată</button><button data-act="shtog" data-k="outline" class="${a.outline ? "on" : ""}">Cu contur</button></div>
+        <div class="sub">Piesele alăturate dintr-un ansamblu se hașurează cu unghi sau pas diferit (ISO 128-50). Poți trage de vârfuri ca să ajustezi zona.</div>`;
+    }
+    return `${geo ? `<div class="sec"><div class="h">Geometrie</div>${geo}</div>` : ""}${this.styleHtml(a, "sel")}`;
+  }
+
   html_white(a) {
     return `<div class="sec"><div class="note">Dreptunghi alb desenat peste original la export. Conținutul de dedesubt rămâne în fișier și poate fi copiat. Pentru eliminare reală folosește unealta <b>Șterge</b>.</div></div>`;
   }
@@ -446,7 +498,27 @@ export class Panel {
       inp.focus();
       inp.setSelectionRange(p0 + ch.length, p0 + ch.length);
     }));
-    el.querySelectorAll("[data-act]").forEach((btn) => btn.addEventListener("click", () => this.onAct(btn.dataset.act, btn.dataset.v)));
+    el.querySelectorAll("[data-act]").forEach((btn) => btn.addEventListener("click", () => this.onAct(btn.dataset.act, btn.dataset.v, btn.dataset.k)));
+    el.querySelectorAll("[data-st]").forEach((btn) => btn.addEventListener("click", () => this.onStyle(btn.dataset.st, btn.dataset.v, btn.dataset.scope)));
+    el.querySelectorAll("[data-shf]").forEach((inp) => {
+      inp.addEventListener("change", () => {
+        const v = parseNum(inp.value);
+        if (v == null) return;
+        const f = inp.dataset.shf;
+        app.updateSel((a) => {
+          if (f === "d") resizeShape(a, "r", v / 2);
+          else if (f === "angle" || f === "sp") {
+            if (f === "sp" && !(v > 0.2)) return;
+            a[f] = v;
+          } else resizeShape(a, f, v);
+        });
+        this.render();
+      });
+      inp.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === "Escape") inp.blur();
+        e.stopPropagation();
+      });
+    });
     const sc = el.querySelector("#dScale");
     if (sc) {
       sc.addEventListener("change", () => {
@@ -498,7 +570,24 @@ export class Panel {
     }
   }
 
-  onAct(act, v) {
+  onStyle(key, v, scope) {
+    const app = this.app;
+    let patch;
+    if (key === "preset") {
+      const p = PRESETS.find((x) => x.id === v);
+      patch = { ltype: p.ltype, w: p.w };
+    } else patch = { [key]: key === "ltype" ? v : Number(v) };
+    if (scope === "tool") app.setDrawStyle(patch);
+    else {
+      app.updateSel((a) => Object.assign(a, patch));
+      // ultima alegere devine implicită pentru formele următoare (nu pentru axe și hașuri)
+      const a = app.selected();
+      if (a && !["cross", "hatch"].includes(a.kind)) app.setDrawStyle(patch);
+    }
+    this.render();
+  }
+
+  onAct(act, v, k) {
     const app = this.app;
     const upd = (fn) => {
       app.updateSel(fn);
@@ -610,6 +699,16 @@ export class Panel {
           }
           a.mods = MODIFIERS.map((x) => x.id).filter((id) => m.has(id));
         });
+        break;
+      case "shset":
+        upd((a) => { a[k] = k === "closed" ? v === "1" : Number(v); });
+        break;
+      case "shtog":
+        upd((a) => { a[k] = !a[k]; });
+        break;
+      case "shflip":
+        // aceleași capete, celălalt sens: arcul complementar
+        upd((a) => { a.ccw = a.ccw === false; });
         break;
       case "redit":
         app.editRedaction(app.selected());

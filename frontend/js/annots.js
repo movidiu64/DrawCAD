@@ -2,6 +2,7 @@
 // Toate coordonatele: puncte PDF vizuale (y în jos). Unghiuri text: grade, sens trigonometric pe ecran.
 import { deviations, fmtDev } from "./iso286.js";
 import { symbolPrims, GDT_BY_ID, MODIFIERS } from "./gdt.js";
+import { buildShape, SHAPE_NAMES } from "./shapes.js";
 
 export const K = 72 / 25.4; // pt pe mm
 export const CAP = 1515 / 2048; // înălțimea majusculelor în osifont, raportată la em
@@ -34,7 +35,12 @@ export const TYPE_NAMES = {
   strike: "Cotă tăiată (revizie)",
   white: "Acoperire albă",
   redact: "Ștergere din original",
+  shape: "Desen",
 };
+
+export function typeName(a) {
+  return (a.type === "shape" && SHAPE_NAMES[a.kind]) || TYPE_NAMES[a.type] || a.type;
+}
 
 // ------------------------------------------------------------------ vectori
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
@@ -812,7 +818,7 @@ function buildRedact(a) {
   return { prims, handles: [{ k: "r0", p: [a.r[0], a.r[1]] }, { k: "r1", p: [a.r[2], a.r[3]] }] };
 }
 
-const BUILDERS = { dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact };
+const BUILDERS = { dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, shape: buildShape };
 
 // caractere fără glifă în osifont → echivalente care există (la fel pe ecran și în PDF)
 const GLYPH_SUBST = { "…": "...", "„": '"', "”": '"', "“": '"', "«": '"', "»": '"', "‚": ",", "‘": "'", "\u00a0": " ", "−": "-" };
@@ -991,6 +997,7 @@ export function exportPrims(prims) {
       if (p.fill) q.fill = true;
       if (p.nostroke) q.nostroke = true;
       if (p.r != null) q.r = round(p.r, 3);
+      if (p.dp && p.dp.length) q.dp = p.dp.map((v) => round(v, 3));
       if (p.t === "T") {
         q.s = round(p.s, 3);
         q.a = round(p.a || 0, 3);

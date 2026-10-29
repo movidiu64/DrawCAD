@@ -41,6 +41,28 @@ class App {
     this.cursor = null;
     this.drag = null;
     this.space = false;
+    this.drawStyle = { ltype: "cont", w: 0.5, lscale: 1 };
+    try {
+      Object.assign(this.drawStyle, JSON.parse(localStorage.getItem("cotare.drawStyle") || "{}"));
+    } catch (_) { /* implicit */ }
+  }
+
+  setDrawStyle(patch) {
+    Object.assign(this.drawStyle, patch);
+    try {
+      localStorage.setItem("cotare.drawStyle", JSON.stringify(this.drawStyle));
+    } catch (_) { /* fără memorare */ }
+  }
+
+  /** Termină polilinia sau hașura în curs. */
+  finishPoly(close) {
+    const t = TOOL_BY_ID[this.tool];
+    const pts = this.clicks;
+    this.clicks = [];
+    this.view.overlay = null;
+    this.setHint(t.hint);
+    if (pts.length >= (t.min || 2)) this.addAnnot(finalize(t.make(pts, this, close || t.closed)));
+    else this.view.redraw();
   }
 
   async init() {
@@ -70,7 +92,7 @@ class App {
       g.tools.push(t);
     }
     $("tools").innerHTML = groups.map((g) => `<div class="grp">${g.name}</div><div class="grid">${g.tools.map((t) => `
-      <button class="tool" data-tool="${t.id}" title="${t.label} (${t.key})"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${t.icon}"/></svg><span>${t.label}</span></button>`).join("")}</div>`).join("");
+      <button class="tool" data-tool="${t.id}" title="${t.label}${t.key ? ` (${t.key})` : ""}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${t.icon}"/></svg><span>${t.label}</span></button>`).join("")}</div>`).join("");
     $("tools").querySelectorAll("[data-tool]").forEach((b) => b.addEventListener("click", () => this.setTool(b.dataset.tool)));
   }
 
@@ -629,6 +651,21 @@ class App {
         this.drag = { kind: "rect", start: pt };
         return;
       }
+      if (t.kind === "poly") {
+        const v = this.view;
+        const near = (q) => {
+          const [ax, ay] = v.toScreen(q);
+          const [bx, by] = v.toScreen(pt);
+          return Math.hypot(ax - bx, ay - by);
+        };
+        const n = this.clicks.length;
+        // click pe primul punct: contur închis · al doilea click în același loc (dublu-click): gata
+        if (n >= Math.max(3, t.min || 2) && near(this.clicks[0]) < 8) return this.finishPoly(true);
+        if (n && near(this.clicks[n - 1]) < 3) return this.finishPoly(false);
+        this.clicks.push(pt);
+        this.updateOverlay(pt, null);
+        return;
+      }
       if (t.kind === "clicks") {
         this.clicks.push(pt);
         if (this.clicks.length >= t.n) {
@@ -641,6 +678,11 @@ class App {
             return;
           }
           this.addAnnot(finalize(t.make(pts, this)));
+          if (t.chain) {
+            // ca LINE din CAD: următorul segment pornește din capătul celui desenat
+            this.clicks = [pts[pts.length - 1]];
+            this.updateOverlay(pt, null);
+          }
         } else {
           this.updateOverlay(pt, null);
         }
@@ -849,7 +891,11 @@ class App {
     this.view.overlay = { prims, snap: sn };
     this.view.redraw();
     const t2 = TOOL_BY_ID[this.tool];
-    if (this.clicks.length) this.setHint(`${t2.hint} · pas ${this.clicks.length + 1}/${t2.n} · Esc renunță`);
+    if (this.clicks.length) {
+      if (t2.kind === "poly") this.setHint(`${t2.hint} · ${this.clicks.length} puncte`);
+      else if (t2.chain) this.setHint(t2.hint);
+      else this.setHint(`${t2.hint} · pas ${this.clicks.length + 1}/${t2.n} · Esc renunță`);
+    }
   }
 
   showCoords(pt, anchor) {
@@ -909,6 +955,17 @@ class App {
         this.space = true;
         $("canvas").style.cursor = "grab";
         e.preventDefault();
+        return;
+      }
+      if ((e.key === "Escape" || e.key === "Enter") && this.clicks.length && TOOL_BY_ID[this.tool].kind === "poly") {
+        this.finishPoly(false);
+        return;
+      }
+      if (e.key === "Enter" && this.clicks.length && TOOL_BY_ID[this.tool].chain) {
+        this.clicks = [];
+        this.view.overlay = null;
+        this.setHint(TOOL_BY_ID[this.tool].hint);
+        this.view.redraw();
         return;
       }
       if (e.key === "Escape") {

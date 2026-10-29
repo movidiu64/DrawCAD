@@ -8,6 +8,7 @@ Aplicație web self-hosted (Docker) pentru a adăuga pe un PDF sau pe un scan:
 - **rugozitate** după ISO 1302 / ISO 21920-1: cu sau fără îndepărtare de material, parametru (Ra, Rz…), procedeu, direct pe suprafață sau cu linie de indicație;
 - **revizii**: cotă tăiată + valoare nouă + triunghi de revizie, plus **tabel de revizii** (Rev. / Modificare / Data / Nume) completat din cotele tăiate;
 - **note tehnice** pe mai multe rânduri, numerotate automat, cu titlu și chenar opțional;
+- **desen**: linie, polilinie, dreptunghi, cerc, arc, axe de cerc și hașură, cu tipurile de linie ISO 128 (continuă, întreruptă, linie-punct, linie-două puncte, punctată) și grosimile standard;
 - **ștergere** din original, cu acoperire albă sau eliminare reală a obiectelor PDF;
 - **export PDF** vectorial, cu font ISO 3098 încorporat și strat editabil atașat.
 
@@ -104,6 +105,9 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 | L | linie de indicație | F | potrivește pagina |
 | U | cotă unghiulară | Q | rugozitate |
 | N | note tehnice | E | tabel de revizii |
+| I | linie | P | polilinie |
+| J | dreptunghi | Y | cerc |
+| Z | arc | | axe cerc, hașură: din bară |
 
 **Taste generale:**
 - Ctrl+Z / Ctrl+Y: anulează / refă
@@ -141,6 +145,16 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 **Rugozitate (Q):** dai două click-uri în același punct pentru simbol direct pe suprafață, sau al doilea click în altă parte pentru simbol cu linie de indicație. Simbolul direct se poate așeza deasupra suprafeței sau la stânga ei; pentru suprafețe văzute de jos sau din dreapta, ISO 1302 cere linie de indicație.
 
 **Cota unghiulară (U):** dai click pe vârf, pe un punct de pe fiecare latură, apoi pe poziția arcului. Poziția arcului alege unul din cele patru sectoare: unghiul, suplementul sau opusul lor.
+
+**Desen:**
+- **Linie (I):** start → capăt; următoarea linie pornește din capătul celei precedente, ca LINE din AutoCAD. Esc sau Enter oprește lanțul.
+- **Polilinie (P):** click pe fiecare vârf; Enter, dublu-click sau Esc termină. Click pe primul punct închide conturul.
+- **Dreptunghi (J), Cerc (Y):** două click-uri; lățimea, înălțimea sau diametrul exact se scriu apoi în panou.
+- **Arc (Z):** centrul → începutul → sfârșitul. Sensul e cel în care miști cursorul după al doilea click; „Arcul complementar” din panou îl întoarce.
+- **Axe cerc:** centrul (snap ○) → un punct pe cerc. Axele linie-punct depășesc conturul cu 3 mm (2 / 3 / 5 mm din panou) și se intersectează pe liniuțe.
+- **Hașură:** click pe vârfurile zonei secționate, cu snap pe contur; Enter sau click pe primul punct termină. Unghiul (45°, 135°…), pasul și varianta încrucișată se aleg din panou.
+- **Tipul de linie și grosimea** se aleg din panou înainte de desen (cu unealta activă) sau după, pe forma selectată. Sunt și presetări ISO 128-24: contur vizibil 0,5, contur ascuns, axă, piese vecine etc. Ultima alegere rămâne implicită.
+- **Modelul liniei** respectă lungimile din ISO 128-20 (liniuță 12d, linie lungă 24d, gol 3d) și se ajustează la lungimea fiecărei linii, astfel încât să înceapă și să se termine cu liniuță. „Scara modelului” îl mărește pentru desene mari.
 
 **Ștergere din original:** după ce tragi zona, dialogul arată obiectele găsite și o previzualizare înainte/după. Ai trei moduri:
 - **Selecție pe obiecte:** bifezi exact ce se elimină. E modul recomandat.

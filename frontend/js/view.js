@@ -11,13 +11,13 @@ export const COLORS = {
   preview: "#2f6fd6",
 };
 
-export function drawPrims(ctx, prims, zoom, color = (c) => COLORS[c] || "#111", minPx = 0.8) {
+export function drawPrims(ctx, prims, zoom, color = (c) => COLORS[c] || "#111", minPx = 0.8, opts = {}) {
   for (const p of prims) {
     const col = color(p.c);
     ctx.strokeStyle = col;
     ctx.fillStyle = col;
     ctx.lineWidth = Math.max(p.w || 0.7, minPx / zoom);
-    ctx.setLineDash(p.dash ? [5 / zoom, 4 / zoom] : []);
+    ctx.setLineDash(p.dp && !opts.noDash ? p.dp : p.dash ? [5 / zoom, 4 / zoom] : []);
     if (p.t === "L") {
       ctx.beginPath();
       ctx.moveTo(p.p[0], p.p[1]);
@@ -332,7 +332,7 @@ export class View {
       if (on) {
         // contur de selecție sub desen; textul primește o casetă
         ctx.globalAlpha = 0.35;
-        drawPrims(ctx, built.prims.filter((p) => p.t !== "T" && p.t !== "R"), z, () => COLORS.sel, 5);
+        drawPrims(ctx, built.prims.filter((p) => p.t !== "T" && p.t !== "R"), z, () => COLORS.sel, 5, { noDash: true });
         if (!single && built.bbox) {
           const [x0, y0, x1, y1] = built.bbox;
           ctx.fillStyle = COLORS.sel;

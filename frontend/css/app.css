@@ -118,6 +118,11 @@ textarea { width: 100%; min-height: 120px; padding: 8px 9px; border: 1px solid v
 .kv span:nth-child(even) { font-family: var(--mono); text-align: right; }
 .preview { min-height: 58px; border-radius: 6px; background: #fff; display: flex; align-items: center; justify-content: center; padding: 6px; }
 .preview canvas { max-width: 100%; }
+.ltypes { display: flex; flex-direction: column; gap: 4px; }
+.ltypes button { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text2); font-size: 13px; text-align: left; }
+.ltypes button svg { width: 64px; height: 8px; flex: 0 0 64px; }
+.ltypes button:hover { color: var(--text); }
+.ltypes button.on { border-color: var(--accent); background: #2a2620; color: var(--text); }
 .pills { display: flex; flex-wrap: wrap; gap: 6px; }
 .pills button { height: 32px; min-width: 40px; padding: 0 10px; border: 1px solid var(--line2); border-radius: 16px; background: transparent; font-size: 14px; }
 .pills.sym button { font-family: "osifont", var(--sans); font-size: 17px; min-width: 34px; padding: 0 6px; }

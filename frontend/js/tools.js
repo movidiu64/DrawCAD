@@ -1,5 +1,9 @@
 // Definiția uneltelor: pictogramă, tastă, pași și ce adnotare produc.
 import { newId, K } from "./annots.js";
+import { trackSweep } from "./shapes.js";
+
+const shape = (app, kind, pts, extra = {}) => ({ type: "shape", kind, pts, ...app.drawStyle, ...extra });
+const arcState = { key: null };
 
 function autoOrient(p1, p2, c) {
   const minx = Math.min(p1[0], p2[0]);
@@ -98,6 +102,49 @@ export const TOOLS = [
   { id: "revtab", label: "Tabel rev.", key: "E", group: "Documentare", icon: "M3 6h18v12H3zM3 10h18M3 14h18M8 6v12M17 6v12", kind: "clicks", n: 1,
     hint: "Click pe colțul dreapta-sus al cartușului: tabelul se așază deasupra, aliniat la dreapta",
     make: (pts, app) => ({ type: "revtab", p: pts[0], rows: app.revRowsFromStrikes(true), headerBottom: true }) },
+  { id: "line", label: "Linie", key: "I", group: "Desen", icon: "M4 19L20 5M4 19h0M20 5h0", kind: "clicks", n: 2, chain: true,
+    hint: "Punct de start → capăt; linia următoare pornește din capăt · Shift ortho · Esc termină",
+    make: (pts, app) => shape(app, "line", [pts[0], pts[1]]),
+    preview(pts, cur, app) { return this.make([pts[0], cur], app); } },
+  { id: "poly", label: "Polilinie", key: "P", group: "Desen", icon: "M3 18l5-9 6 5 7-10", kind: "poly", min: 2,
+    hint: "Click pe fiecare vârf · Enter, dublu-click sau Esc termină · click pe primul punct închide conturul",
+    make: (pts, app, closed) => shape(app, "poly", pts, { closed: !!closed }),
+    preview(pts, cur, app) { return this.make([...pts, cur], app); } },
+  { id: "rect", label: "Dreptunghi", key: "J", group: "Desen", icon: "M4 6h16v12H4z", kind: "clicks", n: 2,
+    hint: "Un colț → colțul opus (dimensiunile exacte se pot scrie apoi în panou)",
+    make: (pts, app) => shape(app, "rect", [pts[0], pts[1]]),
+    preview(pts, cur, app) { return this.make([pts[0], cur], app); } },
+  { id: "circle", label: "Cerc", key: "Y", group: "Desen", icon: "M4 12a8 8 0 1 0 16 0a8 8 0 1 0 -16 0M12 12h8", kind: "clicks", n: 2,
+    hint: "Centrul → un punct pe cerc (diametrul exact se poate scrie apoi în panou)",
+    make: (pts, app) => shape(app, "circle", [pts[0], pts[1]]),
+    preview(pts, cur, app) { return this.make([pts[0], cur], app); } },
+  { id: "arc", label: "Arc", key: "Z", group: "Desen", icon: "M4 18a10 10 0 0 1 16-8M12 18h0", kind: "clicks", n: 3,
+    hint: "Centrul → începutul arcului → sfârșitul; sensul e cel în care miști cursorul",
+    make(pts, app) {
+      const ccw = arcState.key === pts[1] ? arcState.ccw : true;
+      return shape(app, "arc", [pts[0], pts[1], pts[2]], { ccw });
+    },
+    preview(pts, cur, app) {
+      if (pts.length === 1) return { line: [pts[0], cur] };
+      if (arcState.key !== pts[1]) {
+        arcState.key = pts[1];
+        arcState.last = null;
+      }
+      arcState.ccw = trackSweep(arcState, pts[0], pts[1], cur);
+      return shape(app, "arc", [pts[0], pts[1], cur], { ccw: arcState.ccw });
+    } },
+  { id: "cross", label: "Axe cerc", key: "", group: "Desen", icon: "M12 2v20M2 12h20M7 12a5 5 0 1 0 10 0a5 5 0 1 0 -10 0", kind: "clicks", n: 2,
+    hint: "Centrul cercului (snap ○) → un punct pe cerc: axele depășesc conturul cu 3 mm",
+    make: (pts, app) => ({ type: "shape", kind: "cross", pts: [pts[0], pts[1]], ltype: "chain", w: 0.25, lscale: app.drawStyle.lscale || 1, ext: 3 }),
+    preview(pts, cur, app) { return this.make([pts[0], cur], app); } },
+  { id: "hatch", label: "Hașură", key: "", group: "Desen", icon: "M4 4h16v16H4zM4 12l8-8M4 20L20 4M12 20l8-8", kind: "poly", min: 3, closed: true,
+    hint: "Click pe vârfurile zonei secționate (cu snap pe contur) · Enter sau click pe primul punct termină",
+    make: (pts) => ({ type: "shape", kind: "hatch", pts, ltype: "cont", w: 0.18, angle: 45, sp: 2, cross: false, outline: false }),
+    preview(pts, cur, app) {
+      const all = [...pts, cur];
+      return all.length >= 3 ? this.make(all, app) : { type: "shape", kind: "poly", pts: all, ltype: "cont", w: 0.18 };
+    } },
+
   { id: "strike", label: "Taie cota", key: "S", group: "Revizie", icon: "M5 7h6M8 7v10M14 7h5M16.5 7v10M3 12h18", kind: "rect",
     hint: "Trage un dreptunghi peste valoarea veche → scrie valoarea nouă în panou",
     make: (r, app) => ({ type: "strike", r, newText: "", rev: app.settings.revNo, layer: "rev" }) },
@@ -113,7 +160,8 @@ export const TOOLS = [
 ];
 
 export const TOOL_BY_ID = Object.fromEntries(TOOLS.map((t) => [t.id, t]));
-export const TOOL_BY_KEY = Object.fromEntries(TOOLS.map((t) => [t.key.toLowerCase(), t]));
+export const TOOL_BY_KEY = Object.fromEntries(TOOLS.filter((t) => t.key).map((t) => [t.key.toLowerCase(), t]));
+export const DRAW_TOOLS = new Set(TOOLS.filter((t) => t.group === "Desen").map((t) => t.id));
 
 export function finalize(a) {
   return { id: newId(), layer: a.layer || "add", ...a };
