@@ -25,10 +25,10 @@ Dockhand clonează repo-ul și construiește imaginea direct pe server. Nu e nev
    - ramura: `main`
    - fișierul compose: **`compose.build.yaml`**
 3. **Variabile ale stack-ului** (opțional; lista completă e în `.env.example`):
-   - `COTARE_PORT=8080`
+   - `COTARE_PORT=8478`
    - `COTARE_DATA_DIR=/mnt/user/appdata/cotare` — cale absolută pe server, nu relativă
    - `PUID=99`, `PGID=100`
-4. **Deploy.** Primul build durează 1–2 minute. Aplicația pornește pe `http://<ip>:8080`.
+4. **Deploy.** Primul build durează 1–2 minute. Aplicația pornește pe `http://<ip>:8478`.
 
 La fiecare redeploy după un git sync imaginea se reconstruiește (`pull_policy: build`). Pentru sincronizare automată la push, setează în Dockhand webhook-ul stack-ului și adaugă-l în GitHub la **Settings → Webhooks** al repo-ului.
 
@@ -64,7 +64,7 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 | Variabilă | Implicit | Rol |
 |---|---|---|
 | `COTARE_TAG` | `latest` | tag-ul imaginii; un SHA de commit fixează versiunea |
-| `COTARE_PORT` | `8080` | portul de pe server |
+| `COTARE_PORT` | `8478` | portul de pe server |
 | `COTARE_DATA_DIR` | `/mnt/user/appdata/cotare` | folderul de date de pe server |
 | `PUID` / `PGID` | `99` / `100` | utilizatorul cu care rulează aplicația |
 | `COTARE_MAX_UPLOAD_MB` | `200` | dimensiunea maximă a unui fișier încărcat |

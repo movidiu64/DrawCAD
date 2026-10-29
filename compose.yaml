@@ -11,7 +11,7 @@ services:
     restart: unless-stopped
     pull_policy: always
     ports:
-      - "${COTARE_PORT:-8080}:8080"
+      - "${COTARE_PORT:-8478}:8080"
     volumes:
       # documentele încărcate și starea lor (cotele, setările)
       - ${COTARE_DATA_DIR:-/mnt/user/appdata/cotare}:/data
