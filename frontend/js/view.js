@@ -50,6 +50,26 @@ export function drawPrims(ctx, prims, zoom, color = (c) => COLORS[c] || "#111", 
 }
 
 // ------------------------------------------------------------------ index de snap
+/** Intersecția a două segmente [x1,y1,x2,y2], fără capete comune (acelea sunt deja puncte de snap). */
+export function segIntersect(a, b) {
+  const rx = a[2] - a[0];
+  const ry = a[3] - a[1];
+  const sx = b[2] - b[0];
+  const sy = b[3] - b[1];
+  const den = rx * sy - ry * sx;
+  if (Math.abs(den) < 1e-9) return null; // paralele
+  const qx = b[0] - a[0];
+  const qy = b[1] - a[1];
+  const t = (qx * sy - qy * sx) / den;
+  const u = (qx * ry - qy * rx) / den;
+  const eps = 1e-6;
+  if (t < -eps || t > 1 + eps || u < -eps || u > 1 + eps) return null;
+  const endA = t < 1e-4 || t > 1 - 1e-4;
+  const endB = u < 1e-4 || u > 1 - 1e-4;
+  if (endA && endB) return null;
+  return [a[0] + rx * t, a[1] + ry * t];
+}
+
 export class SnapIndex {
   constructor(pts = [], segs = [], cell = 24) {
     this.cell = cell;
@@ -87,7 +107,7 @@ export class SnapIndex {
   }
 
   nearest(x, y, tol, extra = []) {
-    const PRIO = { c: 0, e: 1, a: 1, q: 2, m: 3 };
+    const PRIO = { c: 0, e: 1, a: 1, x: 1, q: 2, m: 3 };
     let best = null;
     let bestScore = Infinity;
     const consider = (q) => {
@@ -109,6 +129,27 @@ export class SnapIndex {
       }
     }
     extra.forEach((q) => consider([q[0], q[1], "a"]));
+    // intersecții între segmentele din jurul cursorului
+    const near = [];
+    const seenI = new Set();
+    for (let i = ci - r; i <= ci + r && near.length < 120; i++) {
+      for (let j = cj - r; j <= cj + r; j++) {
+        const arr = this.sgrid.get(this.key(i, j));
+        if (!arr) continue;
+        for (const s of arr) {
+          if (!seenI.has(s)) {
+            seenI.add(s);
+            near.push(s);
+          }
+        }
+      }
+    }
+    for (let i = 0; i < near.length; i++) {
+      for (let j = i + 1; j < near.length; j++) {
+        const q = segIntersect(near[i], near[j]);
+        if (q) consider([q[0], q[1], "x"]);
+      }
+    }
     if (best) return best;
     // cel mai apropiat punct pe o linie
     let bd = tol;
@@ -349,6 +390,12 @@ export class View {
       ctx.closePath();
     } else if (sn.kind === "c") {
       ctx.arc(x, y, s * 0.6, 0, Math.PI * 2);
+    } else if (sn.kind === "x") {
+      ctx.moveTo(x - s * 0.65, y - s * 0.65);
+      ctx.lineTo(x + s * 0.65, y + s * 0.65);
+      ctx.moveTo(x + s * 0.65, y - s * 0.65);
+      ctx.lineTo(x - s * 0.65, y + s * 0.65);
+      ctx.rect(x - s * 0.65, y - s * 0.65, s * 1.3, s * 1.3);
     } else if (sn.kind === "n") {
       ctx.moveTo(x - s / 2, y - s / 2);
       ctx.lineTo(x + s / 2, y + s / 2);

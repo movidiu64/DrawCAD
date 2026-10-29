@@ -24,6 +24,7 @@ export const TYPE_NAMES = {
   dim: "Cotă",
   rad: "Cotă rază",
   ang: "Cotă unghiulară",
+  rough: "Rugozitate",
   lead: "Linie de indicație",
   text: "Text",
   gdt: "Cadru GD&T",
@@ -424,6 +425,66 @@ function buildAng(a, S, measure) {
   };
 }
 
+// ------------------------------------------------------------------ rugozitate (ISO 1302 / ISO 21920-1)
+const T60 = Math.tan(Math.PI / 6); // proiecția orizontală a unei laturi înclinate la 60° față de suprafață
+
+/** Simbolul în sistemul local: vârful în (0,0), simbolul „în sus” (y negativ). */
+function roughLocal(a, S, measure) {
+  const h = S.h;
+  const H1 = 1.43 * h; // ISO 1302: h = 3,5 → H1 = 5 mm
+  const H2 = 3 * h; //            H2 = 10,5 mm
+  const lines = [];
+  const circles = [];
+  const texts = [];
+  const top = [H2 * T60, -H2];
+  lines.push([0, 0, -H1 * T60, -H1], [0, 0, top[0], top[1]]);
+  if (a.kind === "remove") lines.push([-H1 * T60, -H1, H1 * T60, -H1]);
+  if (a.kind === "noremove") circles.push({ c: [0, -(2 * H1) / 3], r: H1 / 3 });
+  const val = (a.val || "").trim();
+  const method = (a.method || "").trim();
+  if (val || method) {
+    const s = S.F;
+    const wv = val ? measure(val, s) : 0;
+    const wm = method ? measure(method, s) : 0;
+    const x0 = (H2 - 0.4 * h) * T60 + 0.5 * h; // textul începe în dreapta laturii lungi
+    const L = Math.max(wv, wm) + (x0 - top[0]) + 0.6 * h;
+    lines.push([top[0], top[1], top[0] + Math.max(L, 2 * h), top[1]]);
+    if (val) texts.push({ p: [x0, top[1] + 1.4 * h], txt: val, s, w: wv });
+    if (method) texts.push({ p: [top[0] + 0.5 * h, top[1] - 0.5 * h], txt: method, s, w: wm });
+  }
+  return { lines, circles, texts, width: top[0] + 2 * h };
+}
+
+function buildRough(a, S, measure) {
+  const c = a.layer || "add";
+  const loc = roughLocal(a, S, measure);
+  const leader = a.pos && len(sub(a.pos, a.target)) > 0.5;
+  const prims = [];
+  let origin = a.target;
+  let rot = leader ? 0 : a.rot || 0;
+  if (leader) {
+    // linie de indicație cu săgeată pe suprafață și umăr orizontal pe care stă simbolul
+    const side = a.pos[0] >= a.target[0] ? 1 : -1;
+    const span = loc.width + S.h * 1.6;
+    const end = [a.pos[0] + side * span, a.pos[1]];
+    prims.push(lineP(a.target, a.pos, S, c), lineP(a.pos, end, S, c));
+    const d = norm(sub(a.target, a.pos));
+    if (d) prims.push(...arrowP(a.target, d, { ...S, arrow: "closed" }, c));
+    const left = Math.min(a.pos[0], end[0]);
+    origin = [left + S.h * 0.8 + 1.43 * S.h * T60, a.pos[1]];
+    rot = 0;
+  }
+  const th = (rot * Math.PI) / 180;
+  const cs = Math.cos(th);
+  const sn = Math.sin(th);
+  // rotire pe ecran în sens trigonometric (y în jos)
+  const tr = (x, y) => [origin[0] + x * cs + y * sn, origin[1] - x * sn + y * cs];
+  for (const [x1, y1, x2, y2] of loc.lines) prims.push(lineP(tr(x1, y1), tr(x2, y2), S, c));
+  for (const ci of loc.circles) prims.push({ t: "C", p: tr(...ci.c), r: ci.r, w: S.lw, c });
+  for (const t of loc.texts) prims.push({ t: "T", p: tr(...t.p), s: t.s, a: rot, txt: t.txt, tw: t.w, c });
+  return { prims, handles: [{ k: "target", p: a.target }, { k: "pos", p: a.pos || a.target, move: true }] };
+}
+
 function buildLead(a, S, measure) {
   const c = a.layer || "add";
   const [P0, P1] = a.pts;
@@ -624,7 +685,7 @@ function buildRedact(a) {
   return { prims, handles: [{ k: "r0", p: [a.r[0], a.r[1]] }, { k: "r1", p: [a.r[2], a.r[3]] }] };
 }
 
-const BUILDERS = { dim: buildDim, rad: buildRad, ang: buildAng, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact };
+const BUILDERS = { dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact };
 
 export function build(a, S, measure) {
   const fn = BUILDERS[a.type];

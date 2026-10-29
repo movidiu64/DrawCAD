@@ -107,7 +107,26 @@ def main(url, out):
         ang = page.evaluate("(() => { const a = window.cotare.selected(); return window.cotare.builtOf(a).measured; })()")
         assert abs(ang - 30) < 0.01, ang
 
-        # 8. ștergere reală: textul Ø30 și linia lui de cotă
+        # 8. rugozitate Ra 1,6 pe suprafața de sus a treptei Ø40, direct pe contur
+        page.keyboard.press("Escape")
+        page.keyboard.press("q")
+        click(125, 75)
+        click(125, 75)
+        page.click("[data-act=rval][data-v='Ra 1,6']")
+        # 9. copiere + lipire: a doua rugozitate pe treapta Ø30
+        page.keyboard.press("v")  # rugozitatea nou creată rămâne selectată
+        page.keyboard.press("Control+c")
+        x, y = scr(160, 80)
+        page.mouse.move(x, y)
+        page.keyboard.press("Control+v")
+        page.wait_for_timeout(100)
+        n_rough = page.evaluate("window.cotare.annots.filter(a => a.type === 'rough').length")
+        assert n_rough == 2, n_rough
+        # 10. snap pe intersecție: axa cu muchia de la x = 90
+        snap = page.evaluate("(() => { const s = window.cotare.snapIdx.nearest(90*72/25.4 + 0.6, 95*72/25.4 + 0.6, 3); return s && [s.kind, s.p]; })()")
+        assert snap and snap[0] == "x" and abs(snap[1][0] - 90 * MM) < 0.05, snap
+
+        # 11. ștergere reală: textul Ø30 și linia lui de cotă
         page.keyboard.press("x")
         x0, y0 = scr(160, 77)
         x1, y1 = scr(167.5, 113)
@@ -128,7 +147,7 @@ def main(url, out):
         page.screenshot(path=str(out / "editor.png"))
 
         kinds = page.evaluate("window.cotare.annots.map(a => a.type)")
-        assert len(kinds) == 8, kinds
+        assert len(kinds) == 10, kinds
 
         # export
         page.click("#btnExport")
@@ -141,7 +160,7 @@ def main(url, out):
 
         # redeschidere: cotele revin editabile
         page.set_input_files("#fileInput", str(path))
-        page.wait_for_function("window.cotare.annots.length === 8")
+        page.wait_for_function("window.cotare.annots.length === 10")
         b.close()
 
     import pypdfium2 as pdfium

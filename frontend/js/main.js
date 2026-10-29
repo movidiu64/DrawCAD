@@ -1,6 +1,6 @@
 // Aplicația: stare, unelte, evenimente, salvare, export.
 import * as api from "./api.js";
-import { build, derive, hit, setHandle, moveAnnot, annotSnapPoints, exportPrims, K, fmtNum } from "./annots.js";
+import { build, derive, hit, setHandle, moveAnnot, annotSnapPoints, exportPrims, K, fmtNum, newId } from "./annots.js";
 import { View, SnapIndex, COLORS } from "./view.js";
 import { Panel } from "./panel.js";
 import { TOOLS, TOOL_BY_ID, TOOL_BY_KEY, finalize } from "./tools.js";
@@ -331,6 +331,49 @@ class App {
     this.changed();
   }
 
+  // ------------------------------------------------------------ copiere / lipire
+  copySelected(silent) {
+    const a = this.selected();
+    if (!a) return false;
+    if (a.type === "redact") {
+      dlg.toast("Ștergerile din original țin de obiectele de sub ele și nu se copiază.");
+      return false;
+    }
+    this.clip = JSON.stringify(a);
+    try {
+      localStorage.setItem("cotare.clip", this.clip);
+    } catch (_) { /* stocare indisponibilă */ }
+    if (!silent) dlg.toast("Copiat · Ctrl+V lipește la cursor");
+    return true;
+  }
+
+  paste(duplicate) {
+    if (!this.doc) return;
+    let raw = this.clip;
+    if (!raw) {
+      try {
+        raw = localStorage.getItem("cotare.clip");
+      } catch (_) { /* stocare indisponibilă */ }
+    }
+    if (!raw) return;
+    const src = JSON.parse(raw);
+    delete src.id;
+    const a = finalize(src);
+    a.id = newId();
+    a.page = this.page;
+    const anchor = (build(a, this.S(), this.measure).handles || []).find((h) => h.p);
+    let dx = 5 * K;
+    let dy = 5 * K;
+    const p = this.lastPt;
+    const pg = this.doc.pages[this.page];
+    if (!duplicate && anchor && p && p[0] >= 0 && p[1] >= 0 && p[0] <= pg.w && p[1] <= pg.h) {
+      dx = p[0] - anchor.p[0];
+      dy = p[1] - anchor.p[1];
+    }
+    moveAnnot(a, dx, dy);
+    this.addAnnot(a);
+  }
+
   defaultTol() {
     return { mode: "none" };
   }
@@ -456,6 +499,7 @@ class App {
       if (!this.doc) return;
       const [sx, sy] = pos(e);
       const raw = this.view.toPage(sx, sy);
+      this.lastPt = raw;
       const d = this.drag;
       if (d && d.kind === "pan") {
         this.view.pan(sx - d.sx, sy - d.sy);
@@ -623,6 +667,20 @@ class App {
       if ((e.ctrlKey || e.metaKey) && k === "s") {
         e.preventDefault();
         if (this.doc) dlg.exportDialog(this);
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && k === "c") {
+        if (this.copySelected()) e.preventDefault();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && k === "v") {
+        e.preventDefault();
+        this.paste(false);
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && k === "d") {
+        e.preventDefault();
+        if (this.copySelected(true)) this.paste(true);
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;

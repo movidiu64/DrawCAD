@@ -1,5 +1,5 @@
 // Definiția uneltelor: pictogramă, tastă, pași și ce adnotare produc.
-import { newId } from "./annots.js";
+import { newId, K } from "./annots.js";
 
 function autoOrient(p1, p2, c) {
   const minx = Math.min(p1[0], p2[0]);
@@ -75,6 +75,13 @@ export const TOOLS = [
     hint: "Click → text liber (se editează în panou)",
     make: (pts) => ({ type: "text", p: pts[0], text: "Text", angle: 0, size: 1 }) },
 
+  { id: "rough", label: "Rugozitate", key: "Q", group: "Toleranțe", icon: "M3 13l3 5 8-14h7M6.5 13h5", kind: "clicks", n: 2,
+    hint: "Punct pe suprafață → al doilea click în același loc = simbol direct, în altă parte = cu linie de indicație",
+    make(pts) {
+      const near = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]) < 3 * K;
+      return { type: "rough", target: pts[0], pos: near ? null : pts[1], kind: "remove", val: "Ra 3,2", method: "", rot: 0 };
+    },
+    preview(pts, cur) { return this.make([pts[0], cur]); } },
   { id: "gdt", label: "Cadru GD&T", key: "G", group: "Toleranțe", icon: "M2 8h20v8H2zM9 8v8M16 8v8M3.5 12a2 2 0 1 0 4 0a2 2 0 1 0 -4 0", kind: "clicks", n: 2,
     hint: "Vârful săgeții (pe linia de cotă = axă, pe contur = suprafață) → poziția cadrului",
     make: (pts) => ({ type: "gdt", target: pts[0], pos: pts[1], sym: "coax", dia: true, val: "0,02", mods: [], datums: ["A", "", ""] }),

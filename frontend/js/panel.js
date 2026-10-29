@@ -46,9 +46,10 @@ export class Panel {
 
   keysHtml() {
     return `<div class="sec"><div class="h">Taste</div><div class="keys">
-      <b>V</b> selecție · <b>H</b> mută · <b>D</b> liniară · <b>A</b> aliniată · <b>O</b> diametru · <b>R</b> rază · <b>C</b> teșitură · <b>L</b> indicație · <b>T</b> text<br>
-      <b>G</b> GD&amp;T · <b>B</b> bază · <b>S</b> taie cota · <b>W</b> acoperă · <b>X</b> șterge · <b>K</b> calibrare<br>
+      <b>V</b> selecție · <b>H</b> mută · <b>D</b> liniară · <b>A</b> aliniată · <b>O</b> diametru · <b>R</b> rază · <b>U</b> unghi · <b>C</b> teșitură · <b>L</b> indicație · <b>T</b> text<br>
+      <b>G</b> GD&amp;T · <b>B</b> bază · <b>Q</b> rugozitate · <b>S</b> taie cota · <b>W</b> acoperă · <b>X</b> șterge · <b>K</b> calibrare<br>
       <b>Shift</b> ortho · <b>Alt</b> fără snap · <b>Esc</b> renunță · <b>Del</b> șterge selecția<br>
+      <b>Ctrl+C / Ctrl+V</b> copiază / lipește la cursor · <b>Ctrl+D</b> duplică<br>
       <b>Ctrl+Z / Ctrl+Y</b> anulează / refă · <b>F</b> potrivește · rotița = zoom · Space+tragere = mută</div></div>`;
   }
 
@@ -98,6 +99,11 @@ export class Panel {
         <button data-act="layer" data-v="add" class="${a.layer !== "rev" ? "on" : ""}">Adăugat</button>
         <button data-act="layer" data-v="rev" class="${a.layer === "rev" ? "on" : ""}">Revizie</button></div></div>`;
     return `${layer}<div class="btns"><button class="danger" data-act="delete">Șterge adnotarea</button></div>`;
+  }
+
+  symRow(target) {
+    const syms = [["⌀", "Diametru"], ["⌴", "Lamaj"], ["⌵", "Teșire / con"], ["↧", "Adâncime"], ["±", "Plus-minus"], ["°", "Grad"], ["×", "Ori / pe"], ["√", "Rădăcină"]];
+    return `<div class="pills sym">${syms.map(([ch, t]) => `<button data-ins="${ch}" data-target="${target}" title="${t}" aria-label="Inserează ${t}">${ch}</button>`).join("")}</div>`;
   }
 
   previewBox() {
@@ -159,6 +165,7 @@ export class Panel {
       <div class="row"><div class="field" style="flex:0 0 76px"><label for="dPre">Prefix</label><select id="dPre" data-f="prefix">${popts}</select></div>
       <div class="field"><label for="dNom">Nominal (mm)</label><input type="text" class="mono" id="dNom" data-f="nominal" value="${a.nominal != null ? fmtNum(a.nominal, ",", 4) : ""}" placeholder="${b ? fmtNum(b.nominal, ",", 2) : ""}"></div></div>
       <div class="field"><label for="dOver">Text înlocuitor (opțional)</label><input type="text" id="dOver" data-f="textOverride" value="${esc(a.textOverride || "")}" placeholder="ex.: 4× M8, 2 găuri Ø6"></div>
+      ${this.symRow("#dOver")}
       <div class="row">${orient}${a.textShift != null ? `<button class="ghost" data-act="autotext" style="align-self:flex-end;height:34px">Text automat</button>` : ""}</div></div>
       ${this.tolHtml(a, b)}`;
   }
@@ -182,9 +189,26 @@ export class Panel {
       ${this.tolHtml(a, b)}`;
   }
 
+  html_rough(a) {
+    const lead = !!a.pos;
+    const kinds = [["any", "Oricare"], ["remove", "Cu așchiere"], ["noremove", "Fără așchiere"]];
+    const vals = ["Ra 0,4", "Ra 0,8", "Ra 1,6", "Ra 3,2", "Ra 6,3", "Ra 12,5", "Rz 25"];
+    return `<div class="sec"><div class="h">Prelucrare</div><div class="seg">
+        ${kinds.map(([k, l]) => `<button data-act="rkind" data-v="${k}" class="${(a.kind || "any") === k ? "on" : ""}">${l}</button>`).join("")}</div></div>
+      <div class="sec"><div class="h">Cerință</div>
+        <div class="field"><label for="rVal">Parametru și valoare</label><input type="text" class="mono" id="rVal" data-f="val" value="${esc(a.val)}" placeholder="Ra 3,2"></div>
+        <div class="pills">${vals.map((v) => `<button data-act="rval" data-v="${esc(v)}" class="${a.val === v ? "on" : ""}">${esc(v)}</button>`).join("")}</div>
+        <div class="field"><label for="rMet">Procedeu (opțional, deasupra liniei)</label><input type="text" id="rMet" data-f="method" value="${esc(a.method || "")}" placeholder="ex.: rectificat"></div></div>
+      <div class="sec"><div class="h">Așezare</div>
+        ${lead ? "" : `<div class="seg"><button data-act="rrot" data-v="0" class="${!a.rot ? "on" : ""}">Deasupra suprafeței</button><button data-act="rrot" data-v="90" class="${a.rot === 90 ? "on" : ""}">La stânga</button></div>`}
+        <div class="btns"><button class="ghost" data-act="rlead">${lead ? "Fără linie de indicație" : "Cu linie de indicație"}</button></div>
+        <div class="sub">Pentru suprafețe văzute de jos sau din dreapta, ISO 1302 cere linie de indicație.</div></div>`;
+  }
+
   html_lead(a) {
     return `<div class="sec"><div class="h">Text</div>
       <div class="field"><label for="lTxt">Conținut</label><input type="text" id="lTxt" data-f="text" value="${esc(a.text)}"></div>
+      ${this.symRow("#lTxt")}
       <div class="pills">${["1×45°", "0,5×45°", "2×45°", "Ra 1,6", "Ra 0,8", "M8", "Ra 3,2"].map((t) => `<button data-act="settext" data-v="${esc(t)}">${esc(t)}</button>`).join("")}</div>
       <div class="field"><span class="lbl">Capăt</span><div class="seg">
         <button data-act="arrowk" data-v="arrow" class="${a.arrow !== "dot" && a.arrow !== "none" ? "on" : ""}">Săgeată</button>
@@ -195,6 +219,7 @@ export class Panel {
   html_text(a) {
     return `<div class="sec"><div class="h">Text</div>
       <div class="field"><label for="tTxt">Conținut</label><input type="text" id="tTxt" data-f="text" value="${esc(a.text)}"></div>
+      ${this.symRow("#tTxt")}
       <div class="row"><div class="field"><span class="lbl">Înălțime</span><div class="seg">
         ${[[0.715, "2,5"], [1, "3,5"], [1.43, "5"], [2, "7"]].map(([v, l]) => `<button data-act="tsize" data-v="${v}" class="${Math.abs((a.size || 1) - v) < 0.01 ? "on" : ""}">${l}</button>`).join("")}</div></div></div>
       <div class="field"><span class="lbl">Orientare</span><div class="seg">
@@ -228,6 +253,7 @@ export class Panel {
   html_strike(a) {
     return `<div class="sec"><div class="h">Revizie</div>
       <div class="field"><label for="sNew">Valoare nouă (gol = doar tăiere)</label><input type="text" class="mono" id="sNew" data-f="newText" value="${esc(a.newText)}" placeholder="120"></div>
+      ${this.symRow("#sNew")}
       <div class="field" style="max-width:100px"><label for="sRev">Nr. revizie</label><input type="text" class="mono" id="sRev" data-f="rev" value="${esc(a.rev)}"></div>
       <div class="note">Valoarea veche rămâne lizibilă, tăiată cu o linie, iar cea nouă se scrie alături cu triunghiul de revizie.</div></div>`;
   }
@@ -270,6 +296,17 @@ export class Panel {
         e.stopPropagation();
       });
     });
+    el.querySelectorAll("[data-ins]").forEach((btn) => btn.addEventListener("click", () => {
+      const inp = el.querySelector(btn.dataset.target);
+      if (!inp) return;
+      const ch = btn.dataset.ins;
+      const p0 = inp.selectionStart ?? inp.value.length;
+      const p1 = inp.selectionEnd ?? p0;
+      inp.value = inp.value.slice(0, p0) + ch + inp.value.slice(p1);
+      inp.dispatchEvent(new Event("input"));
+      inp.focus();
+      inp.setSelectionRange(p0 + ch.length, p0 + ch.length);
+    }));
     el.querySelectorAll("[data-act]").forEach((btn) => btn.addEventListener("click", () => this.onAct(btn.dataset.act, btn.dataset.v)));
     const sc = el.querySelector("#dScale");
     if (sc) {
@@ -343,6 +380,20 @@ export class Panel {
         break;
       case "autotext":
         upd((x) => { x.textShift = null; });
+        break;
+      case "rkind":
+        upd((x) => { x.kind = v; });
+        break;
+      case "rval":
+        upd((x) => { x.val = v; });
+        break;
+      case "rrot":
+        upd((x) => { x.rot = Number(v); });
+        break;
+      case "rlead":
+        upd((x) => {
+          x.pos = x.pos ? null : [x.target[0] + 8 * K, x.target[1] - 8 * K];
+        });
         break;
       case "orient":
         upd((a) => { a.orient = v; });

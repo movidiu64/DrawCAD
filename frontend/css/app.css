@@ -111,6 +111,7 @@ input.bad { border-color: var(--bad); }
 .preview canvas { max-width: 100%; }
 .pills { display: flex; flex-wrap: wrap; gap: 6px; }
 .pills button { height: 32px; min-width: 40px; padding: 0 10px; border: 1px solid var(--line2); border-radius: 16px; background: transparent; font-size: 14px; }
+.pills.sym button { font-family: "osifont", var(--sans); font-size: 17px; min-width: 34px; padding: 0 6px; }
 .pills button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .symgrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .symgrid button { aspect-ratio: 1; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); display: grid; place-items: center; padding: 0; }

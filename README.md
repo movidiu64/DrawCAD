@@ -5,6 +5,7 @@ Aplicație web self-hosted (Docker) pentru a adăuga pe un PDF sau pe un scan:
 - **cote** liniare, aliniate, de diametru, de rază și unghiulare, plus teșituri, linii de indicație și text liber;
 - **toleranțe**: ±, abateri, câmpuri ISO 286 cu calcul automat (ex. `Ø25k6 (+0,015/+0,002)`);
 - **GD&T** după ISO 1101: cele 14 caracteristici, Ø, modificatori Ⓜ Ⓛ Ⓟ Ⓕ CZ, baze A/B/C, plus simboluri de bază;
+- **rugozitate** după ISO 1302 / ISO 21920-1: cu sau fără îndepărtare de material, parametru (Ra, Rz…), procedeu, direct pe suprafață sau cu linie de indicație;
 - **revizii**: cotă tăiată + valoare nouă + triunghi de revizie;
 - **ștergere** din original, cu acoperire albă sau eliminare reală a obiectelor PDF;
 - **export PDF** vectorial, cu font ISO 3098 încorporat și strat editabil atașat.
@@ -80,6 +81,7 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 
 **Snap:** cursorul se prinde de geometria vectorială a PDF-ului:
 - capete de linii (□)
+- intersecții de linii (⊠)
 - mijloace (△)
 - centre de cercuri (○)
 - puncte pe linie (×)
@@ -98,10 +100,12 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 | R | rază | K | calibrare scară |
 | C | teșitură | T | text |
 | L | linie de indicație | F | potrivește pagina |
-| U | cotă unghiulară | | |
+| U | cotă unghiulară | Q | rugozitate |
 
 **Taste generale:**
 - Ctrl+Z / Ctrl+Y: anulează / refă
+- Ctrl+C / Ctrl+V: copiază adnotarea selectată / o lipește la cursor
+- Ctrl+D: duplică adnotarea selectată, decalat cu 5 mm
 - Delete: șterge adnotarea selectată
 - Esc: renunță la operația curentă
 - rotița mouse-ului: zoom
@@ -110,6 +114,10 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 **Editare:** la o adnotare selectată, pătrățelele mută punctele, iar cercul alb mută textul cotei de-a lungul liniei. Tragerea de corp mută toată adnotarea.
 
 **Textul cotelor:** dacă eticheta nu încape între săgeți, se mută automat lângă săgeată, iar linia de cotă se prelungește până sub text. Dacă muți textul manual, butonul „Text automat” readuce poziționarea automată.
+
+**Simboluri în text:** sub câmpurile de text sunt butoane pentru ⌀ ⌴ (lamaj) ⌵ (teșire) ↧ (adâncime) ± ° × √, pentru indicații de găuri și filete de tipul `4× M8 ↧12`.
+
+**Rugozitate (Q):** dai două click-uri în același punct pentru simbol direct pe suprafață, sau al doilea click în altă parte pentru simbol cu linie de indicație. Simbolul direct se poate așeza deasupra suprafeței sau la stânga ei; pentru suprafețe văzute de jos sau din dreapta, ISO 1302 cere linie de indicație.
 
 **Cota unghiulară (U):** dai click pe vârf, pe un punct de pe fiecare latură, apoi pe poziția arcului. Poziția arcului alege unul din cele patru sectoare: unghiul, suplementul sau opusul lor.
 
