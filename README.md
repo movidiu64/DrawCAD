@@ -6,7 +6,8 @@ Aplicație web self-hosted (Docker) pentru a adăuga pe un PDF sau pe un scan:
 - **toleranțe**: ±, abateri, câmpuri ISO 286 cu calcul automat (ex. `Ø25k6 (+0,015/+0,002)`);
 - **GD&T** după ISO 1101: cele 14 caracteristici, Ø, modificatori Ⓜ Ⓛ Ⓟ Ⓕ CZ, baze A/B/C, plus simboluri de bază;
 - **rugozitate** după ISO 1302 / ISO 21920-1: cu sau fără îndepărtare de material, parametru (Ra, Rz…), procedeu, direct pe suprafață sau cu linie de indicație;
-- **revizii**: cotă tăiată + valoare nouă + triunghi de revizie;
+- **revizii**: cotă tăiată + valoare nouă + triunghi de revizie, plus **tabel de revizii** (Rev. / Modificare / Data / Nume) completat din cotele tăiate;
+- **note tehnice** pe mai multe rânduri, numerotate automat, cu titlu și chenar opțional;
 - **ștergere** din original, cu acoperire albă sau eliminare reală a obiectelor PDF;
 - **export PDF** vectorial, cu font ISO 3098 încorporat și strat editabil atașat.
 
@@ -101,6 +102,7 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 | C | teșitură | T | text |
 | L | linie de indicație | F | potrivește pagina |
 | U | cotă unghiulară | Q | rugozitate |
+| N | note tehnice | E | tabel de revizii |
 
 **Taste generale:**
 - Ctrl+Z / Ctrl+Y: anulează / refă
@@ -116,6 +118,10 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 **Textul cotelor:** dacă eticheta nu încape între săgeți, se mută automat lângă săgeată, iar linia de cotă se prelungește până sub text. Dacă muți textul manual, butonul „Text automat” readuce poziționarea automată.
 
 **Simboluri în text:** sub câmpurile de text sunt butoane pentru ⌀ ⌴ (lamaj) ⌵ (teșire) ↧ (adâncime) ± ° × √, pentru indicații de găuri și filete de tipul `4× M8 ↧12`.
+
+**Note (N):** dai click pe colțul stânga-sus al blocului și scrii notele în panou, câte una pe rând. Numerotarea e automată, iar rândurile goale se sar. Ai și note uzuale de adăugat cu un click: teșiri, raze, ISO 2768, tratament termic.
+
+**Tabel de revizii (E):** dai click pe colțul dreapta-sus al cartușului (se prinde cu snap). Tabelul se așază deasupra, aliniat la dreapta, cu antetul jos și revizia cea mai nouă sus. La creare se completează din cotele tăiate: câte un rând pentru fiecare număr de revizie. Butonul „Din cotele tăiate” adaugă ulterior reviziile noi. Numele implicit se setează în Setări.
 
 **Rugozitate (Q):** dai două click-uri în același punct pentru simbol direct pe suprafață, sau al doilea click în altă parte pentru simbol cu linie de indicație. Simbolul direct se poate așeza deasupra suprafeței sau la stânga ei; pentru suprafețe văzute de jos sau din dreapta, ISO 1302 cere linie de indicație.
 

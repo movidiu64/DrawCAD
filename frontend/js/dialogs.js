@@ -175,6 +175,8 @@ export function settingsDialog(app) {
         <div class="lbl">Câmp ISO 286 — afișare implicită</div><div class="seg" style="flex-wrap:wrap">${opt("isoDisplay", S.isoDisplay, [["code", "Simbol"], ["codeDev", "+ (abateri)"], ["codeLim", "+ (limite)"], ["dev", "Abateri"]])}</div>
         <div class="lbl">Scriere câmp</div><div class="seg">${opt("codeSpace", S.codeSpace, [[false, "Ø25k6 (ISO)"], [true, "Ø25 k6"]])}</div>
         <div class="row"><div class="field"><label for="sRev">Nr. revizie curent</label><input type="text" id="sRev" class="mono" value="${esc(S.revNo)}"></div>
+        <div class="field"><label for="sAuth">Nume / inițiale (tabel revizii)</label><input type="text" id="sAuth" value="${esc(S.author || "")}"></div></div>
+        <div class="row">
         <div class="field"><label for="sScale">Scară (mm reali / mm hârtie)</label><input type="text" id="sScale" class="mono" value="${fmtNum(S.scale, ",", 4)}"></div></div>
       </div>
     </div>
@@ -191,6 +193,7 @@ export function settingsDialog(app) {
   }));
   dlg.querySelector("#sSave").addEventListener("click", () => {
     pending.revNo = dlg.querySelector("#sRev").value.trim() || "1";
+    pending.author = dlg.querySelector("#sAuth").value.trim();
     const sc = parseNum(dlg.querySelector("#sScale").value);
     if (sc && sc > 0) pending.scale = sc;
     app.setSettings(pending);

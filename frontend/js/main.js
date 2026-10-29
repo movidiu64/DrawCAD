@@ -310,7 +310,7 @@ class App {
     this.annots.push(a);
     this.select(a.id);
     this.changed();
-    const focus = { text: "#tTxt", lead: "#lTxt", strike: "#sNew" }[a.type];
+    const focus = { text: "#tTxt", lead: "#lTxt", strike: "#sNew", note: "#nTxt" }[a.type];
     if (focus) {
       const el = $("panel").querySelector(focus);
       if (el) {
@@ -372,6 +372,29 @@ class App {
     }
     moveAnnot(a, dx, dy);
     this.addAnnot(a);
+  }
+
+  revRowsFromStrikes(ensureOne, existing = []) {
+    const today = new Date().toLocaleDateString("ro-RO", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const by = new Map();
+    for (const a of this.annots) {
+      if (a.type !== "strike") continue;
+      const r = String(a.rev || "").trim() || this.settings.revNo || "1";
+      if (!by.has(r)) by.set(r, []);
+      if (a.newText && a.newText.trim()) by.get(r).push(a.newText.trim());
+    }
+    const have = new Set(existing.map((r) => String(r.rev)));
+    const rows = [];
+    const keys = [...by.keys()].sort((x, y) => (parseFloat(x) || 0) - (parseFloat(y) || 0) || x.localeCompare(y));
+    for (const rev of keys) {
+      if (have.has(rev)) continue;
+      const vals = by.get(rev);
+      rows.push({ rev, desc: vals.length ? `Cote modificate: ${vals.join(", ")}` : "Cote modificate", date: today, name: this.settings.author || "" });
+    }
+    if (ensureOne && !rows.length && !existing.length) {
+      rows.push({ rev: this.settings.revNo || "1", desc: "", date: today, name: this.settings.author || "" });
+    }
+    return rows;
   }
 
   defaultTol() {

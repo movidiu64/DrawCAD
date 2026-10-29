@@ -25,6 +25,8 @@ export const TYPE_NAMES = {
   rad: "Cotă rază",
   ang: "Cotă unghiulară",
   rough: "Rugozitate",
+  note: "Note",
+  revtab: "Tabel de revizii",
   lead: "Linie de indicație",
   text: "Text",
   gdt: "Cadru GD&T",
@@ -485,6 +487,114 @@ function buildRough(a, S, measure) {
   return { prims, handles: [{ k: "target", p: a.target }, { k: "pos", p: a.pos || a.target, move: true }] };
 }
 
+// ------------------------------------------------------------------ note tehnice
+export function noteLines(a) {
+  return String(a.text || "").replace(/\r/g, "").split("\n");
+}
+
+function buildNote(a, S, measure) {
+  const c = a.layer || "add";
+  const k = a.size || 1;
+  const h = S.h * k;
+  const F = S.F * k;
+  const pitch = 1.7 * h; // distanța dintre liniile de bază
+  const [x0, y0] = a.p;
+  const pad = a.frame ? 0.8 * h : 0;
+  const prims = [];
+  let y = y0 + pad + h;
+  let wMax = 0;
+  const title = (a.title || "").trim();
+  if (title) {
+    const w = measure(title, F);
+    prims.push({ t: "T", p: [x0 + pad, y], s: F, a: 0, txt: title, tw: w, c });
+    wMax = Math.max(wMax, w);
+    y += pitch * 1.15;
+  }
+  const lines = noteLines(a);
+  const nonEmpty = lines.filter((l) => l.trim()).length;
+  const numW = a.numbered ? measure(`${nonEmpty}. `, F) : 0;
+  let n = 0;
+  for (const raw of lines) {
+    const line = raw.replace(/\s+$/, "");
+    if (line.trim()) {
+      let x = x0 + pad;
+      if (a.numbered) {
+        n += 1;
+        const num = `${n}.`;
+        prims.push({ t: "T", p: [x, y], s: F, a: 0, txt: num, tw: measure(num, F), c });
+        x += numW;
+      }
+      const w = measure(line, F);
+      prims.push({ t: "T", p: [x, y], s: F, a: 0, txt: line, tw: w, c });
+      wMax = Math.max(wMax, x - x0 - pad + w);
+    }
+    y += pitch;
+  }
+  const H = y - pitch + 0.45 * h + pad - y0;
+  if (a.frame) {
+    const W = wMax + 2 * pad;
+    prims.unshift({ t: "P", p: [x0, y0, x0 + W, y0, x0 + W, y0 + H, x0, y0 + H], close: true, w: S.lw, c });
+  }
+  return { prims, handles: [{ k: "p", p: a.p, move: true }] };
+}
+
+// ------------------------------------------------------------------ tabel de revizii
+export const REVTAB_COLS = [
+  { key: "rev", title: "Rev.", minMm: 10 },
+  { key: "desc", title: "Modificare", minMm: 40 },
+  { key: "date", title: "Data", minMm: 22 },
+  { key: "name", title: "Nume", minMm: 14 },
+];
+
+function buildRevtab(a, S, measure) {
+  const c = a.layer || "add";
+  const h = S.h;
+  const F = S.F;
+  const rowH = 2 * h; // ca la cadrul GD&T: înălțimea rândului = 2 × înălțimea textului
+  const pad = 0.6 * h;
+  const rows = a.rows || [];
+  const widths = REVTAB_COLS.map((col) => {
+    let w = col.minMm * K;
+    w = Math.max(w, measure(col.title, F) + 2 * pad);
+    for (const r of rows) w = Math.max(w, measure(String(r[col.key] || ""), F) + 2 * pad);
+    return w;
+  });
+  const W = widths.reduce((s, w) => s + w, 0);
+  const nRows = rows.length + 1;
+  const Htot = nRows * rowH;
+  // ancora e colțul dreapta-jos: tabelul se aliniază la dreapta cu cartușul, oricât de lat devine
+  const yb = a.p[1];
+  const x0 = a.p[0] - W;
+  const yt = yb - Htot;
+  const prims = [{ t: "P", p: [x0, yt, x0 + W, yt, x0 + W, yb, x0, yb], close: true, w: S.lw * 1.4, c }];
+  // ordinea vizuală a rândurilor, de sus în jos
+  const order = a.headerBottom !== false ? [...rows].reverse().map((r) => ({ r })).concat([{ header: true }]) : [{ header: true }].concat(rows.map((r) => ({ r })));
+  order.forEach((item, i) => {
+    const top = yt + i * rowH;
+    if (i > 0) prims.push(lineP([x0, top], [x0 + W, top], { ...S, lw: item.header || order[i - 1].header ? S.lw * 1.4 : S.lw }, c));
+    let x = x0;
+    REVTAB_COLS.forEach((col, j) => {
+      const txt = item.header ? col.title : String(item.r[col.key] || "");
+      if (txt) {
+        const tw = measure(txt, F);
+        const tx = col.key === "desc" ? x + pad : x + (widths[j] - tw) / 2;
+        prims.push({ t: "T", p: [tx, top + rowH / 2 + h / 2], s: F, a: 0, txt, tw, c });
+      }
+      x += widths[j];
+    });
+  });
+  let x = x0;
+  for (let j = 0; j < widths.length - 1; j++) {
+    x += widths[j];
+    prims.push(lineP([x, yt], [x, yb], S, c));
+  }
+  return {
+    prims,
+    handles: [{ k: "p", p: a.p, move: true }],
+    size: [W, Htot],
+  };
+}
+
 function buildLead(a, S, measure) {
   const c = a.layer || "add";
   const [P0, P1] = a.pts;
@@ -685,12 +795,21 @@ function buildRedact(a) {
   return { prims, handles: [{ k: "r0", p: [a.r[0], a.r[1]] }, { k: "r1", p: [a.r[2], a.r[3]] }] };
 }
 
-const BUILDERS = { dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact };
+const BUILDERS = { dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact };
+
+// caractere fără glifă în osifont → echivalente care există (la fel pe ecran și în PDF)
+const GLYPH_SUBST = { "…": "...", "„": '"', "”": '"', "“": '"', "«": '"', "»": '"', "‚": ",", "‘": "'", "\u00a0": " ", "−": "-" };
+const GLYPH_RE = new RegExp(`[${Object.keys(GLYPH_SUBST).join("")}]`, "g");
+export function fontSafe(txt) {
+  return String(txt ?? "").replace(GLYPH_RE, (ch) => GLYPH_SUBST[ch]);
+}
 
 export function build(a, S, measure) {
   const fn = BUILDERS[a.type];
   if (!fn) return { prims: [], handles: [] };
-  const b = fn(a, S, measure);
+  const safeMeasure = (t, s) => measure(fontSafe(t), s);
+  const b = fn(a, S, safeMeasure);
+  for (const p of b.prims) if (p.t === "T") p.txt = fontSafe(p.txt);
   b.bbox = primsBBox(b.prims);
   return b;
 }

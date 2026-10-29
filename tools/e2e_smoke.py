@@ -126,7 +126,27 @@ def main(url, out):
         snap = page.evaluate("(() => { const s = window.cotare.snapIdx.nearest(90*72/25.4 + 0.6, 95*72/25.4 + 0.6, 3); return s && [s.kind, s.p]; })()")
         assert snap and snap[0] == "x" and abs(snap[1][0] - 90 * MM) < 0.05, snap
 
-        # 11. ștergere reală: textul Ø30 și linia lui de cotă
+        # 11. note tehnice
+        page.keyboard.press("Escape")
+        page.keyboard.press("n")
+        click(95, 135)
+        page.fill("#nTxt", "Muchiile nespecificate se teșesc 0,5×45°\nToleranțe generale ISO 2768-mK")
+        page.click("[data-act=ntpl][data-v='Călire + revenire 48–52 HRC']")
+        page.press("#nTxt", "Escape")
+
+        # 12. tabel de revizii deasupra cartușului, completat din cota tăiată
+        page.keyboard.press("f")
+        page.wait_for_timeout(300)
+        page.keyboard.press("e")
+        click(287, 170)
+        rows = page.evaluate("window.cotare.selected().rows")
+        assert rows and rows[0]["rev"] == "1" and "120" in rows[0]["desc"], rows
+        page.fill("[data-row='0'][data-col='name']", "OV")
+        page.press("[data-row='0'][data-col='name']", "Escape")
+        page.evaluate("() => { const v = window.cotare.view; v.zoom = 2.2; v.panX = -25*72/25.4*2.2; v.panY = -38*72/25.4*2.2; v.afterZoom(); }")
+        page.wait_for_timeout(300)
+
+        # 13. ștergere reală: textul Ø30 și linia lui de cotă
         page.keyboard.press("x")
         x0, y0 = scr(160, 77)
         x1, y1 = scr(167.5, 113)
@@ -147,7 +167,7 @@ def main(url, out):
         page.screenshot(path=str(out / "editor.png"))
 
         kinds = page.evaluate("window.cotare.annots.map(a => a.type)")
-        assert len(kinds) == 10, kinds
+        assert len(kinds) == 12, kinds
 
         # export
         page.click("#btnExport")
@@ -160,7 +180,7 @@ def main(url, out):
 
         # redeschidere: cotele revin editabile
         page.set_input_files("#fileInput", str(path))
-        page.wait_for_function("window.cotare.annots.length === 10")
+        page.wait_for_function("window.cotare.annots.length === 12")
         b.close()
 
     import pypdfium2 as pdfium
@@ -169,6 +189,7 @@ def main(url, out):
     img.save(out / "export_p1.png")
     # decupaj pe zona arborelui
     img.crop((int(20 * MM * 3), int(38 * MM * 3), int(195 * MM * 3), int(160 * MM * 3))).save(out / "export_zoom.png")
+    img.crop((int(80 * MM * 3), int(115 * MM * 3), int(292 * MM * 3), int(205 * MM * 3))).save(out / "export_note_cartus.png")
     txt = doc[0].get_textpage().get_text_range()
     print("TEXT:", " | ".join(t for t in txt.split() if t))
     print("ERORI CONSOLĂ:", errors or "niciuna")

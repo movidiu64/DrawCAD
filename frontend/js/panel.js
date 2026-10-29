@@ -205,6 +205,48 @@ export class Panel {
         <div class="sub">Pentru suprafețe văzute de jos sau din dreapta, ISO 1302 cere linie de indicație.</div></div>`;
   }
 
+  html_note(a) {
+    const tpl = [
+      "Muchiile nespecificate se teșesc 0,5×45°",
+      "Razele nespecificate R0,5",
+      "Toleranțe generale ISO 2768-mK",
+      "Toate dimensiunile în mm",
+      "Călire + revenire 48–52 HRC",
+      "Fără bavuri și muchii tăietoare",
+    ];
+    return `<div class="sec"><div class="h">Conținut</div>
+      <div class="field"><label for="nTit">Titlu (opțional)</label><input type="text" id="nTit" data-f="title" value="${esc(a.title || "")}" placeholder="NOTE"></div>
+      <div class="field"><label for="nTxt">Note — un rând pe linie</label><textarea id="nTxt" data-f="text" rows="7" spellcheck="false">${esc(a.text || "")}</textarea></div>
+      ${this.symRow("#nTxt")}
+      <div class="lbl">Adaugă rapid</div>
+      <div class="opts">${tpl.map((t) => `<button data-act="ntpl" data-v="${esc(t)}">${esc(t)}</button>`).join("")}</div></div>
+      <div class="sec"><div class="h">Aspect</div>
+      <div class="seg"><button data-act="nnum" class="${a.numbered ? "on" : ""}">Numerotate</button><button data-act="nframe" class="${a.frame ? "on" : ""}">Cu chenar</button></div>
+      <div class="field"><span class="lbl">Înălțime text</span><div class="seg">
+        ${[[0.715, "2,5"], [1, "3,5"], [1.43, "5"]].map(([v, l]) => `<button data-act="tsize" data-v="${v}" class="${Math.abs((a.size || 1) - v) < 0.01 ? "on" : ""}">${l}</button>`).join("")}</div></div></div>`;
+  }
+
+  html_revtab(a) {
+    const rows = a.rows || [];
+    const cells = rows.map((r, i) => `<div class="rtrow">
+        <input type="text" class="mono" data-row="${i}" data-col="rev" value="${esc(r.rev)}" aria-label="Revizie" style="width:44px;text-align:center">
+        <input type="text" data-row="${i}" data-col="desc" value="${esc(r.desc)}" aria-label="Descriere" placeholder="Descrierea modificării" style="grid-column: span 2">
+        <button class="icon" data-act="rtdel" data-v="${i}" aria-label="Șterge rândul" title="Șterge rândul"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        <span></span>
+        <input type="text" class="mono" data-row="${i}" data-col="date" value="${esc(r.date)}" aria-label="Data" placeholder="zz.ll.aaaa">
+        <input type="text" data-row="${i}" data-col="name" value="${esc(r.name)}" aria-label="Nume" placeholder="Nume">
+        <span></span>
+      </div>`).join("");
+    return `<div class="sec"><div class="h">Rânduri</div>
+      <div class="rtlist">${cells || `<span class="sub">Niciun rând.</span>`}</div>
+      <div class="btns"><button class="ghost" data-act="rtadd">+ Rând nou</button><button class="ghost" data-act="rtsync">Din cotele tăiate</button></div>
+      <div class="sub">„Din cotele tăiate” adaugă câte un rând pentru fiecare număr de revizie folosit la unealta Taie cota și încă absent din tabel.</div></div>
+      <div class="sec"><div class="h">Așezare</div><div class="seg">
+        <button data-act="rthead" data-v="bottom" class="${a.headerBottom !== false ? "on" : ""}">Antet jos (peste cartuș)</button>
+        <button data-act="rthead" data-v="top" class="${a.headerBottom === false ? "on" : ""}">Antet sus</button></div>
+      <div class="sub">Pătrățelul e colțul dreapta-jos: trage-l pe colțul cartușului, se prinde cu snap.</div></div>`;
+  }
+
   html_lead(a) {
     return `<div class="sec"><div class="h">Text</div>
       <div class="field"><label for="lTxt">Conținut</label><input type="text" id="lTxt" data-f="text" value="${esc(a.text)}"></div>
@@ -276,6 +318,19 @@ export class Panel {
     el.querySelectorAll("[data-f]").forEach((inp) => {
       const ev = inp.tagName === "SELECT" ? "change" : "input";
       inp.addEventListener(ev, () => this.onField(inp));
+      inp.addEventListener("keydown", (e) => {
+        if ((e.key === "Enter" && inp.tagName !== "TEXTAREA") || e.key === "Escape") inp.blur();
+        e.stopPropagation();
+      });
+    });
+    el.querySelectorAll("[data-row]").forEach((inp) => {
+      inp.addEventListener("input", () => {
+        const i = Number(inp.dataset.row);
+        const col = inp.dataset.col;
+        app.updateSel((a) => {
+          a.rows = a.rows.map((r, j) => (j === i ? { ...r, [col]: inp.value } : r));
+        }, `row${i}.${col}`);
+      });
       inp.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === "Escape") inp.blur();
         e.stopPropagation();
@@ -380,6 +435,35 @@ export class Panel {
         break;
       case "autotext":
         upd((x) => { x.textShift = null; });
+        break;
+      case "ntpl":
+        upd((x) => {
+          const t = String(x.text || "").replace(/\s+$/, "");
+          x.text = t ? `${t}\n${v}` : v;
+        });
+        break;
+      case "nnum":
+        upd((x) => { x.numbered = !x.numbered; });
+        break;
+      case "nframe":
+        upd((x) => { x.frame = !x.frame; });
+        break;
+      case "rtadd":
+        upd((x) => {
+          const rows = x.rows || [];
+          const last = rows.length ? parseInt(rows[rows.length - 1].rev, 10) : 0;
+          const today = new Date().toLocaleDateString("ro-RO", { day: "2-digit", month: "2-digit", year: "numeric" });
+          x.rows = [...rows, { rev: String(Number.isFinite(last) ? last + 1 : rows.length + 1), desc: "", date: today, name: app.settings.author || "" }];
+        });
+        break;
+      case "rtdel":
+        upd((x) => { x.rows = (x.rows || []).filter((_r, j) => j !== Number(v)); });
+        break;
+      case "rtsync":
+        upd((x) => { x.rows = [...(x.rows || []), ...app.revRowsFromStrikes(false, x.rows || [])]; });
+        break;
+      case "rthead":
+        upd((x) => { x.headerBottom = v === "bottom"; });
         break;
       case "rkind":
         upd((x) => { x.kind = v; });
