@@ -226,7 +226,7 @@ def main(url, out):
         # închidere fără modificări: direct la pagina de start
         page.click("#btnClose")
         page.wait_for_function("window.cotare.doc === null && !document.getElementById('emptyState').hidden")
-        assert page.evaluate("document.querySelectorAll('#recentList [data-doc]').length") >= 1
+        page.wait_for_function("document.querySelectorAll('#recentList [data-doc]').length >= 1", timeout=5000)
         # redeschidere din Recente, o modificare, apoi închidere cu întrebare
         page.click("#recentList [data-doc]")
         page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 13")

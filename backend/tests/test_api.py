@@ -113,6 +113,47 @@ class ApiTest(unittest.TestCase):
         self.assertNotIn("Ø30", txt)
         self.assertIn("Ø25 k6", txt)
 
+    def test_zone_cuts_lines_at_border(self):
+        import ctypes
+
+        import pypdfium2 as pdfium
+        import pypdfium2.raw as R
+
+        src = self.sample.read_bytes()
+        # zona trece peste conturul de sus (y = 110) și peste capătul cotei Ø30 (x = 165)
+        rect = [160 * MM, 105 * MM, 170 * MM, 113 * MM]
+        x0, y0, x1, y1 = rect
+        pdf, rep = pdfcore.apply_removals(src, {0: [{"mode": "zone", "rect": rect}]})
+        self.assertGreaterEqual(rep[0]["cut"], 2)  # conturul + linia de cotă
+        d = pdfium.PdfDocument(pdf)
+        page = d[0]
+        g = pdfcore.PageGeo.of(page)
+        corner_kept = False
+        eps = 0.3 * MM
+        for oid, obj, typ, pm, _c, nested in pdfcore._walk(page.raw):
+            if typ != R.FPDF_PAGEOBJ_PATH or nested:
+                continue
+            fill, stroke = ctypes.c_int(), ctypes.c_int()
+            R.FPDFPath_GetDrawMode(obj, ctypes.byref(fill), ctypes.byref(stroke))
+            if fill.value:
+                continue  # săgețile pline rămân (doar acoperite)
+            total = pdfcore.mat_mul(pdfcore._obj_matrix(obj), pm)
+            for sp in pdfcore._path_points(obj, total):
+                vis = [g.to_vis(*q) for q in sp["pts"]]
+                for (ax, ay), (bx, by) in zip(vis, vis[1:]):
+                    mx, my = (ax + bx) / 2, (ay + by) / 2
+                    inside = x0 + eps < mx < x1 - eps and y0 + eps < my < y1 - eps
+                    self.assertFalse(inside, f"segment rămas în zonă: {oid} {(ax, ay)}–{(bx, by)}")
+                if any(abs(px - 180 * MM) < 0.05 and abs(py - 80 * MM) < 0.05 for px, py in vis):
+                    corner_kept = True
+        self.assertTrue(corner_kept, "restul conturului trebuie să rămână")
+        # indicatorul (Form XObject) nu se modifică: obiectele lui apar ca blocate
+        objs = pdfcore.objects_in_rect(src, 0, [240 * MM, 180 * MM, 260 * MM, 195 * MM])
+        self.assertTrue(objs and all(o["locked"] for o in objs))
+        _pdf, rep2 = pdfcore.apply_removals(src, {0: [{"mode": "zone", "rect": [240 * MM, 180 * MM, 260 * MM, 195 * MM]}]})
+        self.assertEqual(rep2[0]["removed"] + rep2[0]["cut"], 0)
+        self.assertGreater(rep2[0]["locked"], 0)
+
     def test_image_open(self):
         from PIL import Image
         import io

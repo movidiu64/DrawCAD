@@ -797,11 +797,13 @@ function buildWhite(a) {
 function buildRedact(a) {
   const r = normRect(a.r);
   const prims = [rectOutline(r, "edred")];
-  if (a.mode === "zone") prims.unshift({ t: "R", p: r, c: "white" });
+  // vechile zone (fără „cover”) se acopereau mereu cu alb
+  const cover = a.mode === "zone" && a.cover !== false;
+  if (cover) prims.unshift({ t: "R", p: r, c: "white" });
   for (const o of a.objs || []) {
     if (a.mode === "objects" && !(a.ids || []).includes(o.id)) continue;
     if (a.mode === "text" && o.type !== "text") continue;
-    if (a.mode === "zone") continue;
+    if (cover) continue;
     for (const poly of o.poly || []) {
       if (poly.length >= 2) prims.push({ t: "P", p: poly.flat(), w: 1.2, c: "edred", ed: true });
     }

@@ -390,7 +390,7 @@ export class Panel {
 
   html_redact(a) {
     const n = a.mode === "objects" ? (a.ids || []).length : null;
-    const label = { objects: `Obiecte selectate: ${n}`, text: "Doar textul din zonă", zone: "Tot ce e complet în zonă + acoperire albă" }[a.mode];
+    const label = { objects: `Obiecte selectate: ${n}`, text: "Doar textul din zonă", zone: a.cover === false ? "Tot din zonă · liniile tăiate la margine" : "Tot din zonă · tăiere + acoperire albă" }[a.mode];
     return `<div class="sec"><div class="h">Ștergere din original</div><div class="note">${esc(label)}</div>
       <div class="btns"><button class="ghost" data-act="redit">Editează selecția</button></div></div>`;
   }

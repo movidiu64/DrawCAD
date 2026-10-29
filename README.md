@@ -145,7 +145,7 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 **Ștergere din original:** după ce tragi zona, dialogul arată obiectele găsite și o previzualizare înainte/după. Ai trei moduri:
 - **Selecție pe obiecte:** bifezi exact ce se elimină. E modul recomandat.
 - **Doar textul:** elimină valorile, iar liniile de cotă rămân.
-- **Tot din zonă:** elimină ce e complet în zonă și acoperă cu alb ce trece doar parțial.
+- **Tot din zonă:** elimină ce e în zonă și taie liniile care trec prin ea exact la marginea zonei (conturul rămâne, cu o întrerupere; arcele și cercurile se taie la fel). Ce nu se poate tăia (suprafețe pline, imagini, obiecte din blocuri) poate fi acoperit cu alb: opțiunea „Acoperă zona cu alb” e bifată automat când e cazul.
 
 **Închidere și păstrare pe server:**
 - **Butonul ✕** de lângă numele documentului îl închide și te întoarce la pagina de start.
@@ -216,7 +216,8 @@ python tools/e2e_smoke.py http://127.0.0.1:8080 out     # browser: flux complet 
 ## Limitări cunoscute
 
 - **ISO 286**: literele a–zc pentru arbori și alezaje, mai puțin t, v și y; treptele IT1–IT18; nominale până la 500 mm (fără 500–3150 mm).
-- **Ștergerea pe obiecte** elimină obiecte PDF întregi. Dacă un contur e un singur obiect care trece prin zonă, nu poate fi tăiat parțial: modul „Tot din zonă” îl acoperă cu alb.
+- **Ștergerea pe obiecte** elimină obiecte PDF întregi; pentru a tăia doar o bucată dintr-un contur folosește „Tot din zonă”. Tăierea se face doar pe linii (fără umplere); suprafețele pline și imaginile atinse parțial rămân și se pot acoperi cu alb.
+- **Blocurile (Form XObject)**, de obicei indicatorul sau simboluri inserate ca bloc, nu se modifică: PDFium strică fonturile blocului când îi schimbă conținutul. Obiectele din ele apar „în bloc — doar acoperire” și se pot doar acoperi cu alb.
 - **Textul exportat de AutoCAD cu fonturi SHX** apare în PDF ca linii, nu ca text. În dialogul de ștergere se vede ca „Linie / contur”.
 - **Adnotările se pot așeza doar orizontal sau vertical** (plus cotele aliniate). Nu există încă text rotit la unghi oarecare.
 - **Fără autentificare și fără editare simultană** a aceluiași document de către mai mulți utilizatori.

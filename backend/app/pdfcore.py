@@ -410,6 +410,7 @@ def objects_in_rect(pdf_bytes: bytes, page_index: int, rect_vis) -> list[dict]:
                     "type": OBJ_TYPE_NAMES.get(typ, "other"),
                     "bbox": [round(v, 2) for v in vb],
                     "inside": inside,
+                    "locked": "." in oid,  # în interiorul unui bloc (Form XObject): doar acoperire
                 }
                 if typ == R.FPDF_PAGEOBJ_TEXT:
                     item["text"] = _text_of(obj, tp.raw)
@@ -417,11 +418,22 @@ def objects_in_rect(pdf_bytes: bytes, page_index: int, rect_vis) -> list[dict]:
                     total = mat_mul(_obj_matrix(obj), parent_total)
                     poly = []
                     nseg = 0
-                    for sp in _path_points(obj, total):
+                    sps = _path_points(obj, total)
+                    if not inside:
+                        a, b = g.from_vis(rx0, ry0), g.from_vis(rx1, ry1)
+                        rpdf = (min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1]))
+                        if not _cut_runs(sps, rpdf)[1]:
+                            continue  # doar încadrarea atinge zona (ex. chenarul foii)
+                    for sp in sps:
                         nseg += len(sp["pts"])
                         poly.append([[round(c, 2) for c in g.to_vis(*p)] for p in sp["pts"][:400]])
                     item["segments"] = nseg
                     item["poly"] = poly[:50]
+                    fill = ctypes.c_int()
+                    stroke = ctypes.c_int()
+                    ok = R.FPDFPath_GetDrawMode(obj, ctypes.byref(fill), ctypes.byref(stroke))
+                    # doar liniile simple (fără umplere) se pot tăia la marginea zonei
+                    item["cuttable"] = bool(ok and fill.value == 0 and stroke.value)
                 out.append(item)
             tp.close()
             page.close()
@@ -430,11 +442,171 @@ def objects_in_rect(pdf_bytes: bytes, page_index: int, rect_vis) -> list[dict]:
     return out
 
 
+# ---------------------------------------------------------------- tăiere geometrică
+
+
+def _clip_outside(p, q, r):
+    """Părțile segmentului p→q aflate în afara dreptunghiului r = (x0, y0, x1, y1)."""
+    x0, y0, x1, y1 = r
+    dx, dy = q[0] - p[0], q[1] - p[1]
+    t0, t1 = 0.0, 1.0
+    for pk, qk in ((-dx, p[0] - x0), (dx, x1 - p[0]), (-dy, p[1] - y0), (dy, y1 - p[1])):
+        if abs(pk) < 1e-12:
+            if qk < 0:
+                return [(p, q)]  # paralel și în afara benzii: tot segmentul e afară
+            continue
+        t = qk / pk
+        if pk < 0:
+            t0 = max(t0, t)
+        else:
+            t1 = min(t1, t)
+    if t0 >= t1:
+        return [(p, q)]  # nu intră în dreptunghi
+    at = lambda t: (p[0] + dx * t, p[1] + dy * t)  # noqa: E731
+    out = []
+    if t0 > 1e-9:
+        out.append((p, at(t0)))
+    if t1 < 1 - 1e-9:
+        out.append((at(t1), q))
+    return out
+
+
+def _bez(p0, c1, c2, p3, n=24):
+    pts = []
+    for i in range(1, n + 1):
+        t = i / n
+        u = 1 - t
+        pts.append((
+            u ** 3 * p0[0] + 3 * u * u * t * c1[0] + 3 * u * t * t * c2[0] + t ** 3 * p3[0],
+            u ** 3 * p0[1] + 3 * u * u * t * c1[1] + 3 * u * t * t * c2[1] + t ** 3 * p3[1],
+        ))
+    return pts
+
+
+def _boxes_touch(pts, r):
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    return not (max(xs) < r[0] or min(xs) > r[2] or max(ys) < r[1] or min(ys) > r[3])
+
+
+def _cut_runs(subpaths, r):
+    """Transformă subpath-urile (în spațiul paginii) în porțiuni continue din afara dreptunghiului.
+    Fiecare porțiune: listă de elemente ('M', p) / ('L', p) / ('B', c1, c2, p).
+    Întoarce (porțiuni, tăiat) — tăiat e False dacă nicio linie nu intră efectiv în zonă."""
+    runs = []
+    cur = None
+    last = None
+    clipped = False
+
+    def clip(u, v):
+        nonlocal clipped
+        out = _clip_outside(u, v, r)
+        if len(out) != 1 or out[0] != (u, v):
+            clipped = True
+        return out
+
+    def emit_line(a, b):
+        nonlocal cur, last
+        if cur is None or last is None or abs(last[0] - a[0]) > 1e-6 or abs(last[1] - a[1]) > 1e-6:
+            cur = [("M", a)]
+            runs.append(cur)
+        cur.append(("L", b))
+        last = b
+
+    for sp in subpaths:
+        P, K = sp["pts"], sp["kinds"]
+        cur = None
+        last = None
+        prev = P[0]
+        j = 1
+        segs = []
+        while j < len(P):
+            if K[j] == "L":
+                segs.append(("L", prev, P[j]))
+                prev = P[j]
+                j += 1
+            else:
+                c1, c2, p3 = P[j], P[min(j + 1, len(P) - 1)], P[min(j + 2, len(P) - 1)]
+                segs.append(("B", prev, c1, c2, p3))
+                prev = p3
+                j += 3
+        if sp["closed"] and (abs(prev[0] - P[0][0]) > 1e-6 or abs(prev[1] - P[0][1]) > 1e-6):
+            segs.append(("L", prev, P[0]))
+        for sg in segs:
+            if sg[0] == "B":
+                _k, a, c1, c2, b = sg
+                if not _boxes_touch([a, c1, c2, b], r):
+                    # curba e complet în afara zonei: rămâne curbă
+                    if cur is None or last is None or abs(last[0] - a[0]) > 1e-6 or abs(last[1] - a[1]) > 1e-6:
+                        cur = [("M", a)]
+                        runs.append(cur)
+                    cur.append(("B", c1, c2, b))
+                    last = b
+                    continue
+                pts = [a] + _bez(a, c1, c2, b)
+                for u, v in zip(pts, pts[1:]):
+                    for x, y in clip(u, v):
+                        emit_line(x, y)
+            else:
+                for x, y in clip(sg[1], sg[2]):
+                    emit_line(x, y)
+    return [run for run in runs if len(run) > 1], clipped
+
+
+def _new_cut_path(src, runs, scale):
+    """Obiect path nou, în coordonatele paginii, cu stilul de contur al obiectului sursă."""
+    obj = R.FPDFPageObj_CreateNewPath(ctypes.c_float(runs[0][0][1][0]), ctypes.c_float(runs[0][0][1][1]))
+    first = True
+    for run in runs:
+        for el in run:
+            if el[0] == "M":
+                if first:
+                    first = False
+                    continue
+                R.FPDFPath_MoveTo(obj, ctypes.c_float(el[1][0]), ctypes.c_float(el[1][1]))
+            elif el[0] == "L":
+                R.FPDFPath_LineTo(obj, ctypes.c_float(el[1][0]), ctypes.c_float(el[1][1]))
+            else:
+                (c1, c2, p) = el[1], el[2], el[3]
+                R.FPDFPath_BezierTo(obj, *[ctypes.c_float(v) for v in (c1[0], c1[1], c2[0], c2[1], p[0], p[1])])
+    rr, gg, bb, aa = (ctypes.c_uint() for _ in range(4))
+    if R.FPDFPageObj_GetStrokeColor(src, ctypes.byref(rr), ctypes.byref(gg), ctypes.byref(bb), ctypes.byref(aa)):
+        R.FPDFPageObj_SetStrokeColor(obj, rr.value, gg.value, bb.value, aa.value)
+    w = ctypes.c_float()
+    if R.FPDFPageObj_GetStrokeWidth(src, ctypes.byref(w)):
+        R.FPDFPageObj_SetStrokeWidth(obj, ctypes.c_float(w.value * scale))
+    cap = R.FPDFPageObj_GetLineCap(src)
+    if cap >= 0:
+        R.FPDFPageObj_SetLineCap(obj, cap)
+    join = R.FPDFPageObj_GetLineJoin(src)
+    if join >= 0:
+        R.FPDFPageObj_SetLineJoin(obj, join)
+    n = R.FPDFPageObj_GetDashCount(src)
+    if n > 0:
+        arr = (ctypes.c_float * n)()
+        if R.FPDFPageObj_GetDashArray(src, arr, n):
+            ph = ctypes.c_float()
+            R.FPDFPageObj_GetDashPhase(src, ctypes.byref(ph))
+            scaled = (ctypes.c_float * n)(*[v * scale for v in arr])
+            R.FPDFPageObj_SetDashArray(obj, scaled, n, ctypes.c_float(ph.value * scale))
+    R.FPDFPath_SetDrawMode(obj, 0, True)
+    return obj
+
+
 def _apply_removals_page(page: pdfium.PdfPage, ops: list[dict]) -> dict:
-    """ops: [{"mode": "objects", "ids": [...]}, {"mode": "text"|"zone", "rect": [...]}]"""
+    """ops: [{"mode": "objects", "ids": [...]}, {"mode": "text"|"zone", "rect": [...]}]
+
+    În modul „zone”, liniile care trec doar parțial prin zonă se taie la marginea ei: se înlocuiesc
+    cu un obiect nou care păstrează numai porțiunile din afară (cu același stil de contur).
+    Obiectele pline (săgeți, hașuri) parțial în zonă nu se pot tăia și sunt raportate ca rămase.
+
+    Obiectele din interiorul unui Form XObject (blocuri) nu se modifică: PDFium rescrie resursele
+    formularului fără conținutul lui, iar textul din bloc își pierde fontul. Ele se raportează ca
+    „locked” și se pot doar acoperi."""
     g = PageGeo.of(page)
     targets = {}
-    report = {"removed": 0, "partial": 0}
+    cuts = {}
+    report = {"removed": 0, "cut": 0, "partial": 0, "locked": 0}
     all_objs = list(_walk(page.raw))
     by_id = {oid: (obj, typ, pm, cont, nested) for oid, obj, typ, pm, cont, nested in all_objs}
     for op in ops:
@@ -442,10 +614,16 @@ def _apply_removals_page(page: pdfium.PdfPage, ops: list[dict]) -> dict:
         if mode == "objects":
             for oid in op.get("ids", []):
                 if oid in by_id:
+                    if by_id[oid][4]:
+                        report["locked"] += 1
+                        continue
                     targets[oid] = by_id[oid]
         elif mode in ("text", "zone"):
             x0, y0, x1, y1 = op["rect"]
             rx0, rx1, ry0, ry1 = min(x0, x1), max(x0, x1), min(y0, y1), max(y0, y1)
+            a = g.from_vis(rx0, ry0)
+            b = g.from_vis(rx1, ry1)
+            rpdf = (min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1]))
             for oid, (obj, typ, pm, cont, nested) in by_id.items():
                 if typ == R.FPDF_PAGEOBJ_FORM:
                     continue
@@ -455,22 +633,56 @@ def _apply_removals_page(page: pdfium.PdfPage, ops: list[dict]) -> dict:
                 if bb is None:
                     continue
                 vb = g.bbox_to_vis(*bb)
+                if nested:
+                    if not (vb[2] < rx0 or vb[0] > rx1 or vb[3] < ry0 or vb[1] > ry1):
+                        report["locked"] += 1
+                    continue
                 if typ == R.FPDF_PAGEOBJ_TEXT:
                     cx, cy = (vb[0] + vb[2]) / 2, (vb[1] + vb[3]) / 2
                     hit = rx0 <= cx <= rx1 and ry0 <= cy <= ry1
                 else:
                     hit = vb[0] >= rx0 and vb[2] <= rx1 and vb[1] >= ry0 and vb[3] <= ry1
-                    if not hit and not (vb[2] < rx0 or vb[0] > rx1 or vb[3] < ry0 or vb[1] > ry1):
-                        report["partial"] += 1
+                    touches = not (vb[2] < rx0 or vb[0] > rx1 or vb[3] < ry0 or vb[1] > ry1)
+                    if not hit and touches:
+                        fill = ctypes.c_int()
+                        stroke = ctypes.c_int()
+                        stroke_only = (
+                            typ == R.FPDF_PAGEOBJ_PATH
+                            and R.FPDFPath_GetDrawMode(obj, ctypes.byref(fill), ctypes.byref(stroke))
+                            and fill.value == 0
+                            and stroke.value
+                        )
+                        if stroke_only and oid not in targets:
+                            cuts[oid] = (obj, pm, cont, nested, rpdf)
+                        else:
+                            report["partial"] += 1
                 if hit:
                     targets[oid] = (obj, typ, pm, cont, nested)
+                    cuts.pop(oid, None)
+    # obiectele noi (porțiunile din afara zonei) se inserează pe locul obiectului de nivel 1 din care
+    # provin, de la indicele cel mai mare la cel mai mic, ca ordinea de desenare să se păstreze
+    inserts = []
+    for oid, (obj, pm, cont, nested, rpdf) in cuts.items():
+        total = mat_mul(_obj_matrix(obj), pm)
+        runs, clipped = _cut_runs(_path_points(obj, total), rpdf)
+        if not clipped:
+            continue  # doar dreptunghiul încadrator atinge zona; linia rămâne neatinsă
+        scale = math.sqrt(abs(total[0] * total[3] - total[1] * total[2])) or 1.0
+        inserts.append((int(oid.split(".")[0]), oid, runs, scale))
+        targets[oid] = (obj, R.FPDF_PAGEOBJ_PATH, pm, cont, nested)
+    for top_idx, oid, runs, scale in sorted(inserts, key=lambda t: -t[0]):
+        if runs:
+            new = _new_cut_path(targets[oid][0], runs, scale)
+            R.FPDFPage_InsertObjectAtIndex(page.raw, new, top_idx + 1)
+        report["cut"] += 1
     # se șterg întâi cele mai adânci, ca indicii părinților să nu conteze
     for oid in sorted(targets, key=lambda s: -s.count(".")):
         obj, _typ, _pm, cont, nested = targets[oid]
         ok = R.FPDFFormObj_RemoveObject(cont, obj) if nested else R.FPDFPage_RemoveObject(page.raw, obj)
         if ok:
             R.FPDFPageObj_Destroy(obj)
-            report["removed"] += 1
+            if oid not in cuts:
+                report["removed"] += 1
     if targets:
         R.FPDFPage_GenerateContent(page.raw)
     return report

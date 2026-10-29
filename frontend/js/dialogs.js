@@ -209,9 +209,11 @@ export function exportDialog(app, opts = {}) {
       setTimeout(() => URL.revokeObjectURL(url), 30000);
       closeModal();
       const removed = Object.values(report).reduce((s, r) => s + (r.removed || 0), 0);
-      const partial = Object.values(report).reduce((s, r) => s + (r.partial || 0), 0);
+      const sum = (k) => Object.values(report).reduce((s, r) => s + (r[k] || 0), 0);
+      const cut = sum("cut");
+      const left = sum("partial") + sum("locked");
       app.markExported();
-      toast(`Exportat ${a.download}${removed ? ` · ${removed} obiecte eliminate` : ""}${partial ? ` · ${partial} parțial în zonă, acoperite` : ""}`);
+      toast(`Exportat ${a.download}${removed ? ` · ${removed} obiecte eliminate` : ""}${cut ? ` · ${cut} linii tăiate la margine` : ""}${left ? ` · ${left} doar acoperite/rămase` : ""}`);
       if (opts.afterExport) opts.afterExport();
     } catch (e) {
       dlg.querySelector("#eMsg").textContent = e.message;
@@ -322,12 +324,18 @@ export async function redactDialog(app, annot, isNew) {
     if (o.type === "image") return "Imagine";
     return o.type;
   };
+  const LOCKED = ["în bloc — doar acoperire", "var(--warn)"];
   const statusOf = (o) => {
-    if (mode === "objects") return ids.has(o.id) ? ["se elimină", "var(--bad)"] : ["rămâne", "var(--ok)"];
-    if (mode === "text") return o.type === "text" ? ["se elimină", "var(--bad)"] : ["rămâne", "var(--ok)"];
+    if (mode === "objects") return o.locked ? LOCKED : ids.has(o.id) ? ["se elimină", "var(--bad)"] : ["rămâne", "var(--ok)"];
+    if (mode === "text") return o.type !== "text" ? ["rămâne", "var(--ok)"] : o.locked ? LOCKED : ["se elimină", "var(--bad)"];
+    if (o.locked) return LOCKED;
     if (o.type === "text" || o.inside) return ["se elimină", "var(--bad)"];
-    return ["acoperit parțial", "var(--warn)"];
+    if (o.cuttable) return ["tăiat la margine", "var(--accent)"];
+    return ["parțial — doar acoperire", "var(--warn)"];
   };
+  // în modul zonă, ce nu se poate tăia (blocuri, umpleri, imagini) se poate acoperi cu alb
+  const needsCover = () => objs.some((o) => o.locked || (!o.inside && o.type !== "text" && !o.cuttable));
+  let cover = annot.mode === "zone" && annot.cover !== undefined ? annot.cover : needsCover();
   const dlg = showModal(`
     <h2>Șterge din PDF-ul original</h2>
     <div class="sub">Pagina ${annot.page + 1} · zonă ${fmtNum(Math.abs(rect[2] - rect[0]) / K, ",", 1)} × ${fmtNum(Math.abs(rect[3] - rect[1]) / K, ",", 1)} mm · ${objs.length} obiecte găsite</div>
@@ -341,8 +349,10 @@ export async function redactDialog(app, annot, isNew) {
       <div class="cards">
         <button class="card" data-mode="objects"><b>Selecție pe obiecte</b><span>Elimini exact ce bifezi. Conturul rămâne intact dacă nu-l bifezi.</span></button>
         <button class="card" data-mode="text"><b>Doar textul</b><span>Elimină valoarea; liniile de cotă rămân și poți scrie valoarea nouă pe ele.</span></button>
-        <button class="card" data-mode="zone"><b>Tot din zonă</b><span>Elimină ce e complet în zonă și acoperă cu alb ce trece doar parțial (ex. conturul).</span></button>
+        <button class="card" data-mode="zone"><b>Tot din zonă</b><span>Elimină ce e în zonă și taie liniile care trec prin ea exact la margine (ex. conturul rămâne, cu o întrerupere).</span></button>
+        <label class="chk" id="rCoverRow"><input type="checkbox" id="rCover"> Acoperă zona cu alb (pentru ce nu se poate tăia)</label>
         <div class="note">AutoCAD exportă uneori textul ca linii (fonturi SHX): atunci apare ca „Linie / contur”, nu ca text.</div>
+        <div class="note" id="rLockNote" hidden>Unele obiecte sunt într-un bloc (Form XObject, ex. indicatorul): nu se pot modifica fără să strice fonturile blocului, deci se pot doar acoperi cu alb.</div>
       </div>
     </div>
     <div class="foot"><span class="muted">Se aplică la export; originalul de pe server rămâne neatins.</span><button class="ghost" data-close>Anulează</button><button class="primary" id="rOk">Aplică</button></div>`);
@@ -351,7 +361,7 @@ export async function redactDialog(app, annot, isNew) {
   const renderList = () => {
     list.innerHTML = objs.length ? objs.map((o) => {
       const [st, col] = statusOf(o);
-      return `<label data-oid="${o.id}"><input type="checkbox" ${ids.has(o.id) ? "checked" : ""} ${mode !== "objects" ? "disabled" : ""}>
+      return `<label data-oid="${o.id}"><input type="checkbox" ${ids.has(o.id) && !o.locked ? "checked" : ""} ${mode !== "objects" || o.locked ? "disabled" : ""}>
         <span>${label(o)}${o.inside ? "" : ' <span class="muted">(parțial)</span>'}</span><span class="st" style="color:${col}">${st}</span></label>`;
     }).join("") : `<span class="muted">Niciun obiect vectorial în zonă (pagină scanată?). Folosește Acoperă.</span>`;
     list.querySelectorAll("input").forEach((cb) => cb.addEventListener("change", () => {
@@ -366,9 +376,17 @@ export async function redactDialog(app, annot, isNew) {
       lb.addEventListener("mouseleave", () => drawBefore(null));
     });
   };
+  const coverCb = dlg.querySelector("#rCover");
+  coverCb.checked = cover;
+  coverCb.addEventListener("change", () => {
+    cover = coverCb.checked;
+    schedulePreview();
+  });
+  dlg.querySelector("#rLockNote").hidden = !objs.some((o) => o.locked);
   const setMode = (m) => {
     mode = m;
     dlg.querySelectorAll("[data-mode]").forEach((b) => b.classList.toggle("on", b.dataset.mode === m));
+    dlg.querySelector("#rCoverRow").hidden = m !== "zone";
     renderList();
     schedulePreview();
   };
@@ -436,7 +454,7 @@ export async function redactDialog(app, annot, isNew) {
       try {
         const url = await api.previewRemoval(app.doc.id, annot.page, ops(), imgScale);
         const im = await loadImg(url);
-        paint(dlg.querySelector("#rAfter"), im, mode === "zone" ? (ctx) => {
+        paint(dlg.querySelector("#rAfter"), im, mode === "zone" && cover ? (ctx) => {
           ctx.fillStyle = "#fff";
           ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
         } : null);
@@ -452,9 +470,11 @@ export async function redactDialog(app, annot, isNew) {
 
   dlg.querySelector("#rOk").addEventListener("click", () => {
     const keep = objs
-      .filter((o) => (mode === "objects" ? ids.has(o.id) : mode === "text" ? o.type === "text" : false))
+      .filter((o) => !o.locked)
+      .filter((o) => (mode === "objects" ? ids.has(o.id) : mode === "text" ? o.type === "text" : o.type === "text" || o.inside))
       .map((o) => ({ id: o.id, type: o.type, poly: o.poly, bbox: o.bbox }));
-    app.commitRedaction(annot, { mode, ids: [...ids], objs: keep }, isNew);
+    const keepIds = [...ids].filter((id) => !objs.some((o) => o.id === id && o.locked));
+    app.commitRedaction(annot, { mode, ids: keepIds, objs: keep, cover: mode === "zone" ? cover : undefined }, isNew);
     closeModal();
   });
 }
