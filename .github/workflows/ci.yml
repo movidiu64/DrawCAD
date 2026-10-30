@@ -55,7 +55,10 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/cotdata"
           docker run -d --name drawcad -p 8080:8080 -v "$RUNNER_TEMP/cotdata:/data" \
-            -e PUID=99 -e PGID=100 --security-opt no-new-privileges:true ${{ steps.img.outputs.name }}:test
+            -e PUID=99 -e PGID=100 --security-opt no-new-privileges:true \
+            --cap-drop ALL --cap-add CHOWN --cap-add SETUID --cap-add SETGID --cap-add DAC_OVERRIDE --cap-add FOWNER \
+            --read-only --tmpfs /tmp:size=512m --pids-limit 256 \
+            ${{ steps.img.outputs.name }}:test
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:8080/api/health && break; sleep 1; done
           curl -sf http://127.0.0.1:8080/api/health
       - uses: actions/setup-python@v5
@@ -66,6 +69,8 @@ jobs:
           pip install -r backend/requirements.txt playwright
           python -m playwright install --with-deps chromium
           python tools/e2e_smoke.py http://127.0.0.1:8080 e2e_out
+      - name: Verificare de securitate pe container
+        run: python tools/security_smoke.py http://127.0.0.1:8080
       - name: Verifică utilizatorul și permisiunile
         run: |
           docker exec drawcad grep -E "^(Uid|Gid):" /proc/1/status

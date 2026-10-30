@@ -79,6 +79,10 @@ Aplicația s-a numit inițial „Cotare”: variabilele vechi `COTARE_*` sunt ac
 | `PUID` / `PGID` | `99` / `100` | utilizatorul cu care rulează aplicația |
 | `DRAWCAD_MAX_UPLOAD_MB` | `200` | dimensiunea maximă a unui fișier încărcat |
 | `DRAWCAD_MAX_RENDER_PX` | `12000` | latura maximă, în pixeli, a randării unei pagini |
+| `DRAWCAD_MAX_PAGES` | `300` | numărul maxim de pagini al unui document |
+| `DRAWCAD_MAX_IMAGE_MPX` | `400` | megapixelii maximi ai unei imagini încărcate |
+| `DRAWCAD_PASSWORD` | gol | parolă HTTP Basic (utilizator `drawcad`); gol = fără parolă |
+| `DRAWCAD_CACHE_MB` | `512` | memoria pentru cache-ul de randări |
 | `DRAWCAD_RETENTION_DAYS` | `30` | zile după care un document nefolosit se șterge de pe server; `0` = niciodată |
 
 ## Utilizare
@@ -220,6 +224,18 @@ Modurile se aleg din săgeata de lângă „Snap”, în bara de jos. Taste: **F
 
 **Redeschidere:** un PDF exportat cu „strat editabil” se poate redeschide. Cotele revin editabile, iar originalul este recuperat din fișier, deci nimic nu se desenează de două ori.
 
+## Securitate
+
+Fișierele încărcate sunt tratate ca nesigure:
+- **Citire izolată.** Prima citire a unui fișier (decodarea imaginii, parsarea PDF-ului, randarea fiecărei pagini, extragerea geometriei) se face într-un proces separat, limitat la 3 GB de memorie și 120 s. Un fișier construit să blocheze, să umple memoria sau să dărâme biblioteca de citire e respins, iar serverul merge mai departe.
+- **Conținut activ eliminat.** Din PDF se scot JavaScript-ul, acțiunile automate (la deschidere, la pagină, la câmpuri), linkurile care pornesc programe sau deschid alte fișiere, trimiterea de formulare, fișierele atașate, adnotările multimedia și formularele XFA. Linkurile web obișnuite rămân. Desenul nu se schimbă, iar exporturile ies curate. La deschidere apare un mesaj cu ce s-a eliminat.
+- **Limite:** mărimea fișierului (`DRAWCAD_MAX_UPLOAD_MB`, citit în flux, fără să fie ținut tot în memorie), numărul de pagini (`DRAWCAD_MAX_PAGES`), megapixelii unei imagini (`DRAWCAD_MAX_IMAGE_MPX`, apără de „bombele de decompresie”), dimensiunea paginii și a datelor primite la export.
+- **Browser.** Content-Security-Policy strictă (doar scripturile aplicației, fără `eval`), `nosniff`, fără referrer și fără încadrare pe alte site-uri. Cererile care modifică date și vin de pe alt site sunt refuzate, așa că o pagină străină deschisă în browser nu poate încărca sau șterge documente.
+- **Container:** rulează ca utilizator neprivilegiat, cu `no-new-privileges`, fără capabilități în afara celor necesare pregătirii folderului `/data`, cu sistemul de fișiere doar-citire (se scrie doar în `/data` și `/tmp`) și număr limitat de procese.
+- **Acces:** aplicația nu are conturi; e gândită pentru rețeaua locală. Dacă o faci accesibilă din afară, pune-o în spatele unui reverse proxy cu HTTPS și setează `DRAWCAD_PASSWORD` (utilizator `drawcad`). Dacă proxy-ul folosește alt domeniu decât cel din bara browserului, adaugă-l în `DRAWCAD_ALLOWED_ORIGINS`.
+
+CI verifică toate acestea pe containerul construit (`tools/security_smoke.py`), cu un PDF „troian” de test.
+
 ## Date ISO 286
 
 Toleranțele IT și abaterile fundamentale (`frontend/js/iso286_data.js`) sunt preluate din TechTools, unde au fost:
@@ -243,7 +259,9 @@ frontend/   HTML + module ES, fără build (canvas 2D, font osifont)
 backend/    Starlette
   app/pdfcore.py randare (PDFium), geometrie pentru snap, obiecte din zonă,
                  eliminare obiecte, overlay vectorial (reportlab + pikepdf), atașamente
-  app/main.py    API + servire frontend
+  app/main.py    API + servire frontend, antete de securitate, limite
+  app/ingest.py  prima citire a fișierelor încărcate, în proces separat și limitat
+  app/sanitize.py eliminarea conținutului activ din PDF (JavaScript, acțiuni, atașamente)
 ```
 
 Frontend-ul calculează o singură dată geometria fiecărei cote și o trimite la export ca primitive. Ce vezi pe ecran e ce iese în PDF, cu același font și aceleași lățimi de text.
