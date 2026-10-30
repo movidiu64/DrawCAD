@@ -88,10 +88,10 @@ jobs:
         if: failure()
         run: |
           for f in e2e_out/e2e.log e2e_out/security.log; do
-            [ -f "$f" ] && tail -n 15 "$f" | sed "s|^|::error title=$f::|"
+            [ -f "$f" ] && grep -v '^ ' "$f" | tail -n 3 | sed "s|^|::error title=$f::|"
           done
           docker ps -a --format '{{.Names}} {{.Status}}' | sed 's|^|::error title=docker ps::|'
-          docker logs drawcad 2>&1 | tail -n 25 | sed 's|^|::error title=container::|'
+          docker logs drawcad 2>&1 | grep -v '" 200' | tail -n 5 | sed 's|^|::error title=container::|'
           true
       - uses: actions/upload-artifact@v4
         if: always()
