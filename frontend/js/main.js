@@ -1,6 +1,6 @@
 // Aplicația: stare, unelte, evenimente, salvare, export.
 import * as api from "./api.js";
-import { build, derive, hit, setHandle, moveAnnot, annotSnapPoints, exportPrims, K, fmtNum, newId, scaleAnchor, SCALE_MIN, SCALE_MAX } from "./annots.js";
+import { build, derive, hit, setHandle, moveAnnot, annotSnapPoints, exportPrims, K, fmtNum, newId, scaleAnchor, typeName, SCALE_MIN, SCALE_MAX } from "./annots.js";
 import { View, COLORS } from "./view.js";
 import { Snapper, MODES, DEFAULT_MODES, LABELS } from "./osnap.js";
 import { Panel } from "./panel.js";
@@ -408,6 +408,8 @@ class App {
     this.tool = id;
     this.clicks = [];
     this.lastMeasure = null;
+    this.hover = null;
+    this.hoverKey2 = "";
     this.clearAcq();
     const grp = TOOL_BY_ID[id].group;
     if (this.collapsedGroups && this.collapsedGroups.has(grp)) this.toggleGroup(grp, true);
@@ -1333,6 +1335,8 @@ class App {
         }
         this.setBox(a, b);
         cv.style.cursor = this.edgeCursor(d.code);
+        const ks = this.settings.scale || 1;
+        this.dragTip = sn ? null : { p: pt, txt: `${fmtNum(((b[2] - b[0]) / K) * ks, ",", 1)} × ${fmtNum(((b[3] - b[1]) / K) * ks, ",", 1)} mm` };
         this.view.overlay = { snap: sn };
         this.view.redraw();
         this.showCoords(pt);
@@ -1348,6 +1352,10 @@ class App {
         const a = this.annots.find((x) => x.id === d.id);
         setHandle(a, d.k, d.k === "tx" ? raw : pt, this.builtOf(a));
         this.view.overlay = { snap: d.k === "tx" ? null : sn };
+        cv.style.cursor = "grabbing";
+        const bm = this.builtOf(a);
+        const val = bm && bm.measured != null ? ` · ${fmtNum(bm.measured, ",", 2)}${bm.unit === "°" ? "°" : " mm"}` : "";
+        this.dragTip = sn ? null : { p: pt, txt: `${d.label || "Modifică"}${val}` };
         this.view.redraw();
         this.showCoords(pt);
         return;
@@ -1361,6 +1369,8 @@ class App {
         const k = d.s0 * (Math.hypot(raw[0] - d.anchor[0], raw[1] - d.anchor[1]) / d.d0);
         a.scale = Math.round(Math.min(SCALE_MAX, Math.max(SCALE_MIN, k)) * 20) / 20;
         this.setHint(`Mărime ${Math.round(a.scale * 100)}% · eliberează pentru a fixa`);
+        cv.style.cursor = d.cursor || "nwse-resize";
+        this.dragTip = { p: raw, txt: `Mărime ${Math.round(a.scale * 100)}%` };
         this.view.redraw();
         return;
       }
@@ -1374,6 +1384,9 @@ class App {
         }
         for (const a of this.annots) if (d.ids.includes(a.id)) moveAnnot(a, dx, dy);
         d.last = raw;
+        cv.style.cursor = "grabbing";
+        const k = this.settings.scale || 1;
+        this.dragTip = { p: raw, txt: `Mută${d.ids.length > 1 ? ` ${d.ids.length} adnotări` : ""}: Δx ${fmtNum(((raw[0] - d.start[0]) / K) * k, ",", 2)} · Δy ${fmtNum(((d.start[1] - raw[1]) / K) * k, ",", 2)} mm` };
         this.view.redraw();
         return;
       }
@@ -1387,11 +1400,23 @@ class App {
       if (t.kind === "select" || t.kind === "pan") {
         this.showCoords(raw);
         if (t.kind === "select" && !d) {
-          const edge = this.edgeAt(sx, sy, e.pointerType === "touch");
-          // peste o adnotare: cursor de mutare, ca să se vadă ce se poate apuca
-          cv.style.cursor = edge ? this.edgeCursor(edge.code) : this.annotAt(raw) ? "move" : "default";
+          // ce s-ar apuca la click: mâner, margine sau adnotare, cu cursorul și eticheta potrivite
+          const hv = e.pointerType === "touch" ? null : this.hoverAt(sx, sy, raw, false);
+          cv.style.cursor = hv ? hv.cursor : "default";
+          this.setHover(hv, raw);
         }
         return;
+      }
+      if (!d && !this.clicks.length) {
+        // și cu altă unealtă, colțurile de mărire ale selecției rămân apucabile
+        const hs = this.handleAt(sx, sy);
+        if (hs && hs.h.k === "sc") {
+          cv.style.cursor = this.handleCursor(hs.a, hs.h);
+          this.setHover({ kind: "handle", a: hs.a, h: hs.h, label: "Mărește / micșorează" }, raw);
+          return;
+        }
+        if (this.hover) this.setHover(null, raw);
+        cv.style.cursor = "crosshair";
       }
       const anchor = d && d.kind === "rect" ? d.start : this.clicks[this.clicks.length - 1];
       const { pt, sn } = this.snapPoint(raw, e, anchor);
@@ -1406,6 +1431,7 @@ class App {
     });
 
     const up = (e) => {
+      this.dragTip = null;
       if (e.pointerType === "touch") {
         this.touches.delete(e.pointerId);
         clearTimeout(this.pressTimer);
@@ -1524,6 +1550,7 @@ class App {
       if (this.mmenu || this.mmenuClosedAt > performance.now() - 400) e.preventDefault();
     });
     cv.addEventListener("pointerleave", () => {
+      if (this.hover) this.setHover(null, null);
       if (!this.drag && this.view.overlay && this.view.overlay.snap) {
         this.view.overlay.snap = null;
         this.view.redraw();
@@ -1572,7 +1599,9 @@ class App {
 
   startSelectDrag(raw, sx, sy, e) {
     const v = this.view;
-    if (!e.shiftKey && this.sel.size <= 1 && this.tryHandleDrag(sx, sy)) return;
+    this.hover = null;
+    this.hoverKey2 = "";
+    if (!e.shiftKey && this.sel.size <= 1 && this.tryHandleDrag(sx, sy, false, e.pointerType === "touch")) return;
     const edge = !e.shiftKey && this.edgeAt(sx, sy, e.pointerType === "touch");
     if (edge) {
       if (!this.sel.has(edge.a.id)) this.select(edge.a.id);
@@ -1589,7 +1618,7 @@ class App {
           return;
         }
         if (!this.sel.has(a.id)) this.select(a.id);
-        this.drag = { kind: "move", ids: [...this.sel], last: raw, sx, sy };
+        this.drag = { kind: "move", ids: [...this.sel], last: raw, start: raw, sx, sy };
         return;
       }
     }
@@ -1601,26 +1630,93 @@ class App {
    * Un click pe pătrățelele adnotării selectate o editează. Cu altă unealtă activă contează doar
    * pătrățelul de mărire: capetele trebuie să rămână libere pentru cote înlănțuite din același punct.
    */
-  tryHandleDrag(sx, sy, onlyScale = false) {
-    const v = this.view;
+  /** Mânerul adnotării selectate cel mai apropiat de cursor (pixeli de ecran), sau null. */
+  handleAt(sx, sy, touch = false) {
     const sel = this.selected();
-    if (sel && sel.page === this.page) {
-      const built = this.builtOf(sel);
-      for (const h of built.handles || []) {
-        if (!h.p) continue;
-        const [hx, hy] = v.toScreen(h.p);
-        if (Math.hypot(hx - sx, hy - sy) <= 9 && h.k === "sc") {
-          const an = scaleAnchor(sel);
-          this.drag = { kind: "scale", id: sel.id, anchor: an, d0: Math.max(1e-3, Math.hypot(h.p[0] - an[0], h.p[1] - an[1])), s0: sel.scale || 1 };
-          return true;
-        }
-        if (Math.hypot(hx - sx, hy - sy) <= 9 && !onlyScale) {
-          this.drag = { kind: "handle", id: sel.id, k: h.k, anchor: h.k === "p2" ? sel.p1 : h.k === "p1" ? sel.p2 : h.k === "elbow" ? sel.target : null };
-          return true;
-        }
+    if (!sel || sel.page !== this.page || this.sel.size > 1 || this.hidden.has(this.layerOf(sel))) return null;
+    const r = touch ? 16 : 10;
+    let best = null;
+    let bd = r;
+    for (const h of this.builtOf(sel).handles || []) {
+      if (!h.p) continue;
+      const [hx, hy] = this.view.toScreen(h.p);
+      // la egalitate, punctele adnotării au prioritate față de colțurile de mărire
+      const d = Math.hypot(hx - sx, hy - sy) + (h.k === "sc" ? 1.5 : 0);
+      if (d <= bd) {
+        bd = d;
+        best = { a: sel, h };
       }
     }
-    return false;
+    return best;
+  }
+
+  /** Ce face un mâner, în cuvinte (tooltip la hover). */
+  handleLabel(a, k) {
+    if (k === "sc") return "Mărește / micșorează";
+    if (k === "tx") return "Mută textul cotei";
+    if (k === "elbow") return "Cotul liniei — frânge linia";
+    if (k === "target") return "Vârful pe piesă";
+    if (k === "pos" || (k === "p" && ["text", "note", "revtab", "bom"].includes(a.type))) return "Mută";
+    if (k === "vp") return "Partea spre care privești";
+    if (k === "tp") return "Mută litera";
+    if (k === "r0" || k === "r1") return "Colț — redimensionează";
+    if (k === "p3") return a.type === "ang" ? "Poziția arcului (alege unghiul)" : "Poziția liniei de cotă";
+    if (k === "c") return "Centrul";
+    if (k === "v") return "Vârful unghiului";
+    if (k === "p1" || k === "p2") return "Punct de cotă — trage pe alt punct";
+    if (k === "p" && a.type === "rad") return "Punct pe arc";
+    if (k.startsWith("pts.")) return a.type === "shape" && (a.kind === "circle" || a.kind === "cross") && k === "pts.0" ? "Centrul" : "Punct — trage (cu snap)";
+    return "Trage pentru a modifica";
+  }
+
+  handleCursor(a, h) {
+    if (h.k === "sc") {
+      const an = scaleAnchor(a);
+      return (h.p[0] - an[0]) * (h.p[1] - an[1]) >= 0 ? "nwse-resize" : "nesw-resize";
+    }
+    if (h.k === "pos" || h.k === "tp" || (h.k === "p" && ["text", "note", "revtab", "bom"].includes(a.type))) return "move";
+    return "grab";
+  }
+
+  /**
+   * Un click pe mânerele adnotării selectate o editează. Cu altă unealtă activă contează doar
+   * pătrățelele de mărire: capetele trebuie să rămână libere pentru cote înlănțuite din același punct.
+   */
+  tryHandleDrag(sx, sy, onlyScale = false, touch = false) {
+    const hit0 = this.handleAt(sx, sy, touch);
+    if (!hit0) return false;
+    const { a: sel, h } = hit0;
+    if (h.k === "sc") {
+      const an = scaleAnchor(sel);
+      this.drag = { kind: "scale", id: sel.id, anchor: an, d0: Math.max(1e-3, Math.hypot(h.p[0] - an[0], h.p[1] - an[1])), s0: sel.scale || 1, cursor: this.handleCursor(sel, h) };
+      return true;
+    }
+    if (onlyScale) return false;
+    this.drag = { kind: "handle", id: sel.id, k: h.k, label: this.handleLabel(sel, h.k), anchor: h.k === "p2" ? sel.p1 : h.k === "p1" ? sel.p2 : h.k === "elbow" ? sel.target : null };
+    return true;
+  }
+
+  /** Ce e sub cursor în modul Selecție: mâner, margine de casetă sau adnotare. */
+  hoverAt(sx, sy, raw, touch) {
+    const h = this.handleAt(sx, sy, touch);
+    if (h) return { kind: "handle", a: h.a, h: h.h, cursor: this.handleCursor(h.a, h.h), label: this.handleLabel(h.a, h.h.k) };
+    const edge = this.edgeAt(sx, sy, touch);
+    if (edge) return { kind: "edge", a: edge.a, cursor: this.edgeCursor(edge.code), label: edge.code.length === 2 ? "Colț — redimensionează" : "Margine — redimensionează" };
+    const a = this.annotAt(raw);
+    if (a) return { kind: "body", a, cursor: "move", label: `${typeName(a)}${this.sel.has(a.id) ? " — trage pentru a muta" : " — click pentru a selecta, trage pentru a muta"}` };
+    return null;
+  }
+
+  setHover(hv, raw) {
+    const key = hv ? `${hv.kind}:${hv.a.id}:${hv.h ? hv.h.k + hv.h.p.join(",") : ""}` : "";
+    this.hoverPt = raw;
+    if (key === this.hoverKey2) {
+      if (hv) this.view.redraw(); // eticheta urmează cursorul
+      return;
+    }
+    this.hoverKey2 = key;
+    this.hover = hv;
+    this.view.redraw();
   }
 
   updateOverlay(pt, sn) {

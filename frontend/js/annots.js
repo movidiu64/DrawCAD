@@ -889,19 +889,13 @@ export function build(a, S, measure) {
   for (const p of b.prims) if (p.t === "T") p.txt = fontSafe(p.txt);
   b.bbox = primsBBox(b.prims);
   if (b.bbox && SCALABLE.has(a.type)) {
-    // pătrățelul de mărire: colțul casetei cel mai depărtat de ancoră
+    // pătrățelele de mărire: colțurile casetei aflate departe de ancoră (cel mai depărtat primul)
     const an = scaleAnchor(a);
     const [x0, y0, x1, y1] = b.bbox;
-    let best = null;
-    let bd = -1;
-    for (const q of [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]) {
-      const d = Math.hypot(q[0] - an[0], q[1] - an[1]);
-      if (d > bd) {
-        bd = d;
-        best = q;
-      }
-    }
-    b.handles = [...(b.handles || []), { k: "sc", p: best }];
+    const corners = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map((q) => ({ q, d: Math.hypot(q[0] - an[0], q[1] - an[1]) }));
+    corners.sort((u, v) => v.d - u.d);
+    const far = corners.filter((c) => c.d >= corners[0].d * 0.45 && c.d > 4);
+    b.handles = [...(b.handles || []), ...far.map((c) => ({ k: "sc", p: c.q }))];
   }
   return b;
 }

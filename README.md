@@ -175,6 +175,14 @@ Modurile se aleg din săgeata de lângă „Snap”, în bara de jos. Taste: **F
 
 **Listă de componente:** dai click pe colțul dreapta-sus al cartușului. Lista se așază deasupra, cu antetul jos și poziția 1 lângă antet (ISO 7573), câte un rând pentru fiecare reper de pe desen. Coloane: Poz., Denumire, Buc., Material, Observații. „Din repere” adaugă reperele puse ulterior.
 
+**Apucat, mutat, mărit:** în modul Selecție cursorul și o etichetă scurtă arată ce se apucă la click:
+- **peste o adnotare:** conturul ei se aprinde, cursorul devine cruce de mutare;
+- **peste un mâner al adnotării selectate:** mânerul primește un inel, iar eticheta spune ce face („Punct de cotă”, „Poziția liniei de cotă”, „Mută textul cotei”, „Cotul liniei”…);
+- **peste un colț de mărire:** colțurile albe ale casetei punctate, cu săgeată de redimensionare;
+- **peste marginea unei casete:** săgeata de redimensionare, ca la Windows.
+
+În timpul tragerii eticheta arată valoarea: deplasarea Δx/Δy, procentul de mărire, noua cotă sau dimensiunile casetei.
+
 **Ștergerile se văd direct în editor:** pagina e randată cu ștergerile aplicate, exact ca în PDF-ul exportat; rămâne doar conturul roșu al zonei.
 
 **Casete (acoperiri, ștergeri, înnegriri, cote tăiate, dreptunghiuri desenate):** ca la ferestrele din Windows, cursorul se schimbă în săgeată de redimensionare pe margini și colțuri; tragi de margine și caseta se mărește sau se micșorează, cu snap.

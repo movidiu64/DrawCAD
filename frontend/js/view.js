@@ -232,8 +232,15 @@ export class View {
     }
     const app = this.app;
     const single = app.sel.size === 1;
+    const hv = app.hover;
     for (const { a, built } of app.visibleBuilt()) {
       const on = app.isSelected(a.id);
+      if (hv && hv.a.id === a.id && hv.kind === "body" && !on) {
+        // sub cursor: conturul se aprinde ușor, ca să se vadă ce se apucă
+        ctx.globalAlpha = 0.22;
+        drawPrims(ctx, built.prims.filter((p) => p.t !== "R"), z, () => COLORS.sel, 6, { noDash: true });
+        ctx.globalAlpha = 1;
+      }
       if (on) {
         // contur de selecție sub desen; textul primește o casetă
         ctx.globalAlpha = 0.35;
@@ -247,7 +254,20 @@ export class View {
         ctx.globalAlpha = 1;
       }
       drawPrims(ctx, built.prims, z);
-      if (on && single) this.drawHandles(built);
+      if (on && single) {
+        // caseta adnotării, ca să se vadă de unde se mărește
+        if (built.bbox && (built.handles || []).some((h) => h.k === "sc")) {
+          const [x0, y0, x1, y1] = built.bbox;
+          ctx.setLineDash([4 / z, 3 / z]);
+          ctx.strokeStyle = COLORS.sel;
+          ctx.globalAlpha = 0.7;
+          ctx.lineWidth = 1 / z;
+          ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 1;
+        }
+        this.drawHandles(built, hv && hv.kind === "handle" ? hv.h : null);
+      }
     }
     const ov = this.overlay;
     if (ov) {
@@ -267,11 +287,24 @@ export class View {
       if (ov.snap) this.drawSnap(ov.snap);
     }
     if ((app.acq && app.acq.length) || app.parSeg) this.drawAcquired(app.acq || [], app.parSeg);
+    // eticheta de lângă cursor: ce face mânerul / caseta de sub cursor, sau valoarea în timpul tragerii
+    if (app.dragTip) this.drawTip(app.dragTip.txt, app.dragTip.p[0], app.dragTip.p[1]);
+    else if (hv && hv.label && app.hoverPt && !(ov && ov.snap)) this.drawTip(hv.label, app.hoverPt[0], app.hoverPt[1], true);
   }
 
-  drawHandles(built) {
+  drawHandles(built, hot) {
     const ctx = this.ctx;
     const s = 7 / this.zoom;
+    if (hot && hot.p) {
+      // mânerul de sub cursor: inel în jur
+      ctx.beginPath();
+      ctx.arc(hot.p[0], hot.p[1], 9 / this.zoom, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(242,169,59,0.25)";
+      ctx.fill();
+      ctx.strokeStyle = COLORS.sel;
+      ctx.lineWidth = 1.5 / this.zoom;
+      ctx.stroke();
+    }
     for (const h of built.handles || []) {
       if (!h.p) continue;
       ctx.fillStyle = h.k === "tx" ? "#ffffff" : COLORS.sel;
@@ -401,17 +434,17 @@ export class View {
   }
 
   /** Eticheta de lângă cursor, în pixeli de ecran (ca tooltip-ul de snap din AutoCAD). */
-  drawTip(txt, x, y) {
+  drawTip(txt, x, y, subtle = false) {
     const ctx = this.ctx;
     const d = this.dpr;
-    const sx = x * this.zoom + this.panX + 16;
-    const sy = y * this.zoom + this.panY + 18;
+    const sx = Math.min(x * this.zoom + this.panX + 16, this.cw - 8 - txt.length * 6.5);
+    const sy = Math.min(y * this.zoom + this.panY + 18, this.ch - 26);
     ctx.save();
     ctx.setTransform(d, 0, 0, d, 0, 0);
     ctx.font = "12px system-ui, sans-serif";
     const w = ctx.measureText(txt).width + 12;
     ctx.fillStyle = "rgba(21,24,28,0.92)";
-    ctx.strokeStyle = "#e07b00";
+    ctx.strokeStyle = subtle ? "#4a525d" : "#e07b00";
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.rect(sx, sy, w, 20);

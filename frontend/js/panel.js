@@ -222,7 +222,7 @@ export class Panel {
         <span class="mono" style="min-width:60px;text-align:center;font-size:15px">${Math.round(k * 100)}%</span>
         <button class="ghost" data-act="scalestep" data-v="0.1" aria-label="Mărește" style="width:40px;padding:0">+</button></div>
       <div class="pills">${opts.map((v) => `<button data-act="scale" data-v="${v}" class="${Math.abs(k - v) < 0.001 ? "on" : ""}">${Math.round(v * 100)}%</button>`).join("")}</div>
-      <div class="sub">Sau trage de pătrățelul alb din colțul adnotării selectate.</div></div>`;
+      <div class="sub">Sau trage de oricare colț alb al casetei punctate din jurul adnotării.</div></div>`;
   }
 
   previewBox() {
