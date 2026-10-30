@@ -1,7 +1,8 @@
 // Aplicația: stare, unelte, evenimente, salvare, export.
 import * as api from "./api.js";
 import { build, derive, hit, setHandle, moveAnnot, annotSnapPoints, exportPrims, K, fmtNum, newId, scaleAnchor, SCALE_MIN, SCALE_MAX } from "./annots.js";
-import { View, SnapIndex, COLORS } from "./view.js";
+import { View, COLORS } from "./view.js";
+import { Snapper, MODES, DEFAULT_MODES, LABELS } from "./osnap.js";
 import { Panel } from "./panel.js";
 import { TOOLS, TOOL_BY_ID, TOOL_BY_KEY, finalize } from "./tools.js";
 import * as dlg from "./dialogs.js";
@@ -23,7 +24,15 @@ class App {
     this.undo = [];
     this.redo = [];
     this.cache = new Map();
-    this.snapIdx = new SnapIndex();
+    this.snapper = new Snapper();
+    this.noSnapper = new Snapper();
+    this.snapCfg = { modes: [...DEFAULT_MODES], polar: true, polarInc: 15, tracking: true, ortho: false, on: true };
+    try {
+      Object.assign(this.snapCfg, JSON.parse(localStorage.getItem("cotare.snap") || "{}"));
+    } catch (_) { /* implicit */ }
+    this.acq = [];
+    this.parDir = null;
+    this.parSeg = null;
     this.measureCtx = document.createElement("canvas").getContext("2d");
     this.measureCtx.fontKerning = "none";
     this.mcache = new Map();
@@ -66,6 +75,7 @@ class App {
     this.clicks = [];
     this.view.overlay = null;
     this.setHint(t.hint);
+    this.clearAcq();
     if (pts.length >= (t.min || 2)) this.addAnnot(finalize(t.make(pts, this, close || t.closed)));
     else this.view.redraw();
   }
@@ -79,6 +89,7 @@ class App {
     }
     this.buildToolbar();
     this.bindUi();
+    this.bindSnapUi();
     this.bindCanvas();
     this.bindKeys();
     this.panel.render();
@@ -196,6 +207,7 @@ class App {
     this.tool = id;
     this.clicks = [];
     this.lastMeasure = null;
+    this.clearAcq();
     const grp = TOOL_BY_ID[id].group;
     if (this.collapsedGroups && this.collapsedGroups.has(grp)) this.toggleGroup(grp, true);
     this.view.overlay = null;
@@ -256,9 +268,10 @@ class App {
     this.view.setPage(this.doc.id, n, p.w, p.h);
     this.renderTabs();
     this.panel.render();
-    this.snapIdx = new SnapIndex();
+    this.snapper = new Snapper();
+    this.clearAcq();
     api.snap(this.doc.id, n).then((s) => {
-      if (this.page === n) this.snapIdx = new SnapIndex(s.pts, s.segs);
+      if (this.page === n) this.snapper = new Snapper(s);
     }).catch(() => {});
   }
 
@@ -680,27 +693,167 @@ class App {
   // ------------------------------------------------------------ mouse
   snapPoint(raw, e, anchor) {
     const v = this.view;
+    const cfg = this.snapCfg;
+    const ortho = e.shiftKey || cfg.ortho;
     let pt = raw;
     let sn = null;
-    if ($("stSnap").checked && !e.altKey) {
-      const extra = [];
-      const segs = [];
-      for (const { a, built } of this.visibleBuilt()) {
-        if (this.drag && this.drag.id === a.id) continue;
-        if (built.snap) {
-          extra.push(...built.snap.pts);
-          segs.push(...built.snap.segs);
-        } else extra.push(...annotSnapPoints(built));
+    if (!e.altKey) {
+      const on = cfg.on;
+      const extra = { pts: [], segs: [], arcs: [] };
+      if (on) {
+        for (const { a, built } of this.visibleBuilt()) {
+          if (this.drag && this.drag.id === a.id) continue;
+          if (built.snap) {
+            extra.pts.push(...built.snap.pts);
+            extra.segs.push(...built.snap.segs);
+            if (built.snap.arcs) extra.arcs.push(...built.snap.arcs);
+          } else extra.pts.push(...annotSnapPoints(built));
+        }
       }
-      sn = this.snapIdx.nearest(raw[0], raw[1], 10 / v.zoom, extra, segs);
-      if (sn) pt = sn.p;
+      this._extra = extra;
+      // originalul ascuns pe ecran nu mai „prinde” cursorul
+      const sp = on && !this.hidden.has("orig") ? this.snapper : this.noSnapper;
+      sn = sp.snap(raw, {
+        tol: 10 / v.zoom,
+        modes: on ? new Set(cfg.modes) : new Set(),
+        anchor,
+        extra,
+        acq: on ? this.acq : [],
+        parDir: this.parDir,
+        polarInc: !ortho && cfg.polar ? cfg.polarInc : 0,
+        tracking: on && cfg.tracking,
+      });
+      if (sn) {
+        pt = sn.p;
+        sn.label = this.snapLabel(sn, anchor);
+      }
     }
-    if (!sn && anchor && (e.shiftKey || $("stOrtho").checked)) {
+    if ((!sn || sn.kind === "n") && anchor && ortho) {
       const dx = Math.abs(raw[0] - anchor[0]);
       const dy = Math.abs(raw[1] - anchor[1]);
       pt = dx >= dy ? [raw[0], anchor[1]] : [anchor[0], raw[1]];
+      sn = null;
     }
     return { pt, sn };
+  }
+
+  snapLabel(sn, anchor) {
+    let s = LABELS[sn.kind] || "";
+    if (sn.d2 && sn.d2 !== sn.kind) s += ` + ${LABELS[sn.d2].toLowerCase()}`;
+    if (sn.onObj) s += " ∩ obiect";
+    const from = sn.from || (sn.kind === "pol" || sn.kind === "par" ? anchor : null);
+    if (from && (sn.kind === "pol" || sn.kind === "par" || sn.kind === "trk" || sn.kind === "ext")) {
+      const L = (Math.hypot(sn.p[0] - from[0], sn.p[1] - from[1]) / K) * (this.settings.scale || 1);
+      const ang = ((Math.atan2(-(sn.p[1] - from[1]), sn.p[0] - from[0]) * 180) / Math.PI + 360) % 360;
+      s += `: ${fmtNum(L, ",", 2)} < ${fmtNum(ang, ",", 1)}°`;
+    }
+    return s;
+  }
+
+  /**
+   * Achiziție ca în AutoCAD: cursorul oprit ~½ s pe un punct îl marchează pentru urmărire și
+   * extensie (încă o oprire îl scoate); oprit pe o linie, în timpul unei comenzi, îi ia direcția
+   * pentru snap paralel.
+   */
+  trackHover(sn, raw) {
+    const cfg = this.snapCfg;
+    if (!cfg.on) return;
+    const pointKinds = new Set(["e", "m", "c", "x", "q", "ax", "a"]);
+    let key = null;
+    let act = null;
+    if (sn && pointKinds.has(sn.kind) && (cfg.tracking || cfg.modes.includes("ext"))) {
+      key = `p${sn.p[0].toFixed(2)},${sn.p[1].toFixed(2)}`;
+      const p = [...sn.p];
+      act = () => this.toggleAcq(p);
+    } else if (this.clicks.length && cfg.modes.includes("par") && (!sn || sn.kind === "n" || sn.kind === "p")) {
+      const u = (this.hidden.has("orig") ? this.noSnapper : this.snapper).dirUnder(raw[0], raw[1], 10 / this.view.zoom, this._extra || {});
+      if (u) {
+        key = `s${u.seg.slice(0, 4).join(",")}`;
+        act = () => {
+          this.parDir = u.dir;
+          this.parSeg = u.seg.slice(0, 4);
+        };
+      }
+    }
+    if (key === this.hoverKey) return;
+    this.hoverKey = key;
+    clearTimeout(this.hoverTimer);
+    if (act) {
+      this.hoverTimer = setTimeout(() => {
+        if (this.hoverKey !== key) return;
+        act();
+        this.view.redraw();
+      }, 450);
+    }
+  }
+
+  toggleAcq(p) {
+    const i = this.acq.findIndex((q) => Math.hypot(q.p[0] - p[0], q.p[1] - p[1]) < 0.01);
+    if (i >= 0) this.acq.splice(i, 1);
+    else {
+      const sp = this.hidden.has("orig") ? this.noSnapper : this.snapper;
+      this.acq.push({ p, dirs: sp.dirsAt(p, this._extra || {}) });
+      if (this.acq.length > 7) this.acq.shift();
+    }
+  }
+
+  clearAcq() {
+    this.acq = [];
+    this.parDir = null;
+    this.parSeg = null;
+    this.hoverKey = null;
+    clearTimeout(this.hoverTimer);
+  }
+
+  saveSnapCfg() {
+    try {
+      localStorage.setItem("cotare.snap", JSON.stringify(this.snapCfg));
+    } catch (_) { /* fără memorare */ }
+    this.syncSnapUi();
+  }
+
+  syncSnapUi() {
+    const c = this.snapCfg;
+    $("stSnap").checked = c.on;
+    $("stOrtho").checked = c.ortho;
+    $("stPolar").checked = c.polar;
+    $("stTrack").checked = c.tracking;
+    $("stPolarInc").value = String(c.polarInc);
+    const m = $("snapMenu");
+    if (m) m.querySelectorAll("[data-mode]").forEach((cb) => { cb.checked = c.modes.includes(cb.dataset.mode); });
+  }
+
+  bindSnapUi() {
+    const c = this.snapCfg;
+    $("snapMenu").innerHTML = `<div class="h">Moduri de snap</div>
+      ${MODES.map((m) => `<label class="chk"><input type="checkbox" data-mode="${m.id}"> ${m.name}</label>`).join("")}
+      <div class="row"><button class="ghost" data-all="1">Toate</button><button class="ghost" data-all="0">Niciunul</button></div>
+      <div class="sub">Urmărire: oprește cursorul o clipă pe un punct (apare o cruciuliță verde), apoi mișcă-te pe orizontală, verticală sau în prelungirea liniei. Încă o oprire pe punct îl scoate.<br>Paralel: în timpul unei comenzi, oprește-te pe o linie, apoi mișcă-te aproape paralel cu ea.<br>F3 snap · F8 ortho · F10 polar · F11 urmărire · Alt = fără snap</div>`;
+    $("snapMenu").querySelectorAll("[data-mode]").forEach((cb) => cb.addEventListener("change", () => {
+      const set = new Set(c.modes);
+      if (cb.checked) set.add(cb.dataset.mode);
+      else set.delete(cb.dataset.mode);
+      c.modes = MODES.map((m) => m.id).filter((id) => set.has(id));
+      this.saveSnapCfg();
+    }));
+    $("snapMenu").querySelectorAll("[data-all]").forEach((b) => b.addEventListener("click", () => {
+      c.modes = b.dataset.all === "1" ? MODES.map((m) => m.id) : [];
+      this.saveSnapCfg();
+    }));
+    $("stSnapMenu").addEventListener("click", (e) => {
+      e.stopPropagation();
+      $("snapMenu").hidden = !$("snapMenu").hidden;
+    });
+    document.addEventListener("pointerdown", (e) => {
+      if (!$("snapMenu").hidden && !e.target.closest(".snapctl")) $("snapMenu").hidden = true;
+    });
+    $("stSnap").addEventListener("change", () => { c.on = $("stSnap").checked; this.clearAcq(); this.saveSnapCfg(); });
+    $("stTrack").addEventListener("change", () => { c.tracking = $("stTrack").checked; this.saveSnapCfg(); });
+    // ortho și polar se exclud, ca în AutoCAD
+    $("stOrtho").addEventListener("change", () => { c.ortho = $("stOrtho").checked; if (c.ortho) c.polar = false; this.saveSnapCfg(); });
+    $("stPolar").addEventListener("change", () => { c.polar = $("stPolar").checked; if (c.polar) c.ortho = false; this.saveSnapCfg(); });
+    $("stPolarInc").addEventListener("change", () => { c.polarInc = Number($("stPolarInc").value); c.polar = true; c.ortho = false; this.saveSnapCfg(); });
+    this.syncSnapUi();
   }
 
   bindCanvas() {
@@ -774,6 +927,7 @@ class App {
             return;
           }
           this.addAnnot(finalize(t.make(pts, this)));
+          if (!t.chain) this.clearAcq();
           if (t.chain) {
             // ca LINE din CAD: următorul segment pornește din capătul celui desenat
             this.clicks = [pts[pts.length - 1]];
@@ -799,6 +953,7 @@ class App {
       }
       if (d && d.kind === "handle") {
         const { pt, sn } = this.snapPoint(raw, e, d.anchor);
+        this.trackHover(sn, raw);
         if (!d.pushed) {
           this.pushHistory();
           d.pushed = true;
@@ -848,6 +1003,7 @@ class App {
       }
       const anchor = d && d.kind === "rect" ? d.start : this.clicks[this.clicks.length - 1];
       const { pt, sn } = this.snapPoint(raw, e, anchor);
+      this.trackHover(sn, raw);
       this.showCoords(pt, anchor);
       if (d && d.kind === "rect") {
         this.view.overlay = { rect: [d.start[0], d.start[1], pt[0], pt[1]], rectColor: t.id === "redact" ? COLORS.edred : COLORS.sel, snap: sn };
@@ -1023,6 +1179,19 @@ class App {
   bindKeys() {
     window.addEventListener("keydown", (e) => {
       if (dlg.isModalOpen()) return;
+      const fk = { F3: "on", F8: "ortho", F10: "polar", F11: "tracking" }[e.key];
+      if (fk) {
+        e.preventDefault();
+        const c = this.snapCfg;
+        c[fk] = !c[fk];
+        if (fk === "ortho" && c.ortho) c.polar = false;
+        if (fk === "polar" && c.polar) c.ortho = false;
+        if (fk === "on") this.clearAcq();
+        this.saveSnapCfg();
+        const names = { on: "Snap", ortho: "Ortho", polar: `Polar ${c.polarInc}°`, tracking: "Urmărire" };
+        dlg.toast(`${names[fk]}: ${c[fk] ? "pornit" : "oprit"}`, 1500);
+        return;
+      }
       const tag = document.activeElement && document.activeElement.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
       const k = e.key.toLowerCase();
@@ -1079,6 +1248,7 @@ class App {
         this.view.redraw();
         return;
       }
+      if (e.key === "Escape" && (this.acq.length || this.parDir)) this.clearAcq();
       if (e.key === "Escape") {
         if (this.clicks.length) {
           this.clicks = [];

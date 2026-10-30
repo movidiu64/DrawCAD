@@ -84,14 +84,16 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 3. Editează valoarea și toleranța în panoul din dreapta.
 4. Apasă **Exportă PDF**.
 
-**Snap:** cursorul se prinde de geometria vectorială a PDF-ului:
-- capete de linii (□)
-- intersecții de linii (⊠)
-- mijloace (△)
-- centre de cercuri (○)
-- puncte pe linie (×)
+**Snap (ca în AutoCAD):** cursorul se prinde de geometria vectorială a PDF-ului și de ce ai desenat tu. Tooltip-ul de lângă cursor arată modul.
+- **Capăt** □, **Mijloc** △, **Centru** ○ (cercuri, dar și centrele racordărilor), **Cadran** ◇, **Intersecție** ⊠ (linii, cercuri, arce), **Pe obiect** ⧗
+- **Intersecție aparentă** ⊠… — punctul în care s-ar întâlni prelungirile a două linii: colțul teoretic al unei teșituri sau al unei racordări, la care se cotează
+- **Extensie** — oprește cursorul o clipă pe capătul unei linii (apare o cruciuliță verde), apoi mergi în prelungirea ei; tooltip-ul arată distanța față de capăt
+- **Urmărire** — tot din punctele achiziționate: aliniere pe orizontală și verticală, inclusiv punctul care are X-ul unuia și Y-ul altuia
+- **Perpendicular** ⊥ și **Tangent** față de punctul anterior al comenzii
+- **Paralel** // — în timpul unei comenzi oprește-te pe o linie, apoi mișcă-te aproape paralel cu ea
+- **Polar** — pe razele de 5°…90° față de punctul anterior (implicit 15°), cu distanță și unghi în tooltip; se exclude cu Ortho
 
-Ține **Alt** apăsat ca să dezactivezi snap-ul. **Shift** activează modul ortho.
+Modurile se aleg din săgeata de lângă „Snap”, în bara de jos. Taste: **F3** snap, **F8** ortho, **F10** polar, **F11** urmărire, **Alt** ținut = fără snap, **Shift** = ortho temporar, **Esc** golește punctele achiziționate.
 
 **Scanuri:** după deschidere folosește **Calibrare (K)**. Dai click pe capetele unei cote cunoscute și introduci valoarea reală.
 

@@ -275,12 +275,9 @@ export function shapeSnap(a) {
     for (let i = 1; i < Q.length; i++) seg(Q[i - 1], Q[i]);
     if (closed && Q.length > 2) seg(Q[Q.length - 1], Q[0]);
   };
-  const ring = (c, r) => {
-    pts.push([c[0], c[1], "c"]);
-    for (let i = 0; i < 4; i++) pts.push([...polar(c, r, (i * Math.PI) / 2), "q"]);
-    const R = arcPoints(c, r, 0, TAU);
-    for (let i = 1; i < R.length; i++) segs.push([...R[i - 1], ...R[i]]);
-  };
+  const arcs = [];
+  // cercurile și arcele merg ca arce exacte: centru, cadrane, tangent, intersecții (în osnap.js)
+  const ring = (c, r) => arcs.push([c[0], c[1], r, 0, TAU]);
   switch (a.kind) {
     case "line":
     case "break":
@@ -304,9 +301,7 @@ export function shapeSnap(a) {
     case "arc":
       if (P.length >= 3) {
         const g = arcGeom(a);
-        const R = arcPoints(g.c, g.r, g.a0, g.sw);
-        pts.push([g.c[0], g.c[1], "c"], [...R[0], "e"], [...R[R.length - 1], "e"], [...polar(g.c, g.r, g.a0 + g.sw / 2), "m"]);
-        for (let i = 1; i < R.length; i++) segs.push([...R[i - 1], ...R[i]]);
+        arcs.push([g.c[0], g.c[1], g.r, g.a0, g.sw]);
       }
       break;
     case "hatch":
@@ -315,7 +310,7 @@ export function shapeSnap(a) {
     default:
       break;
   }
-  return { pts, segs };
+  return { pts, segs, arcs };
 }
 
 /** Schimbă dimensiunea principală păstrând primul punct (și direcția). */

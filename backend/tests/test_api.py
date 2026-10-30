@@ -154,6 +154,16 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(rep2[0]["removed"] + rep2[0]["cut"], 0)
         self.assertGreater(rep2[0]["locked"], 0)
 
+    def test_snap_arcs(self):
+        d = pdfcore.snap_points(self.sample.read_bytes(), 0)
+        arcs = [[round(v / MM, 2) for v in a[:3]] + [round(a[4] * 180 / 3.141592653589793, 1)] for a in d["arcs"]]
+        # cercul Ø40 din vederea laterală și racordările R5 ale plăcii (sferturi de cerc, sens orar pe ecran)
+        self.assertIn([240.0, 95.0, 20.0, 360.0], arcs)
+        self.assertIn([165.0, 155.0, 5.0, -90.0], arcs)
+        self.assertIn([125.0, 155.0, 5.0, -90.0], arcs)
+        # centrul racordării devine punct de snap
+        self.assertTrue(any(abs(p[0] - 165 * MM) < 0.05 and abs(p[1] - 155 * MM) < 0.05 and p[2] == "c" for p in d["pts"]))
+
     def test_image_open(self):
         from PIL import Image
         import io

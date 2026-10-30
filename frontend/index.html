@@ -59,8 +59,15 @@
   <footer class="status">
     <span id="stCoords" class="mono">X — · Y — mm</span>
     <span id="stHint" class="hint"></span>
-    <label class="chk"><input type="checkbox" id="stSnap" checked> Snap</label>
-    <label class="chk"><input type="checkbox" id="stOrtho"> Ortho (Shift)</label>
+    <div class="snapctl">
+      <label class="chk" title="F3"><input type="checkbox" id="stSnap" checked> Snap</label>
+      <button class="mini" id="stSnapMenu" aria-label="Moduri de snap" title="Moduri de snap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button>
+      <div class="snapmenu" id="snapMenu" hidden></div>
+    </div>
+    <label class="chk" title="Urmărire din punctele achiziționate (F11)"><input type="checkbox" id="stTrack"> Urmărire</label>
+    <span class="polarctl"><label class="chk" title="Urmărire polară (F10)"><input type="checkbox" id="stPolar"> Polar</label>
+      <select id="stPolarInc" class="mini" aria-label="Pasul unghiului polar"><option value="5">5°</option><option value="10">10°</option><option value="15">15°</option><option value="22.5">22,5°</option><option value="30">30°</option><option value="45">45°</option><option value="90">90°</option></select></span>
+    <label class="chk" title="F8 · Shift = temporar"><input type="checkbox" id="stOrtho"> Ortho (Shift)</label>
     <span id="stScale"></span>
   </footer>
 </div>

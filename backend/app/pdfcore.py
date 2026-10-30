@@ -299,6 +299,56 @@ def render_png(pdf_bytes: bytes, page_index: int, scale: float, removals=None) -
 # ---------------------------------------------------------------- geometrie pentru snap
 
 
+def _bez_at(p0, c1, c2, p3, t):
+    u = 1 - t
+    return (
+        u ** 3 * p0[0] + 3 * u * u * t * c1[0] + 3 * u * t * t * c2[0] + t ** 3 * p3[0],
+        u ** 3 * p0[1] + 3 * u * u * t * c1[1] + 3 * u * t * t * c2[1] + t ** 3 * p3[1],
+    )
+
+
+def _circle3(a, b, c):
+    """Cercul prin trei puncte: (cx, cy, r) sau None dacă sunt coliniare."""
+    ax, ay = a
+    bx, by = b
+    cx, cy = c
+    d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
+    if abs(d) < 1e-9:
+        return None
+    ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / d
+    uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / d
+    return ux, uy, math.hypot(ax - ux, ay - uy)
+
+
+def _wrap_pi(a):
+    while a <= -math.pi:
+        a += 2 * math.pi
+    while a > math.pi:
+        a -= 2 * math.pi
+    return a
+
+
+def _bez_as_arc(p0, c1, c2, p3):
+    """Dacă o curbă Bézier (în coordonate vizuale) e un arc de cerc, întoarce (cx, cy, r, a0, sweep)
+    cu unghiuri pe ecran în sens trigonometric (y în jos), altfel None."""
+    m = _bez_at(p0, c1, c2, p3, 0.5)
+    circ = _circle3(p0, m, p3)
+    if not circ:
+        return None
+    cx, cy, r = circ
+    if r > 3000 or r < 0.05:
+        return None
+    tol = max(0.02, r * 0.004)
+    for t in (0.25, 0.75):
+        q = _bez_at(p0, c1, c2, p3, t)
+        if abs(math.hypot(q[0] - cx, q[1] - cy) - r) > tol:
+            return None
+    ang = lambda q: math.atan2(-(q[1] - cy), q[0] - cx)  # noqa: E731
+    a0, am, a3 = ang(p0), ang(m), ang(p3)
+    sw = _wrap_pi(am - a0) + _wrap_pi(a3 - am)
+    return cx, cy, r, a0, sw
+
+
 def snap_points(pdf_bytes: bytes, page_index: int, limit: int = 60000) -> dict:
     """Puncte caracteristice: capete și mijloace de segmente, centre de cercuri.
 
@@ -311,6 +361,7 @@ def snap_points(pdf_bytes: bytes, page_index: int, limit: int = 60000) -> dict:
             seen = set()
             pts = []
             segs = []
+            arcs = []
 
             def add(x, y, kind):
                 vx, vy = g.to_vis(x, y)
@@ -339,6 +390,8 @@ def snap_points(pdf_bytes: bytes, page_index: int, limit: int = 60000) -> dict:
                         w, h = max(xs) - min(xs), max(ys) - min(ys)
                         if w > 0 and abs(w - h) / w < 0.03:
                             add((max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2, "c")
+                            cv = g.to_vis((max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2)
+                            arcs.append([round(cv[0], 3), round(cv[1], 3), round((w + h) / 4, 3), 0, round(2 * math.pi, 6)])
                             add(min(xs), (max(ys) + min(ys)) / 2, "q")
                             add(max(xs), (max(ys) + min(ys)) / 2, "q")
                             add((max(xs) + min(xs)) / 2, min(ys), "q")
@@ -352,7 +405,8 @@ def snap_points(pdf_bytes: bytes, page_index: int, limit: int = 60000) -> dict:
                         if K[j] == "L":
                             p = P[j]
                             add(p[0], p[1], "e")
-                            add((prev[0] + p[0]) / 2, (prev[1] + p[1]) / 2, "m")
+                            if (prev[0] - p[0]) ** 2 + (prev[1] - p[1]) ** 2 > 1e-4:
+                                add((prev[0] + p[0]) / 2, (prev[1] + p[1]) / 2, "m")
                             a = g.to_vis(*prev)
                             b = g.to_vis(*p)
                             if (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 > 0.25:
@@ -360,8 +414,27 @@ def snap_points(pdf_bytes: bytes, page_index: int, limit: int = 60000) -> dict:
                             prev = p
                             j += 1
                         else:  # Bézier: trei puncte, ultimul e capătul
+                            c1, c2 = P[j], P[min(j + 1, len(P) - 1)]
                             end = P[min(j + 2, len(P) - 1)]
                             add(end[0], end[1], "e")
+                            vp = [g.to_vis(*q) for q in (prev, c1, c2, end)]
+                            arc = _bez_as_arc(*vp)
+                            if arc:
+                                # arcele consecutive ale aceluiași cerc (racordări din mai multe curbe) se unesc
+                                last = arcs[-1] if arcs else None
+                                if (
+                                    last and abs(last[0] - arc[0]) < 0.05 and abs(last[1] - arc[1]) < 0.05
+                                    and abs(last[2] - arc[2]) < 0.05 and abs(_wrap_pi(last[3] + last[4] - arc[3])) < 1e-3
+                                    and abs(last[4] + arc[4]) < 2 * math.pi
+                                ):
+                                    last[4] = round(last[4] + arc[4], 6)
+                                else:
+                                    arcs.append([round(arc[0], 3), round(arc[1], 3), round(arc[2], 3), round(arc[3], 6), round(arc[4], 6)])
+                            else:
+                                # curbă oarecare: aproximată din segmente, pentru „pe obiect” și intersecții
+                                qs = [vp[0]] + [_bez_at(*vp, k / 8) for k in range(1, 9)]
+                                for a, b in zip(qs, qs[1:]):
+                                    segs.append([round(a[0], 3), round(a[1], 3), round(b[0], 3), round(b[1], 3), 1])
                             prev = end
                             j += 3
                     if sp["closed"]:
@@ -376,7 +449,16 @@ def snap_points(pdf_bytes: bytes, page_index: int, limit: int = 60000) -> dict:
                 if len(pts) > limit:
                     break
             page.close()
-            return {"pts": pts, "segs": segs[:limit], "truncated": len(pts) > limit}
+            # centrele și mijloacele arcelor (racordări): utile pentru cote de rază și axe
+            for cx, cy, r, a0, sw in arcs:
+                if abs(sw) < 2 * math.pi - 1e-3:
+                    key = (round(cx, 2), round(cy, 2), "c")
+                    if key not in seen:
+                        seen.add(key)
+                        pts.append([cx, cy, "c"])
+                    am = a0 + sw / 2
+                    pts.append([round(cx + r * math.cos(am), 3), round(cy - r * math.sin(am), 3), "m"])
+            return {"pts": pts, "segs": segs[:limit], "arcs": arcs[:limit], "truncated": len(pts) > limit}
         finally:
             doc.close()
 

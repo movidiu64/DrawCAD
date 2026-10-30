@@ -49,160 +49,6 @@ export function drawPrims(ctx, prims, zoom, color = (c) => COLORS[c] || "#111", 
   ctx.setLineDash([]);
 }
 
-// ------------------------------------------------------------------ index de snap
-/** Intersecția a două segmente [x1,y1,x2,y2], fără capete comune (acelea sunt deja puncte de snap). */
-export function segIntersect(a, b) {
-  const rx = a[2] - a[0];
-  const ry = a[3] - a[1];
-  const sx = b[2] - b[0];
-  const sy = b[3] - b[1];
-  const den = rx * sy - ry * sx;
-  if (Math.abs(den) < 1e-9) return null; // paralele
-  const qx = b[0] - a[0];
-  const qy = b[1] - a[1];
-  const t = (qx * sy - qy * sx) / den;
-  const u = (qx * ry - qy * rx) / den;
-  const eps = 1e-6;
-  if (t < -eps || t > 1 + eps || u < -eps || u > 1 + eps) return null;
-  const endA = t < 1e-4 || t > 1 - 1e-4;
-  const endB = u < 1e-4 || u > 1 - 1e-4;
-  if (endA && endB) return null;
-  return [a[0] + rx * t, a[1] + ry * t];
-}
-
-export class SnapIndex {
-  constructor(pts = [], segs = [], cell = 24) {
-    this.cell = cell;
-    this.grid = new Map();
-    this.sgrid = new Map();
-    for (const p of pts) this.add(p[0], p[1], p[2] || "e");
-    for (const s of segs) this.addSeg(s);
-  }
-
-  key(i, j) {
-    return i * 100003 + j;
-  }
-
-  add(x, y, kind) {
-    const k = this.key(Math.floor(x / this.cell), Math.floor(y / this.cell));
-    let arr = this.grid.get(k);
-    if (!arr) this.grid.set(k, (arr = []));
-    arr.push([x, y, kind]);
-  }
-
-  addSeg(s) {
-    const i0 = Math.floor(Math.min(s[0], s[2]) / this.cell);
-    const i1 = Math.floor(Math.max(s[0], s[2]) / this.cell);
-    const j0 = Math.floor(Math.min(s[1], s[3]) / this.cell);
-    const j1 = Math.floor(Math.max(s[1], s[3]) / this.cell);
-    if ((i1 - i0 + 1) * (j1 - j0 + 1) > 400) return; // segmente foarte lungi: doar capetele contează
-    for (let i = i0; i <= i1; i++) {
-      for (let j = j0; j <= j1; j++) {
-        const k = this.key(i, j);
-        let arr = this.sgrid.get(k);
-        if (!arr) this.sgrid.set(k, (arr = []));
-        arr.push(s);
-      }
-    }
-  }
-
-  /**
-   * extra: puncte suplimentare [x, y, tip?] (adnotări, forme desenate);
-   * extraSegs: segmente ale formelor desenate, pentru intersecții și „pe linie”.
-   */
-  nearest(x, y, tol, extra = [], extraSegs = []) {
-    const PRIO = { c: 0, e: 1, a: 1, x: 1, q: 2, m: 3 };
-    let best = null;
-    let bestScore = Infinity;
-    const consider = (q) => {
-      const d = Math.hypot(q[0] - x, q[1] - y);
-      if (d > tol) return;
-      const score = d + (PRIO[q[2]] ?? 2) * tol * 0.15;
-      if (score < bestScore) {
-        bestScore = score;
-        best = { p: [q[0], q[1]], kind: q[2] };
-      }
-    };
-    const r = Math.ceil(tol / this.cell);
-    const ci = Math.floor(x / this.cell);
-    const cj = Math.floor(y / this.cell);
-    for (let i = ci - r; i <= ci + r; i++) {
-      for (let j = cj - r; j <= cj + r; j++) {
-        const arr = this.grid.get(this.key(i, j));
-        if (arr) arr.forEach(consider);
-      }
-    }
-    extra.forEach((q) => consider([q[0], q[1], q[2] || "a"]));
-    // intersecții între segmentele din jurul cursorului
-    const near = [];
-    const seenI = new Set();
-    for (let i = ci - r; i <= ci + r && near.length < 120; i++) {
-      for (let j = cj - r; j <= cj + r; j++) {
-        const arr = this.sgrid.get(this.key(i, j));
-        if (!arr) continue;
-        for (const s of arr) {
-          if (!seenI.has(s)) {
-            seenI.add(s);
-            near.push(s);
-          }
-        }
-      }
-    }
-    const close = (sg) => Math.min(sg[0], sg[2]) - tol <= x && Math.max(sg[0], sg[2]) + tol >= x && Math.min(sg[1], sg[3]) - tol <= y && Math.max(sg[1], sg[3]) + tol >= y;
-    const own = extraSegs.filter(close);
-    for (const sg of own) if (near.length < 200) near.push(sg);
-    for (let i = 0; i < near.length; i++) {
-      for (let j = i + 1; j < near.length; j++) {
-        const q = segIntersect(near[i], near[j]);
-        if (q) consider([q[0], q[1], "x"]);
-      }
-    }
-    if (best) return best;
-    // cel mai apropiat punct pe o linie
-    let bd = tol;
-    const seen = new Set();
-    const onSeg = (sg) => {
-      const bx = sg[2] - sg[0];
-      const by = sg[3] - sg[1];
-      const L2 = bx * bx + by * by;
-      const t = Math.max(0, Math.min(1, L2 ? ((x - sg[0]) * bx + (y - sg[1]) * by) / L2 : 0));
-      const px = sg[0] + bx * t;
-      const py = sg[1] + by * t;
-      const d = Math.hypot(px - x, py - y);
-      if (d < bd) {
-        bd = d;
-        best = { p: [px, py], kind: "n" };
-      }
-    };
-    own.forEach(onSeg);
-    for (let i = ci - r; i <= ci + r; i++) {
-      for (let j = cj - r; j <= cj + r; j++) {
-        const arr = this.sgrid.get(this.key(i, j));
-        if (!arr) continue;
-        for (const s of arr) {
-          if (seen.has(s)) continue;
-          seen.add(s);
-          const ax = s[0];
-          const ay = s[1];
-          const bx = s[2] - ax;
-          const by = s[3] - ay;
-          const L2 = bx * bx + by * by;
-          let t = L2 ? ((x - ax) * bx + (y - ay) * by) / L2 : 0;
-          t = Math.max(0, Math.min(1, t));
-          const px = ax + bx * t;
-          const py = ay + by * t;
-          const d = Math.hypot(px - x, py - y);
-          if (d < bd) {
-            bd = d;
-            best = { p: [px, py], kind: "n" };
-          }
-        }
-      }
-    }
-    return best;
-  }
-}
-
 // ------------------------------------------------------------------ vederea
 export class View {
   constructor(canvas, app) {
@@ -382,6 +228,7 @@ export class View {
       }
       if (ov.snap) this.drawSnap(ov.snap);
     }
+    if ((app.acq && app.acq.length) || app.parSeg) this.drawAcquired(app.acq || [], app.parSeg);
   }
 
   drawHandles(built) {
@@ -420,38 +267,146 @@ export class View {
 
   drawSnap(sn) {
     const ctx = this.ctx;
-    const s = 9 / this.zoom;
+    const z = this.zoom;
+    const s = 9 / z;
     const [x, y] = sn.p;
+    // linii de urmărire / extensie / polar: punctate, verzi, prelungite dincolo de punct
+    if (sn.guides) {
+      ctx.save();
+      ctx.strokeStyle = "#3ccf8e";
+      ctx.lineWidth = 1 / z;
+      ctx.setLineDash([3 / z, 4 / z]);
+      for (const g of sn.guides) {
+        const dx = g.p[0] - g.o[0];
+        const dy = g.p[1] - g.o[1];
+        const L = Math.hypot(dx, dy) || 1;
+        const k = 60 / z / L;
+        ctx.beginPath();
+        ctx.moveTo(g.o[0], g.o[1]);
+        ctx.lineTo(g.p[0] + dx * k, g.p[1] + dy * k);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
     ctx.strokeStyle = "#e07b00";
-    ctx.lineWidth = 2 / this.zoom;
+    ctx.lineWidth = 2 / z;
     ctx.beginPath();
-    if (sn.kind === "m") {
-      ctx.moveTo(x, y - s * 0.7);
-      ctx.lineTo(x + s * 0.65, y + s * 0.45);
-      ctx.lineTo(x - s * 0.65, y + s * 0.45);
-      ctx.closePath();
-    } else if (sn.kind === "c") {
-      ctx.arc(x, y, s * 0.6, 0, Math.PI * 2);
-    } else if (sn.kind === "x") {
-      ctx.moveTo(x - s * 0.65, y - s * 0.65);
-      ctx.lineTo(x + s * 0.65, y + s * 0.65);
-      ctx.moveTo(x + s * 0.65, y - s * 0.65);
-      ctx.lineTo(x - s * 0.65, y + s * 0.65);
-      ctx.rect(x - s * 0.65, y - s * 0.65, s * 1.3, s * 1.3);
-    } else if (sn.kind === "n") {
-      ctx.moveTo(x - s / 2, y - s / 2);
-      ctx.lineTo(x + s / 2, y + s / 2);
-      ctx.moveTo(x + s / 2, y - s / 2);
-      ctx.lineTo(x - s / 2, y + s / 2);
-    } else if (sn.kind === "q") {
-      ctx.moveTo(x, y - s * 0.6);
-      ctx.lineTo(x + s * 0.6, y);
-      ctx.lineTo(x, y + s * 0.6);
-      ctx.lineTo(x - s * 0.6, y);
-      ctx.closePath();
-    } else {
-      ctx.rect(x - s / 2, y - s / 2, s, s);
+    const X = (r) => {
+      ctx.moveTo(x - r, y - r);
+      ctx.lineTo(x + r, y + r);
+      ctx.moveTo(x + r, y - r);
+      ctx.lineTo(x - r, y + r);
+    };
+    switch (sn.kind) {
+      case "m":
+        ctx.moveTo(x, y - s * 0.7);
+        ctx.lineTo(x + s * 0.65, y + s * 0.45);
+        ctx.lineTo(x - s * 0.65, y + s * 0.45);
+        ctx.closePath();
+        break;
+      case "c":
+        ctx.arc(x, y, s * 0.6, 0, Math.PI * 2);
+        break;
+      case "x":
+        X(s * 0.65);
+        ctx.rect(x - s * 0.65, y - s * 0.65, s * 1.3, s * 1.3);
+        break;
+      case "ax":
+        X(s * 0.65);
+        ctx.rect(x - s * 0.65, y - s * 0.65, s * 1.3, s * 1.3);
+        for (let i = 0; i < 3; i++) ctx.rect(x + s * (0.95 + i * 0.35), y + s * 0.55, 0.6 / z, 0.6 / z);
+        break;
+      case "n":
+        // clepsidră, ca la AutoCAD
+        ctx.moveTo(x - s / 2, y - s / 2);
+        ctx.lineTo(x + s / 2, y - s / 2);
+        ctx.lineTo(x - s / 2, y + s / 2);
+        ctx.lineTo(x + s / 2, y + s / 2);
+        ctx.closePath();
+        break;
+      case "q":
+        ctx.moveTo(x, y - s * 0.6);
+        ctx.lineTo(x + s * 0.6, y);
+        ctx.lineTo(x, y + s * 0.6);
+        ctx.lineTo(x - s * 0.6, y);
+        ctx.closePath();
+        break;
+      case "p":
+        ctx.moveTo(x - s * 0.6, y + s * 0.55);
+        ctx.lineTo(x + s * 0.6, y + s * 0.55);
+        ctx.moveTo(x, y + s * 0.55);
+        ctx.lineTo(x, y - s * 0.65);
+        ctx.moveTo(x - s * 0.6, y - s * 0.05);
+        ctx.lineTo(x, y - s * 0.05);
+        break;
+      case "t":
+        ctx.arc(x, y + s * 0.1, s * 0.5, 0, Math.PI * 2);
+        ctx.moveTo(x - s * 0.7, y - s * 0.4);
+        ctx.lineTo(x + s * 0.7, y - s * 0.4);
+        break;
+      case "par":
+        ctx.moveTo(x - s * 0.55, y + s * 0.5);
+        ctx.lineTo(x - s * 0.05, y - s * 0.5);
+        ctx.moveTo(x + s * 0.05, y + s * 0.5);
+        ctx.lineTo(x + s * 0.55, y - s * 0.5);
+        break;
+      case "ext":
+      case "trk":
+      case "pol":
+        X(s * 0.4);
+        break;
+      default:
+        ctx.rect(x - s / 2, y - s / 2, s, s);
+    }
+    ctx.stroke();
+    if (sn.label) this.drawTip(sn.label, x, y);
+  }
+
+  /** Eticheta de lângă cursor, în pixeli de ecran (ca tooltip-ul de snap din AutoCAD). */
+  drawTip(txt, x, y) {
+    const ctx = this.ctx;
+    const d = this.dpr;
+    const sx = x * this.zoom + this.panX + 16;
+    const sy = y * this.zoom + this.panY + 18;
+    ctx.save();
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+    ctx.font = "12px system-ui, sans-serif";
+    const w = ctx.measureText(txt).width + 12;
+    ctx.fillStyle = "rgba(21,24,28,0.92)";
+    ctx.strokeStyle = "#e07b00";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.rect(sx, sy, w, 20);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#f1f3f5";
+    ctx.fillText(txt, sx + 6, sy + 14);
+    ctx.restore();
+  }
+
+  /** Punctele achiziționate pentru urmărire: cruciuliță portocalie mică; segmentul pentru paralel: „//”. */
+  drawAcquired(acq, par) {
+    const ctx = this.ctx;
+    const z = this.zoom;
+    const s = 4 / z;
+    ctx.strokeStyle = "#3ccf8e";
+    ctx.lineWidth = 1.6 / z;
+    ctx.beginPath();
+    for (const q of acq) {
+      ctx.moveTo(q.p[0] - s, q.p[1]);
+      ctx.lineTo(q.p[0] + s, q.p[1]);
+      ctx.moveTo(q.p[0], q.p[1] - s);
+      ctx.lineTo(q.p[0], q.p[1] + s);
+    }
+    if (par) {
+      const m = [(par[0] + par[2]) / 2, (par[1] + par[3]) / 2];
+      const k = 5 / z;
+      ctx.moveTo(m[0] - k, m[1] + k);
+      ctx.lineTo(m[0] - k * 0.2, m[1] - k);
+      ctx.moveTo(m[0] + k * 0.2, m[1] + k);
+      ctx.lineTo(m[0] + k, m[1] - k);
     }
     ctx.stroke();
   }
+
 }

@@ -1,24 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { SnapIndex, segIntersect } from "../js/view.js";
+import { Snapper, lineLine } from "../js/osnap.js";
 import { build, derive, K } from "../js/annots.js";
 
 const measure = (txt, s) => txt.length * s * 0.6;
 const S = derive({});
 
-test("intersecția a două segmente care se încrucișează", () => {
-  assert.deepEqual(segIntersect([0, 0, 10, 10], [0, 10, 10, 0]), [5, 5]);
-  assert.equal(segIntersect([0, 0, 10, 0], [0, 1, 10, 1]), null); // paralele
-  assert.equal(segIntersect([0, 0, 5, 0], [6, -1, 6, 1]), null); // nu se ating
-  assert.equal(segIntersect([0, 0, 10, 0], [10, 0, 10, 10]), null); // capăt comun
+const ALL = new Set(["e", "m", "c", "q", "x", "ax", "ext", "p", "t", "par", "n"]);
+
+test("intersecția a două drepte", () => {
+  const r = lineLine([0, 0], [10, 10], [0, 10], [10, -10]);
+  assert.deepEqual(r.p, [5, 5]);
+  assert.equal(lineLine([0, 0], [10, 0], [0, 1], [10, 0]), null); // paralele
 });
 
 test("snap: intersecția are prioritate față de punctul pe linie", () => {
-  const idx = new SnapIndex([], [[0, 50, 100, 50], [40, 0, 40, 100]]);
-  const s = idx.nearest(41, 51, 5);
+  const sn = new Snapper({ segs: [[0, 50, 100, 50], [40, 0, 40, 100]] });
+  const s = sn.snap([41, 51], { tol: 5, modes: ALL });
   assert.equal(s.kind, "x");
   assert.deepEqual(s.p, [40, 50]);
-  const n = idx.nearest(70, 52, 5);
+  const n = sn.snap([70, 52], { tol: 5, modes: ALL });
   assert.equal(n.kind, "n");
 });
 

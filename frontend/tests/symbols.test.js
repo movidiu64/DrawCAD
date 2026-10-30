@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { build, derive } from "../js/annots.js";
 import { breakPoints, shapeSnap, K } from "../js/shapes.js";
-import { SnapIndex } from "../js/view.js";
+import { Snapper } from "../js/osnap.js";
 
 const S = derive({});
 const measure = (txt, s) => txt.length * s * 0.6;
@@ -66,15 +66,18 @@ test("snap pe formele desenate: capete, mijloc, centru, intersecții", () => {
   const line = shapeSnap({ kind: "line", pts: [[0, 0], [100, 0]] });
   assert.ok(line.pts.some((p) => p[0] === 50 && p[2] === "m"));
   const circ = shapeSnap({ kind: "circle", pts: [[50, 50], [70, 50]] });
-  assert.ok(circ.pts.some((p) => p[2] === "c") && circ.pts.filter((p) => p[2] === "q").length === 4);
-  const idx = new SnapIndex();
+  assert.equal(circ.arcs.length, 1);
+  const idx = new Snapper();
+  const M = new Set(["e", "m", "c", "q", "x", "n"]);
+  const cs = idx.snap([70.5, 50.5], { tol: 3, modes: M, extra: circ });
+  assert.equal(cs.kind, "q");
   const v = shapeSnap({ kind: "line", pts: [[30, -40], [30, 40]] });
   // intersecția dintre două linii desenate, fără geometrie PDF
-  const sn = idx.nearest(31, 1, 5, [], [...line.segs, ...v.segs]);
+  const sn = idx.snap([31, 1], { tol: 5, modes: M, extra: { segs: [...line.segs, ...v.segs] } });
   assert.equal(sn.kind, "x");
   assert.ok(Math.abs(sn.p[0] - 30) < 1e-9 && Math.abs(sn.p[1]) < 1e-9);
   // pe linie, departe de puncte
-  const on = idx.nearest(80, 2, 5, [], line.segs);
+  const on = idx.snap([80, 2], { tol: 5, modes: M, extra: { segs: line.segs } });
   assert.equal(on.kind, "n");
 });
 

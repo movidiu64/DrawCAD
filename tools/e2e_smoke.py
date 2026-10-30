@@ -125,8 +125,11 @@ def main(url, out):
         n_rough = page.evaluate("window.cotare.annots.filter(a => a.type === 'rough').length")
         assert n_rough == 2, n_rough
         # 10. snap pe intersecție: axa cu muchia de la x = 90
-        snap = page.evaluate("(() => { const s = window.cotare.snapIdx.nearest(90*72/25.4 + 0.6, 95*72/25.4 + 0.6, 3); return s && [s.kind, s.p]; })()")
+        snap = page.evaluate("(() => { const s = window.cotare.snapper.snap([90*72/25.4 + 0.6, 95*72/25.4 + 0.6], { tol: 3, modes: new Set(['e','m','c','q','x','n']) }); return s && [s.kind, s.p]; })()")
         assert snap and snap[0] == "x" and abs(snap[1][0] - 90 * MM) < 0.05, snap
+        # 10b. intersecție aparentă: colțul teoretic al teșiturii plăcii (170, 185)
+        snap = page.evaluate("(() => { const s = window.cotare.snapper.snap([169.6*72/25.4, 184.6*72/25.4], { tol: 3, modes: new Set(['e','x','ax']) }); return s && [s.kind, s.p]; })()")
+        assert snap and snap[0] == "ax" and abs(snap[1][0] - 170 * MM) < 0.05 and abs(snap[1][1] - 185 * MM) < 0.05, snap
 
         # 11. note tehnice
         page.keyboard.press("Escape")
