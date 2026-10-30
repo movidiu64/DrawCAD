@@ -410,6 +410,9 @@ export class Panel {
         <div class="field"><input type="text" class="mono" id="gVal" data-f="val" value="${esc(a.val)}" aria-label="Valoare toleranță"></div></div>
         <div class="lbl">Modificatori</div><div class="pills">${mods}</div></div>
       <div class="sec"><div class="h">Baze de referință</div>${datums || `<div class="sub">—</div>`}</div>
+      <div class="sec"><div class="h">Linia de indicație</div>
+        <div class="sub">Trage de pătrățelul din cotul liniei ca s-o frângi în orice unghi.</div>
+        ${a.elbow ? `<div class="btns"><button class="ghost" data-act="gelbow">Cot automat (90°)</button></div>` : ""}</div>
       <div class="sec"><div class="h">Previzualizare</div>${this.previewBox()}</div>`;
   }
 
@@ -513,14 +516,24 @@ export class Panel {
       <div class="btns"><button class="ghost" data-act="inkedit">Editează selecția</button></div></div>`;
   }
 
+  coverColorHtml(a) {
+    const c = (a.color || "#ffffff").toLowerCase();
+    return `<div class="field"><span class="lbl">Culoare</span><div class="row">
+      <input type="color" id="cvColor" value="${esc(c)}" aria-label="Culoarea acoperirii">
+      <button class="ghost sw ${c === "#ffffff" ? "on" : ""}" data-act="cvcolor" data-v="#ffffff" title="Alb" aria-label="Alb"><i style="background:#fff"></i></button>
+      <button class="ghost sw ${c === "#f4f1e8" ? "on" : ""}" data-act="cvcolor" data-v="#f4f1e8" title="Hârtie" aria-label="Hârtie"><i style="background:#f4f1e8"></i></button>
+      ${window.EyeDropper ? `<button class="ghost" data-act="cvpick" title="Ia culoarea de pe ecran">Pipetă</button>` : ""}
+      <span class="mono sub">${esc(c)}</span></div></div>`;
+  }
+
   html_white(a) {
-    return `<div class="sec"><div class="note">Dreptunghi alb desenat peste original la export. Conținutul de dedesubt rămâne în fișier și poate fi copiat. Pentru eliminare reală folosește unealta <b>Șterge</b>.</div></div>`;
+    return `<div class="sec">${this.coverColorHtml(a)}<div class="note">Dreptunghi plin desenat peste original la export. Conținutul de dedesubt rămâne în fișier și poate fi copiat. Pentru eliminare reală folosește unealta <b>Șterge</b>.</div></div>`;
   }
 
   html_redact(a) {
     const n = a.mode === "objects" ? (a.ids || []).length : null;
-    const label = { objects: `Obiecte selectate: ${n}`, text: "Doar textul din zonă", zone: a.cover === false ? "Tot din zonă · liniile tăiate la margine" : "Tot din zonă · tăiere + acoperire albă" }[a.mode];
-    return `<div class="sec"><div class="h">Ștergere din original</div><div class="note">${esc(label)}</div>
+    const label = { cover: "Acoperire a zonei (nimic nu se elimină din fișier)", objects: `Obiecte selectate: ${n}`, text: "Doar textul din zonă", zone: a.cover === false ? "Tot din zonă · liniile tăiate la margine" : "Tot din zonă · tăiere + acoperire albă" }[a.mode];
+    return `<div class="sec"><div class="h">Ștergere din original</div><div class="note">${esc(label)}</div>${a.mode === "cover" ? this.coverColorHtml(a) : ""}
       <div class="btns"><button class="ghost" data-act="redit">Editează selecția</button></div></div>`;
   }
 
@@ -595,6 +608,11 @@ export class Panel {
         if (e.key === "Enter" || e.key === "Escape") inp.blur();
         e.stopPropagation();
       });
+    });
+    const cv = el.querySelector("#cvColor");
+    if (cv) cv.addEventListener("change", () => {
+      app.updateSel((a) => { a.color = cv.value.toLowerCase(); });
+      this.render();
     });
     const inkAll = el.querySelector("#inkAll");
     if (inkAll) {
@@ -718,6 +736,21 @@ export class Panel {
         break;
       case "rtdel":
         upd((x) => { x.rows = (x.rows || []).filter((_r, j) => j !== Number(v)); });
+        break;
+      case "gelbow":
+        upd((a) => { delete a.elbow; });
+        break;
+      case "cvcolor":
+        upd((a) => { a.color = v; });
+        break;
+      case "cvpick":
+        (async () => {
+          try {
+            const res = await new window.EyeDropper().open();
+            app.updateSel((a) => { a.color = res.sRGBHex.toLowerCase(); });
+            this.render();
+          } catch (_) { /* anulat */ }
+        })();
         break;
       case "inkfills":
         app.setSettings({ ink: { ...(app.settings.ink || {}), fills: v } });

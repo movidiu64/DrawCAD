@@ -236,6 +236,13 @@ class ApiTest(unittest.TestCase):
         self.assertIsNotNone(got)
         self.assertEqual(got[0], self.sample.read_bytes())
 
+    def test_fraction_inside(self):
+        # zona prinde 95% din linia de cotă Ø30 (x = 165, y 80…110) și doar capătul conturului
+        objs = pdfcore.objects_in_rect(self.sample.read_bytes(), 0, [160 * MM, 81.5 * MM, 168 * MM, 113 * MM])
+        fr = sorted(round(o["frac"], 2) for o in objs if o["type"] == "path" and not o["inside"])
+        self.assertTrue(any(abs(f - 0.95) < 0.01 for f in fr), fr)
+        self.assertTrue(all(o["frac"] == 1.0 for o in objs if o["inside"]))
+
     def test_image_open(self):
         from PIL import Image
         import io

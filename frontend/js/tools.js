@@ -187,7 +187,7 @@ export const TOOLS = [
     make: (r) => ({ type: "ink", r, ids: [], objs: [] }) },
   { id: "redact", label: "Șterge", key: "X", group: "Revizie", icon: "M7 20h12M5 15.5l9-9 5 5-6.5 6.5H9z", kind: "rect",
     hint: "Trage un dreptunghi → alegi ce obiecte din original se elimină",
-    make: (r) => ({ type: "redact", r, mode: "objects", ids: [], objs: [] }) },
+    make: (r) => ({ type: "redact", r, ids: [], objs: [] }) },
   { id: "calib", label: "Calibrare", key: "K", group: "Revizie", icon: "M3 17h18M5 17v-4M9 17v-2M13 17v-4M17 17v-2M21 17v-4M3 7h18M3 7l3-2M3 7l3 2M21 7l-3-2M21 7l-3 2", kind: "clicks", n: 2,
     hint: "Click pe capetele unei cote cunoscute → introduci valoarea reală",
     preview(pts, cur) { return { line: [pts[0], cur] }; } },

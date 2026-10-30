@@ -10,6 +10,7 @@ import ctypes
 import io
 import math
 import os
+import re
 import threading
 from dataclasses import dataclass
 
@@ -709,6 +710,52 @@ def snap_points(pdf_bytes: bytes, page_index: int, limit: int = 60000) -> dict:
 # ---------------------------------------------------------------- obiecte din zonă / ștergere
 
 
+def _area_frac(b, r):
+    w = max(b[2] - b[0], 1e-6)
+    h = max(b[3] - b[1], 1e-6)
+    iw = max(0.0, min(b[2], r[2]) - max(b[0], r[0]))
+    ih = max(0.0, min(b[3], r[3]) - max(b[1], r[1]))
+    # obiect foarte subțire (linie orizontală/verticală): contează doar dimensiunea lungă
+    if b[2] - b[0] < 0.5:
+        return round(ih / h, 3)
+    if b[3] - b[1] < 0.5:
+        return round(iw / w, 3)
+    return round(iw * ih / (w * h), 3)
+
+
+def _frac_inside(subpaths, r):
+    """Fracțiunea din lungimea unui path aflată în dreptunghiul r (în spațiul paginii)."""
+    tot = 0.0
+    out = 0.0
+
+    def seg(a, b):
+        nonlocal tot, out
+        L = math.hypot(b[0] - a[0], b[1] - a[1])
+        tot += L
+        for p, q in _clip_outside(a, b, r):
+            out += math.hypot(q[0] - p[0], q[1] - p[1])
+
+    for sp in subpaths:
+        P, K_ = sp["pts"], sp["kinds"]
+        prev = P[0]
+        j = 1
+        while j < len(P):
+            if K_[j] == "L":
+                seg(prev, P[j])
+                prev = P[j]
+                j += 1
+            else:
+                c1, c2, p3 = P[j], P[min(j + 1, len(P) - 1)], P[min(j + 2, len(P) - 1)]
+                pts = [prev] + _bez(prev, c1, c2, p3, 12)
+                for a, b in zip(pts, pts[1:]):
+                    seg(a, b)
+                prev = p3
+                j += 3
+        if sp["closed"]:
+            seg(prev, P[0])
+    return 1.0 if tot <= 1e-9 else max(0.0, 1 - out / tot)
+
+
 def objects_in_rect(pdf_bytes: bytes, page_index: int, rect_vis) -> list[dict]:
     x0, y0, x1, y1 = rect_vis
     rx0, rx1 = min(x0, x1), max(x0, x1)
@@ -737,6 +784,8 @@ def objects_in_rect(pdf_bytes: bytes, page_index: int, rect_vis) -> list[dict]:
                     "inside": inside,
                     "locked": "." in oid,  # în interiorul unui bloc (Form XObject): doar acoperire
                 }
+                # cât din obiect e în zonă (lungimea liniilor, sau aria casetei pentru text și imagini)
+                item["frac"] = 1.0 if inside else _area_frac(vb, (rx0, ry0, rx1, ry1))
                 if typ == R.FPDF_PAGEOBJ_TEXT:
                     item["text"] = _text_of(obj, tp.raw)
                 elif typ == R.FPDF_PAGEOBJ_PATH:
@@ -749,6 +798,7 @@ def objects_in_rect(pdf_bytes: bytes, page_index: int, rect_vis) -> list[dict]:
                         rpdf = (min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1]))
                         if not _cut_runs(sps, rpdf)[1]:
                             continue  # doar încadrarea atinge zona (ex. chenarul foii)
+                        item["frac"] = round(_frac_inside(sps, rpdf), 3)
                     for sp in sps:
                         nseg += len(sp["pts"])
                         poly.append([[round(c, 2) for c in g.to_vis(*p)] for p in sp["pts"][:400]])
@@ -1076,9 +1126,15 @@ def apply_removals(pdf_bytes: bytes, removals: dict[int, list[dict]]) -> tuple[b
 COLOR_LAYERS = {"add": (0.184, 0.435, 0.839), "rev": (0.776, 0.157, 0.157)}
 
 
+_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
 def _color(key, mode):
     if key == "white":
         return (1, 1, 1)
+    if isinstance(key, str) and _HEX.match(key):
+        # culoare aleasă explicit (acoperiri în culoarea fundalului): rămâne așa în orice mod
+        return tuple(int(key[i:i + 2], 16) / 255 for i in (1, 3, 5))
     if mode == "layers" and key in COLOR_LAYERS:
         return COLOR_LAYERS[key]
     return (0, 0, 0)
@@ -1096,7 +1152,7 @@ def _overlay_pdf(page_specs, color_mode) -> bytes:
         c.setLineJoin(1)
         c.setLineCap(0)
         # acoperirile albe primele, ca să nu ascundă cotele noi
-        ordered = sorted(prims, key=lambda p: 0 if p.get("c") == "white" else 1)
+        ordered = sorted(prims, key=lambda p: 0 if p.get("c") == "white" or p.get("cover") else 1)
         for p in ordered:
             t = p.get("t")
             col = _color(p.get("c", "add"), color_mode)

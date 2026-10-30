@@ -876,7 +876,7 @@ class App {
     for (const a of this.annots) {
       const prims = exportPrims(this.builtOf(a).prims);
       if (prims.length) (pages[a.page] = pages[a.page] || []).push(...prims);
-      if (a.type === "redact") {
+      if (a.type === "redact" && a.mode !== "cover") {
         const op = a.mode === "objects" ? { mode: "objects", ids: a.ids || [] } : { mode: a.mode, rect: a.r };
         if (a.mode !== "objects" || op.ids.length) (removals[a.page] = removals[a.page] || []).push(op);
       }
@@ -1181,6 +1181,34 @@ class App {
         d.sy = sy;
         return;
       }
+      if (d && d.kind === "edge") {
+        const a = this.annots.find((x) => x.id === d.id);
+        const { pt, sn } = this.snapPoint(raw, e, null);
+        if (!d.pushed) {
+          this.pushHistory();
+          d.pushed = true;
+        }
+        const b = this.boxOf(a);
+        if (d.code.includes("w")) b[0] = pt[0];
+        if (d.code.includes("e")) b[2] = pt[0];
+        if (d.code.includes("n")) b[1] = pt[1];
+        if (d.code.includes("s")) b[3] = pt[1];
+        // marginea trecută peste cea opusă: caseta se întoarce, ca în Windows
+        if (b[0] > b[2]) {
+          [b[0], b[2]] = [b[2], b[0]];
+          d.code = d.code.replace(/[we]/, (c) => (c === "w" ? "e" : "w"));
+        }
+        if (b[1] > b[3]) {
+          [b[1], b[3]] = [b[3], b[1]];
+          d.code = d.code.replace(/[ns]/, (c) => (c === "n" ? "s" : "n"));
+        }
+        this.setBox(a, b);
+        cv.style.cursor = this.edgeCursor(d.code);
+        this.view.overlay = { snap: sn };
+        this.view.redraw();
+        this.showCoords(pt);
+        return;
+      }
       if (d && d.kind === "handle") {
         const { pt, sn } = this.snapPoint(raw, e, d.anchor);
         this.trackHover(sn, raw);
@@ -1229,6 +1257,10 @@ class App {
       const t = TOOL_BY_ID[this.tool];
       if (t.kind === "select" || t.kind === "pan") {
         this.showCoords(raw);
+        if (t.kind === "select" && !d) {
+          const edge = this.edgeAt(sx, sy, e.pointerType === "touch");
+          cv.style.cursor = edge ? this.edgeCursor(edge.code) : "default";
+        }
         return;
       }
       const anchor = d && d.kind === "rect" ? d.start : this.clicks[this.clicks.length - 1];
@@ -1275,6 +1307,14 @@ class App {
       }
       if (d.kind === "pan") {
         $("canvas").style.cursor = this.tool === "pan" ? "grab" : this.tool === "select" ? "default" : "crosshair";
+        return;
+      }
+      if (d.kind === "edge") {
+        this.view.overlay = null;
+        if (d.pushed) {
+          this.panel.render();
+          this.changed();
+        }
         return;
       }
       if (d.kind === "handle" || d.kind === "move" || d.kind === "scale") {
@@ -1342,9 +1382,54 @@ class App {
     });
   }
 
+  /** Dreptunghiul editabil al unei casete (acoperire, ștergere, înnegrire, cotă tăiată, dreptunghi desenat). */
+  boxOf(a) {
+    let r = null;
+    if (a.r && ["white", "redact", "ink", "strike"].includes(a.type)) r = a.r;
+    else if (a.type === "shape" && a.kind === "rect" && a.pts && a.pts.length >= 2) r = [...a.pts[0], ...a.pts[1]];
+    if (!r) return null;
+    return [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.max(r[0], r[2]), Math.max(r[1], r[3])];
+  }
+
+  /** Marginea sau colțul de casetă de sub cursor (ca la ferestrele din Windows). */
+  edgeAt(sx, sy, touch) {
+    const tol = touch ? 12 : 6;
+    const items = this.visibleBuilt();
+    for (let i = items.length - 1; i >= 0; i--) {
+      const { a } = items[i];
+      const b = this.boxOf(a);
+      if (!b) continue;
+      const [X0, Y0] = this.view.toScreen([b[0], b[1]]);
+      const [X1, Y1] = this.view.toScreen([b[2], b[3]]);
+      if (sx < X0 - tol || sx > X1 + tol || sy < Y0 - tol || sy > Y1 + tol) continue;
+      let code = "";
+      if (Math.abs(sy - Y0) <= tol) code += "n";
+      else if (Math.abs(sy - Y1) <= tol) code += "s";
+      if (Math.abs(sx - X0) <= tol) code += "w";
+      else if (Math.abs(sx - X1) <= tol) code += "e";
+      if (code) return { a, code };
+    }
+    return null;
+  }
+
+  edgeCursor(code) {
+    return { n: "ns-resize", s: "ns-resize", e: "ew-resize", w: "ew-resize", ne: "nesw-resize", sw: "nesw-resize", nw: "nwse-resize", se: "nwse-resize" }[code] || "default";
+  }
+
+  setBox(a, b) {
+    if (a.type === "shape") a.pts = [[b[0], b[1]], [b[2], b[3]]];
+    else a.r = b;
+  }
+
   startSelectDrag(raw, sx, sy, e) {
     const v = this.view;
     if (!e.shiftKey && this.sel.size <= 1 && this.tryHandleDrag(sx, sy)) return;
+    const edge = !e.shiftKey && this.edgeAt(sx, sy, e.pointerType === "touch");
+    if (edge) {
+      if (!this.sel.has(edge.a.id)) this.select(edge.a.id);
+      this.drag = { kind: "edge", id: edge.a.id, code: edge.code };
+      return;
+    }
     const tol = 5 / v.zoom;
     const items = this.visibleBuilt();
     for (let i = items.length - 1; i >= 0; i--) {
@@ -1381,7 +1466,7 @@ class App {
           return true;
         }
         if (Math.hypot(hx - sx, hy - sy) <= 9 && !onlyScale) {
-          this.drag = { kind: "handle", id: sel.id, k: h.k, anchor: h.k === "p2" ? sel.p1 : h.k === "p1" ? sel.p2 : null };
+          this.drag = { kind: "handle", id: sel.id, k: h.k, anchor: h.k === "p2" ? sel.p1 : h.k === "p1" ? sel.p2 : h.k === "elbow" ? sel.target : null };
           return true;
         }
       }

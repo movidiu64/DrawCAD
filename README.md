@@ -170,6 +170,10 @@ Modurile se aleg din săgeata de lângă „Snap”, în bara de jos. Taste: **F
 
 **Listă de componente:** dai click pe colțul dreapta-sus al cartușului. Lista se așază deasupra, cu antetul jos și poziția 1 lângă antet (ISO 7573), câte un rând pentru fiecare reper de pe desen. Coloane: Poz., Denumire, Buc., Material, Observații. „Din repere” adaugă reperele puse ulterior.
 
+**Casete (acoperiri, ștergeri, înnegriri, cote tăiate, dreptunghiuri desenate):** ca la ferestrele din Windows, cursorul se schimbă în săgeată de redimensionare pe margini și colțuri; tragi de margine și caseta se mărește sau se micșorează, cu snap.
+
+**Cadrul GD&T:** linia de indicație are un pătrățel în cot. Îl tragi oriunde ca s-o frângi în orice unghi; „Cot automat (90°)” din panou revine la varianta implicită.
+
 **Bara de unelte și straturile:** grupurile din bară se pliază din titlul lor (starea se ține minte); tasta unei unelte deschide grupul ei. În panoul documentului, ochiul de lângă fiecare strat (Original, Adăugate, Revizii, Ștergeri) îl ascunde doar pe ecran, pentru verificare; exportul conține tot.
 
 **Rugozitate (Q):** dai două click-uri în același punct pentru simbol direct pe suprafață, sau al doilea click în altă parte pentru simbol cu linie de indicație. Simbolul direct se poate așeza deasupra suprafeței sau la stânga ei; pentru suprafețe văzute de jos sau din dreapta, ISO 1302 cere linie de indicație.
@@ -195,8 +199,9 @@ Modurile se aleg din săgeata de lângă „Snap”, în bara de jos. Taste: **F
 - **Reper:** punct pe piesă → poziția cercului; numerele cresc automat. Din panou: încercuit sau pe linie, capăt cu punct (în interiorul piesei) sau săgeată (pe contur).
 - **Măsoară (M):** două puncte cu snap; arată distanța, Δx, Δy și unghiul, la scara desenului.
 
-**Ștergere din original:** după ce tragi zona, dialogul arată obiectele găsite și o previzualizare înainte/după. Ai trei moduri:
-- **Selecție pe obiecte:** bifezi exact ce se elimină. E modul recomandat.
+**Ștergere din original:** după ce tragi zona, dialogul arată obiectele găsite și o previzualizare înainte/după. Ai patru moduri:
+- **Acoperă zona** (implicit): un dreptunghi plin peste zonă, fără să elimine ceva din fișier. Culoarea e albă, dar o poți schimba: alegi din paletă, iei o mostră cu „Pipetă” direct din previzualizarea „Înainte” sau, în Chrome/Edge, de oriunde de pe ecran cu „Ecran”. Așa acoperirea se potrivește cu fundalul unui desen colorat sau scanat.
+- **Selecție pe obiecte:** bifezi exact ce se elimină. Sunt bifate din start obiectele aflate cel puțin 90% în zonă (lungimea liniei, aria textului); lista arată procentul pentru fiecare. „Bifează tot ce atinge zona” le bifează pe toate.
 - **Doar textul:** elimină valorile, iar liniile de cotă rămân.
 - **Tot din zonă:** elimină ce e în zonă și taie liniile care trec prin ea exact la marginea zonei (conturul rămâne, cu o întrerupere; arcele și cercurile se taie la fel). Ce nu se poate tăia (suprafețe pline, imagini, obiecte din blocuri) poate fi acoperit cu alb: opțiunea „Acoperă zona cu alb” e bifată automat când e cazul.
 

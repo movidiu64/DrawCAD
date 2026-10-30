@@ -200,7 +200,10 @@ def main(url, out):
         page.mouse.move(x1, y1, steps=4)
         page.mouse.up()
         page.wait_for_selector("#rOk")
-        page.wait_for_timeout(900)
+        page.wait_for_timeout(600)
+        assert page.evaluate("document.querySelector('[data-mode].on').dataset.mode") == "cover"
+        page.click("[data-mode=objects]")  # eliminare reală a obiectelor bifate (≥ 90% în zonă)
+        page.wait_for_timeout(700)
         page.screenshot(path=str(out / "dialog_stergere.png"))
         page.click("#rOk")
         page.wait_for_timeout(200)
@@ -268,6 +271,7 @@ def main(url, out):
     img.crop((int(80 * MM * 3), int(115 * MM * 3), int(292 * MM * 3), int(205 * MM * 3))).save(out / "export_note_cartus.png")
     txt = doc[0].get_textpage().get_text_range()
     print("TEXT:", " | ".join(t for t in txt.split() if t))
+    assert "Ø30" not in txt.split(), "textul Ø30 trebuia eliminat din original"
     print("ERORI CONSOLĂ:", errors or "niciuna")
 
 

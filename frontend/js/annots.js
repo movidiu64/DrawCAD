@@ -707,16 +707,26 @@ function buildGdt(a, S, measure) {
   });
   // linia de indicație spre element
   const T = a.target;
+  let elbowH = null;
   if (T) {
     let pts;
     const x1 = x0 + W;
-    if (T[0] < x0 - h) pts = [[x0, a.pos[1]], [T[0], a.pos[1]], T];
+    const E = a.elbow;
+    if (E) {
+      // cot liber: linia pleacă din capătul cadrului cel mai apropiat de cot, apoi spre element
+      let start;
+      if (E[0] < x0) start = [x0, a.pos[1]];
+      else if (E[0] > x1) start = [x1, a.pos[1]];
+      else start = [Math.min(Math.max(E[0], x0 + h * 0.5), x1 - h * 0.5), E[1] < a.pos[1] ? y0 : y0 + Hf];
+      pts = [start, E, T];
+    } else if (T[0] < x0 - h) pts = [[x0, a.pos[1]], [T[0], a.pos[1]], T];
     else if (T[0] > x1 + h) pts = [[x1, a.pos[1]], [T[0], a.pos[1]], T];
     else {
       const sx = Math.min(Math.max(T[0], x0 + h * 0.5), x1 - h * 0.5);
       pts = [[sx, T[1] < y0 ? y0 : y0 + Hf], [sx, T[1]]];
       if (Math.abs(sx - T[0]) > 0.01) pts.push(T);
     }
+    elbowH = E || (pts.length === 3 ? pts[1] : mul(add(pts[0], pts[pts.length - 1]), 0.5));
     // segmente degenerate eliminate
     const clean = [pts[0]];
     for (let i = 1; i < pts.length; i++) if (len(sub(pts[i], clean[clean.length - 1])) > 0.3) clean.push(pts[i]);
@@ -726,10 +736,9 @@ function buildGdt(a, S, measure) {
       if (d) prims.push(...arrowP(clean[clean.length - 1], d, { ...S, arrow: "closed" }, c));
     }
   }
-  return {
-    prims,
-    handles: [{ k: "target", p: T }, { k: "pos", p: a.pos, move: true }],
-  };
+  const handles = [{ k: "target", p: T }, { k: "pos", p: a.pos, move: true }];
+  if (elbowH) handles.push({ k: "elbow", p: elbowH });
+  return { prims, handles };
 }
 
 function buildDatum(a, S, measure) {
@@ -815,10 +824,15 @@ function rectOutline(r, c) {
   return { t: "P", p: [x0, y0, x1, y0, x1, y1, x0, y1], close: true, w: 0.6, c, ed: true, dash: true };
 }
 
+/** Culoarea unei acoperiri: alb implicit sau culoarea aleasă (#rrggbb). */
+export function coverColor(a) {
+  return a.color && /^#[0-9a-f]{6}$/i.test(a.color) && a.color.toLowerCase() !== "#ffffff" ? a.color.toLowerCase() : "white";
+}
+
 function buildWhite(a) {
   const r = normRect(a.r);
   return {
-    prims: [{ t: "R", p: r, c: "white" }, rectOutline(r, "edgray")],
+    prims: [{ t: "R", p: r, c: coverColor(a), cover: true }, rectOutline(r, "edgray")],
     handles: [{ k: "r0", p: [a.r[0], a.r[1]] }, { k: "r1", p: [a.r[2], a.r[3]] }],
   };
 }
@@ -837,8 +851,8 @@ function buildRedact(a) {
   const r = normRect(a.r);
   const prims = [rectOutline(r, "edred")];
   // vechile zone (fără „cover”) se acopereau mereu cu alb
-  const cover = a.mode === "zone" && a.cover !== false;
-  if (cover) prims.unshift({ t: "R", p: r, c: "white" });
+  const cover = (a.mode === "zone" && a.cover !== false) || a.mode === "cover";
+  if (cover) prims.unshift({ t: "R", p: r, c: a.mode === "cover" ? coverColor(a) : "white", cover: true });
   for (const o of a.objs || []) {
     if (a.mode === "objects" && !(a.ids || []).includes(o.id)) continue;
     if (a.mode === "text" && o.type !== "text") continue;
@@ -1009,7 +1023,7 @@ export function setHandle(a, k, pt, built) {
 
 export function moveAnnot(a, dx, dy) {
   const mv = (p) => (p ? [p[0] + dx, p[1] + dy] : p);
-  for (const k of ["p1", "p2", "p3", "c", "p", "v", "target", "pos", "vp", "tp"]) if (a[k]) a[k] = mv(a[k]);
+  for (const k of ["p1", "p2", "p3", "c", "p", "v", "target", "pos", "vp", "tp", "elbow"]) if (a[k]) a[k] = mv(a[k]);
   if (a.pts) a.pts = a.pts.map(mv);
   if (a.r) a.r = [a.r[0] + dx, a.r[1] + dy, a.r[2] + dx, a.r[3] + dy];
 }
@@ -1031,6 +1045,7 @@ export function exportPrims(prims) {
       if (p.nostroke) q.nostroke = true;
       if (p.r != null) q.r = round(p.r, 3);
       if (p.dp && p.dp.length) q.dp = p.dp.map((v) => round(v, 3));
+      if (p.cover) q.cover = true;
       if (p.t === "T") {
         q.s = round(p.s, 3);
         q.a = round(p.a || 0, 3);

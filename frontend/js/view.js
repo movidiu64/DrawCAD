@@ -12,7 +12,9 @@ export const COLORS = {
   preview: "#2f6fd6",
 };
 
-export function drawPrims(ctx, prims, zoom, color = (c) => COLORS[c] || "#111", minPx = 0.8, opts = {}) {
+const colorOf = (c) => COLORS[c] || (typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c) ? c : "#111");
+
+export function drawPrims(ctx, prims, zoom, color = colorOf, minPx = 0.8, opts = {}) {
   for (const p of prims) {
     const col = color(p.c);
     ctx.strokeStyle = col;

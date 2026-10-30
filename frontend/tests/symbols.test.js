@@ -98,3 +98,26 @@ test("lista de componente: antet jos, poziția 1 lângă antet, Denumire aliniat
   const qx = t.filter((p) => p.txt === "1" || p.txt === "2").map((p) => p.p[0] + p.tw / 2);
   assert.ok(qx.length >= 2);
 });
+
+test("GD&T: cotul liniei de indicație se poate muta liber", () => {
+  const base = { type: "gdt", target: [100, 200], pos: [150, 100], sym: "pos", dia: true, val: "0,1", mods: [], datums: ["A", "", ""] };
+  const auto = build(base, S, measure);
+  const h = auto.handles.find((q) => q.k === "elbow");
+  assert.ok(h, "pătrățel de cot");
+  const free = build({ ...base, elbow: [120, 140] }, S, measure);
+  const lead = free.prims.find((p) => p.t === "P" && !p.close && !p.fill);
+  // trece prin cot și se termină în țintă
+  const pts = [];
+  for (let i = 0; i < lead.p.length; i += 2) pts.push([lead.p[i], lead.p[i + 1]]);
+  assert.ok(pts.some((q) => Math.abs(q[0] - 120) < 1e-9 && Math.abs(q[1] - 140) < 1e-9));
+  assert.deepEqual(pts[pts.length - 1], [100, 200]);
+});
+
+test("acoperire colorată: culoarea aleasă ajunge în primitive și la export", () => {
+  const b = build({ type: "redact", r: [0, 0, 50, 30], mode: "cover", color: "#ffe8a0" }, S, measure);
+  const r = b.prims.find((p) => p.t === "R");
+  assert.equal(r.c, "#ffe8a0");
+  assert.ok(r.cover);
+  const w = build({ type: "white", r: [0, 0, 50, 30] }, S, measure);
+  assert.equal(w.prims.find((p) => p.t === "R").c, "white");
+});

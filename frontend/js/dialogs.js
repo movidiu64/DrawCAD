@@ -322,8 +322,13 @@ export async function redactDialog(app, annot, isNew) {
     toast(e.message);
     return;
   }
-  let mode = annot.mode || "objects";
-  const ids = new Set(isNew ? objs.filter((o) => o.inside).map((o) => o.id) : annot.ids || []);
+  let mode = annot.mode || (isNew ? "cover" : "objects");
+  // implicit: obiectele aflate cel puțin 90% în zonă (lungimea liniei sau aria textului)
+  const FRAC = 0.9;
+  const auto = () => objs.filter((o) => !o.locked && (o.inside || (o.frac ?? 0) >= FRAC)).map((o) => o.id);
+  const ids = new Set(isNew || !annot.ids ? auto() : annot.ids);
+  let color = annot.color || "#ffffff";
+  let picking = false;
   const label = (o) => {
     if (o.type === "text") return `Text „${esc(o.text || "?")}”`;
     if (o.type === "path") return `Linie / contur · ${o.segments} puncte`;
@@ -332,6 +337,7 @@ export async function redactDialog(app, annot, isNew) {
   };
   const LOCKED = ["în bloc — doar acoperire", "var(--warn)"];
   const statusOf = (o) => {
+    if (mode === "cover") return ["acoperit", "var(--muted)"];
     if (mode === "objects") return o.locked ? LOCKED : ids.has(o.id) ? ["se elimină", "var(--bad)"] : ["rămâne", "var(--ok)"];
     if (mode === "text") return o.type !== "text" ? ["rămâne", "var(--ok)"] : o.locked ? LOCKED : ["se elimină", "var(--bad)"];
     if (o.locked) return LOCKED;
@@ -353,7 +359,18 @@ export async function redactDialog(app, annot, isNew) {
         <div class="objlist" id="rList"></div>
       </div>
       <div class="cards">
-        <button class="card" data-mode="objects"><b>Selecție pe obiecte</b><span>Elimini exact ce bifezi. Conturul rămâne intact dacă nu-l bifezi.</span></button>
+        <button class="card" data-mode="cover"><b>Acoperă zona</b><span>Un dreptunghi plin peste zonă, alb sau în culoarea fundalului. Nu elimină nimic din fișier.</span></button>
+        <div class="coverctl" id="rCoverCtl">
+          <span class="lbl">Culoare</span>
+          <div class="row"><input type="color" id="rColor" aria-label="Culoarea acoperirii">
+            <button class="ghost sw" data-sw="#ffffff" title="Alb" aria-label="Alb"><i style="background:#fff"></i></button>
+            <button class="ghost sw" data-sw="#f4f1e8" title="Hârtie" aria-label="Hârtie"><i style="background:#f4f1e8"></i></button>
+            <button class="ghost" id="rPick" title="Ia culoarea din previzualizarea „Înainte”"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4.5l5 5M17 2l5 5-3 3-5-5zM14 7l-9 9-1 4 4-1 9-9"/></svg> Pipetă</button>
+            ${window.EyeDropper ? `<button class="ghost" id="rPickScreen" title="Ia culoarea de oriunde de pe ecran">Ecran</button>` : ""}</div>
+          <span class="sub mono" id="rColorTxt"></span>
+        </div>
+        <button class="card" data-mode="objects"><b>Selecție pe obiecte</b><span>Elimini exact ce bifezi. Implicit sunt bifate obiectele aflate cel puțin 90% în zonă.</span></button>
+        <label class="chk" id="rAllRow"><input type="checkbox" id="rAll"> Bifează tot ce atinge zona</label>
         <button class="card" data-mode="text"><b>Doar textul</b><span>Elimină valoarea; liniile de cotă rămân și poți scrie valoarea nouă pe ele.</span></button>
         <button class="card" data-mode="zone"><b>Tot din zonă</b><span>Elimină ce e în zonă și taie liniile care trec prin ea exact la margine (ex. conturul rămâne, cu o întrerupere).</span></button>
         <label class="chk" id="rCoverRow"><input type="checkbox" id="rCover"> Acoperă zona cu alb (pentru ce nu se poate tăia)</label>
@@ -367,8 +384,8 @@ export async function redactDialog(app, annot, isNew) {
   const renderList = () => {
     list.innerHTML = objs.length ? objs.map((o) => {
       const [st, col] = statusOf(o);
-      return `<label data-oid="${o.id}"><input type="checkbox" ${ids.has(o.id) && !o.locked ? "checked" : ""} ${mode !== "objects" || o.locked ? "disabled" : ""}>
-        <span>${label(o)}${o.inside ? "" : ' <span class="muted">(parțial)</span>'}</span><span class="st" style="color:${col}">${st}</span></label>`;
+      return `<label data-oid="${o.id}"><input type="checkbox" ${ids.has(o.id) && !o.locked && mode !== "cover" ? "checked" : ""} ${mode !== "objects" || o.locked ? "disabled" : ""}>
+        <span>${label(o)}${o.inside ? "" : ` <span class="muted">(parțial · ${Math.round((o.frac ?? 0) * 100)}% în zonă)</span>`}</span><span class="st" style="color:${col}">${st}</span></label>`;
     }).join("") : `<span class="muted">Niciun obiect vectorial în zonă (pagină scanată?). Folosește Acoperă.</span>`;
     list.querySelectorAll("input").forEach((cb) => cb.addEventListener("change", () => {
       const id = cb.closest("label").dataset.oid;
@@ -389,10 +406,57 @@ export async function redactDialog(app, annot, isNew) {
     schedulePreview();
   });
   dlg.querySelector("#rLockNote").hidden = !objs.some((o) => o.locked);
+  // ---- acoperire: culoare, mostre, pipetă
+  const colorInp = dlg.querySelector("#rColor");
+  const setColor = (c) => {
+    color = c.toLowerCase();
+    colorInp.value = color;
+    dlg.querySelector("#rColorTxt").textContent = color === "#ffffff" ? "#ffffff · alb" : color;
+    dlg.querySelectorAll("[data-sw]").forEach((b) => b.classList.toggle("on", b.dataset.sw === color));
+    schedulePreview();
+  };
+  colorInp.addEventListener("input", () => setColor(colorInp.value));
+  dlg.querySelectorAll("[data-sw]").forEach((b) => b.addEventListener("click", () => setColor(b.dataset.sw)));
+  const pickBtn = dlg.querySelector("#rPick");
+  pickBtn.addEventListener("click", () => {
+    picking = !picking;
+    pickBtn.classList.toggle("on", picking);
+    dlg.querySelector("#rBefore").style.cursor = picking ? "crosshair" : "";
+  });
+  dlg.querySelector("#rBefore").addEventListener("click", (e) => {
+    if (!picking) return;
+    const cv = e.currentTarget;
+    const r = cv.getBoundingClientRect();
+    const x = Math.round(((e.clientX - r.left) / r.width) * cv.width);
+    const y = Math.round(((e.clientY - r.top) / r.height) * cv.height);
+    const d = cv.getContext("2d").getImageData(x, y, 1, 1).data;
+    setColor(`#${[d[0], d[1], d[2]].map((v) => v.toString(16).padStart(2, "0")).join("")}`);
+    picking = false;
+    pickBtn.classList.remove("on");
+    cv.style.cursor = "";
+  });
+  const scr = dlg.querySelector("#rPickScreen");
+  if (scr) {
+    scr.addEventListener("click", async () => {
+      try {
+        const res = await new window.EyeDropper().open();
+        setColor(res.sRGBHex);
+      } catch (_) { /* anulat */ }
+    });
+  }
+  const allCb = dlg.querySelector("#rAll");
+  allCb.addEventListener("change", () => {
+    ids.clear();
+    for (const id of allCb.checked ? objs.filter((o) => !o.locked).map((o) => o.id) : auto()) ids.add(id);
+    renderList();
+    schedulePreview();
+  });
   const setMode = (m) => {
     mode = m;
     dlg.querySelectorAll("[data-mode]").forEach((b) => b.classList.toggle("on", b.dataset.mode === m));
     dlg.querySelector("#rCoverRow").hidden = m !== "zone";
+    dlg.querySelector("#rCoverCtl").hidden = m !== "cover";
+    dlg.querySelector("#rAllRow").hidden = m !== "objects";
     renderList();
     schedulePreview();
   };
@@ -456,6 +520,14 @@ export async function redactDialog(app, annot, isNew) {
   let pvTimer = null;
   const schedulePreview = () => {
     clearTimeout(pvTimer);
+    if (mode === "cover") {
+      // acoperirea nu schimbă fișierul: „după” = „înainte” cu dreptunghiul colorat
+      paint(dlg.querySelector("#rAfter"), beforeImg, (ctx) => {
+        ctx.fillStyle = color;
+        ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+      });
+      return;
+    }
     pvTimer = setTimeout(async () => {
       try {
         const url = await api.previewRemoval(app.doc.id, annot.page, ops(), imgScale);
@@ -472,6 +544,7 @@ export async function redactDialog(app, annot, isNew) {
     beforeImg = await loadImg(api.renderUrl(app.doc.id, annot.page, imgScale));
   } catch (_) { /* fără imagine */ }
   drawBefore(null);
+  setColor(color);
   setMode(mode);
 
   dlg.querySelector("#rOk").addEventListener("click", () => {
@@ -480,7 +553,12 @@ export async function redactDialog(app, annot, isNew) {
       .filter((o) => (mode === "objects" ? ids.has(o.id) : mode === "text" ? o.type === "text" : o.type === "text" || o.inside))
       .map((o) => ({ id: o.id, type: o.type, poly: o.poly, bbox: o.bbox }));
     const keepIds = [...ids].filter((id) => !objs.some((o) => o.id === id && o.locked));
-    app.commitRedaction(annot, { mode, ids: keepIds, objs: keep, cover: mode === "zone" ? cover : undefined }, isNew);
+    if (mode === "cover") {
+      app.commitRedaction(annot, { mode, ids: [], objs: [], color, cover: undefined }, isNew);
+      closeModal();
+      return;
+    }
+    app.commitRedaction(annot, { mode, ids: keepIds, objs: keep, cover: mode === "zone" ? cover : undefined, color: undefined }, isNew);
     closeModal();
   });
 }
