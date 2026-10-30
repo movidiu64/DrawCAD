@@ -2,9 +2,9 @@ FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    COTARE_DATA=/data \
-    COTARE_FRONTEND=/app/frontend \
-    COTARE_FONT=/app/frontend/fonts/osifont.ttf \
+    DRAWCAD_DATA=/data \
+    DRAWCAD_FRONTEND=/app/frontend \
+    DRAWCAD_FONT=/app/frontend/fonts/osifont.ttf \
     PUID=99 \
     PGID=100
 

@@ -54,7 +54,7 @@ jobs:
       - name: Pornește containerul (folder de date montat, deținut de alt utilizator)
         run: |
           mkdir -p "$RUNNER_TEMP/cotdata"
-          docker run -d --name cotare -p 8080:8080 -v "$RUNNER_TEMP/cotdata:/data" \
+          docker run -d --name drawcad -p 8080:8080 -v "$RUNNER_TEMP/cotdata:/data" \
             -e PUID=99 -e PGID=100 --security-opt no-new-privileges:true ${{ steps.img.outputs.name }}:test
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:8080/api/health && break; sleep 1; done
           curl -sf http://127.0.0.1:8080/api/health
@@ -68,13 +68,13 @@ jobs:
           python tools/e2e_smoke.py http://127.0.0.1:8080 e2e_out
       - name: Verifică utilizatorul și permisiunile
         run: |
-          docker exec cotare grep -E "^(Uid|Gid):" /proc/1/status
-          docker exec cotare grep -qE "^Uid:[[:space:]]+99[[:space:]]" /proc/1/status
+          docker exec drawcad grep -E "^(Uid|Gid):" /proc/1/status
+          docker exec drawcad grep -qE "^Uid:[[:space:]]+99[[:space:]]" /proc/1/status
           test "$(stat -c %u:%g "$RUNNER_TEMP/cotdata/docs")" = "99:100"
           ls -ln "$RUNNER_TEMP/cotdata/docs" | head
       - name: Jurnal container
         if: always()
-        run: docker logs cotare
+        run: docker logs drawcad
       - uses: actions/upload-artifact@v4
         if: always()
         with:

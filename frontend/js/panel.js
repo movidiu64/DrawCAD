@@ -6,6 +6,7 @@ import { GDT_SYMBOLS, GDT_BY_ID, MODIFIERS, symbolPrims } from "./gdt.js";
 import { drawPrims } from "./view.js";
 import { TOOL_BY_ID, DRAW_TOOLS } from "./tools.js";
 
+const ORIG_EDIT = new Set(["white", "redact", "ink"]); // modificări ale originalului, fără strat
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
 const ISO_DISP = [
@@ -50,7 +51,7 @@ export class Panel {
     for (const a of list) counts[typeName(a)] = (counts[typeName(a)] || 0) + 1;
     const summary = Object.entries(counts).map(([t, n]) => `${esc(t)}: ${n}`).join(" · ");
     const scalable = list.filter((a) => SCALABLE.has(a.type));
-    const layered = list.filter((a) => a.type !== "white" && a.type !== "redact");
+    const layered = list.filter((a) => !ORIG_EDIT.has(a.type));
     const allRev = layered.length && layered.every((a) => a.layer === "rev");
     const allAdd = layered.length && layered.every((a) => a.layer !== "rev");
     return `<div class="sec"><div class="h">Selecție multiplă</div><div class="title">${list.length} adnotări</div><div class="sub">${summary}</div></div>
@@ -84,7 +85,7 @@ export class Panel {
           break;
         case "layer":
           app.updateMany((a) => {
-            if (a.type !== "white" && a.type !== "redact") a.layer = v;
+            if (!ORIG_EDIT.has(a.type)) a.layer = v;
           });
           break;
         case "copy":
@@ -127,7 +128,7 @@ export class Panel {
     const S = app.settings;
     const counts = { add: 0, rev: 0, del: 0 };
     for (const a of app.annots) {
-      if (a.type === "redact" || a.type === "white") counts.del++;
+      if (ORIG_EDIT.has(a.type)) counts.del++;
       else if (a.layer === "rev") counts.rev++;
       else counts.add++;
     }
@@ -156,19 +157,32 @@ export class Panel {
           }).join("")}
         ${app.hidden.size ? `<div class="sub">Ascunderea e doar pe ecran: exportul conține toate straturile.</div>` : ""}
       </div>
+      ${this.inkHtml()}
       ${this.keysHtml()}`;
+  }
+
+  /** Înnegrirea originalului pentru tipărire (desene colorate care ies palid la imprimantă). */
+  inkHtml() {
+    const ink = this.app.settings.ink || {};
+    const img = this.app.doc && this.app.doc.kind === "image";
+    const fills = [["black", "Negre"], ["gray", "Gri"], ["keep", "Neschimbate"]];
+    return `<div class="sec"><div class="h">Original la tipărire</div>
+      <label class="chk"><input type="checkbox" id="inkAll" ${ink.all ? "checked" : ""}> Linii și text negre, pe tot desenul</label>
+      ${ink.all ? `<div class="field"><span class="lbl">Suprafețe pline colorate</span><div class="seg">${fills.map(([k, l]) => `<button data-act="inkfills" data-v="${k}" class="${(ink.fills || "black") === k ? "on" : ""}">${l}</button>`).join("")}</div></div>
+        <label class="chk"><input type="checkbox" id="inkImg" ${ink.images || img ? "checked" : ""} ${img ? "disabled" : ""}> Imagini alb-negru${img ? " (scanul e o imagine)" : ""}</label>` : ""}
+      <div class="sub">${ink.all ? "Albul rămâne alb; cotele adăugate de tine nu se schimbă. Se vede pe ecran și se aplică la export." : "Pentru doar câteva linii folosește unealta <b>Înnegrește</b> din grupul Revizie."}</div></div>`;
   }
 
   // -------------------------------------------------------------- comun
   headHtml(a) {
     const b = this.app.builtOf(a);
-    let sub = a.layer === "rev" ? "strat Revizii" : a.type === "white" || a.type === "redact" ? "aplicat la export" : "strat Adăugate";
+    let sub = a.layer === "rev" ? "strat Revizii" : ORIG_EDIT.has(a.type) ? "aplicat la export" : "strat Adăugate";
     if (b && b.measured != null) sub += ` · măsurat ${fmtNum(b.measured, ",", 2)}${b.unit === "°" ? "°" : " mm"}`;
     return `<div class="sec"><div class="h">Selecție</div><div class="title">${esc(typeName(a))}</div><div class="sub">${esc(sub)}</div></div>`;
   }
 
   footHtml(a) {
-    const layer = a.type === "white" || a.type === "redact" ? "" : `<div class="sec"><div class="h">Strat</div><div class="seg">
+    const layer = ORIG_EDIT.has(a.type) ? "" : `<div class="sec"><div class="h">Strat</div><div class="seg">
         <button data-act="layer" data-v="add" class="${a.layer !== "rev" ? "on" : ""}">Adăugat</button>
         <button data-act="layer" data-v="rev" class="${a.layer === "rev" ? "on" : ""}">Revizie</button></div></div>`;
     return `${this.scaleHtml(a)}${layer}<div class="btns"><button class="danger" data-act="delete">Șterge adnotarea</button></div>`;
@@ -493,6 +507,12 @@ export class Panel {
       <div class="sub">ISO 6433: punct când linia se termină în interiorul piesei, săgeată când atinge conturul.</div></div>`;
   }
 
+  html_ink(a) {
+    const n = (a.ids || []).length;
+    return `<div class="sec"><div class="h">Înnegrire</div><div class="note">${n} ${n === 1 ? "obiect devine negru" : "obiecte devin negre"} la export (și pe ecran).${this.app.settings.ink && this.app.settings.ink.all ? " Acum e activă înnegrirea pe tot desenul, care o include." : ""}</div>
+      <div class="btns"><button class="ghost" data-act="inkedit">Editează selecția</button></div></div>`;
+  }
+
   html_white(a) {
     return `<div class="sec"><div class="note">Dreptunghi alb desenat peste original la export. Conținutul de dedesubt rămâne în fișier și poate fi copiat. Pentru eliminare reală folosește unealta <b>Șterge</b>.</div></div>`;
   }
@@ -576,6 +596,16 @@ export class Panel {
         e.stopPropagation();
       });
     });
+    const inkAll = el.querySelector("#inkAll");
+    if (inkAll) {
+      inkAll.addEventListener("change", () => {
+        const cur = app.settings.ink || {};
+        const img = app.doc && app.doc.kind === "image";
+        app.setSettings({ ink: { fills: "black", ...cur, all: inkAll.checked, images: img ? true : !!cur.images } });
+      });
+    }
+    const inkImg = el.querySelector("#inkImg");
+    if (inkImg) inkImg.addEventListener("change", () => app.setSettings({ ink: { ...(app.settings.ink || {}), images: inkImg.checked } }));
     const sc = el.querySelector("#dScale");
     if (sc) {
       sc.addEventListener("change", () => {
@@ -688,6 +718,12 @@ export class Panel {
         break;
       case "rtdel":
         upd((x) => { x.rows = (x.rows || []).filter((_r, j) => j !== Number(v)); });
+        break;
+      case "inkfills":
+        app.setSettings({ ink: { ...(app.settings.ink || {}), fills: v } });
+        break;
+      case "inkedit":
+        app.editInk(app.selected());
         break;
       case "layervis":
         app.toggleLayer(v);

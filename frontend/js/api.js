@@ -34,8 +34,8 @@ export async function saveState(id, state) {
 
 export const snap = (id, n) => fetch(`api/doc/${id}/page/${n}/snap`).then(jsonOrThrow);
 
-export function renderUrl(id, n, scale) {
-  return `api/doc/${id}/page/${n}/render?scale=${scale}`;
+export function renderUrl(id, n, scale, extra = "") {
+  return `api/doc/${id}/page/${n}/render?scale=${scale}${extra}`;
 }
 
 export async function objectsInRect(id, n, rect) {
@@ -47,11 +47,11 @@ export async function objectsInRect(id, n, rect) {
   return jsonOrThrow(r);
 }
 
-export async function previewRemoval(id, n, ops, scale) {
+export async function previewRemoval(id, n, ops, scale, ink = null) {
   const r = await fetch(`api/doc/${id}/page/${n}/preview`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ops, scale }),
+    body: JSON.stringify({ ops, scale, ink }),
   });
   if (!r.ok) throw new Error("Previzualizare eșuată");
   return URL.createObjectURL(await r.blob());

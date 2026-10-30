@@ -33,6 +33,8 @@ class App {
     this.acq = [];
     this.parDir = null;
     this.parSeg = null;
+    this.touches = new Map();
+    this.mmenu = null;
     this.measureCtx = document.createElement("canvas").getContext("2d");
     this.measureCtx.fontKerning = "none";
     this.mcache = new Map();
@@ -66,6 +68,158 @@ class App {
     try {
       localStorage.setItem("cotare.drawStyle", JSON.stringify(this.drawStyle));
     } catch (_) { /* fără memorare */ }
+  }
+
+  /**
+   * Esc, Enter cu o comandă în curs sau click dreapta: termină polilinia, oprește lanțul de linii,
+   * renunță la punctele date; fără comandă în curs deselectează, apoi revine la Selecție.
+   */
+  escape() {
+    const t = TOOL_BY_ID[this.tool];
+    if (this.clicks.length && t.kind === "poly") {
+      this.finishPoly(false);
+      return;
+    }
+    if (this.acq.length || this.parDir) this.clearAcq();
+    if (this.clicks.length) {
+      this.clicks = [];
+      this.view.overlay = null;
+      this.setHint(t.hint);
+      this.view.redraw();
+    } else if (this.selectedId) this.select(null);
+    else if (this.tool !== "select") this.setTool("select");
+  }
+
+  // ------------------------------------------------------------ meniu radial (ca la Inventor)
+  markingItems() {
+    const last = this.lastTool && TOOL_BY_ID[this.lastTool];
+    const tool = (id) => ({ id, label: TOOL_BY_ID[id].label, icon: TOOL_BY_ID[id].icon, run: () => this.setTool(id) });
+    const sel = this.sel.size > 0;
+    // poziții fixe (E, NE, N, NV, V, SV, S, SE), cu ultima comandă sus
+    return [
+      tool("dimRad"),
+      tool("dimDia"),
+      last && last.id !== "select" ? { ...tool(last.id), label: `${last.label}` , repeat: true } : tool("dimLin"),
+      tool("measure"),
+      { id: "undo", label: "Anulează", icon: "M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3", run: () => this.doUndo() },
+      tool("lead"),
+      sel ? { id: "del", label: "Șterge selecția", icon: "M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13", run: () => this.deleteSelected() } : tool("line"),
+      tool("text"),
+    ];
+  }
+
+  openMarkingMenu(sx, sy) {
+    this.closeMarkingMenu();
+    const vp = $("viewport");
+    const items = this.markingItems();
+    const el = document.createElement("div");
+    el.className = "mmenu";
+    el.style.left = `${sx}px`;
+    el.style.top = `${sy}px`;
+    const rx = 118;
+    const ry = 78;
+    el.innerHTML = `<div class="mm-center"></div>${items.map((it, i) => {
+      const a = (i * Math.PI) / 4;
+      const x = Math.cos(a) * rx;
+      const y = -Math.sin(a) * ry;
+      const side = Math.abs(Math.cos(a)) < 0.2 ? "c" : Math.cos(a) > 0 ? "r" : "l";
+      return `<button class="mm-item mm-${side}" data-i="${i}" style="left:${x}px;top:${y}px" title="${it.label}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${it.icon}"/></svg><span>${it.label}</span></button>`;
+    }).join("")}`;
+    vp.appendChild(el);
+    // ține meniul în ecran
+    const r = el.getBoundingClientRect();
+    const vr = vp.getBoundingClientRect();
+    const pad = 150;
+    el.style.left = `${Math.min(Math.max(sx, pad), vr.width - pad)}px`;
+    el.style.top = `${Math.min(Math.max(sy, 110), vr.height - 110)}px`;
+    void r;
+    el.querySelectorAll(".mm-item").forEach((b) => b.addEventListener("pointerup", (e) => {
+      e.stopPropagation();
+      this.runMarking(Number(b.dataset.i));
+    }));
+    this.mmenu = { el, items, cx: parseFloat(el.style.left), cy: parseFloat(el.style.top), hi: -1 };
+  }
+
+  /** Cu butonul încă apăsat, direcția față de centru alege comanda (marking menu). */
+  hoverMarking(sx, sy) {
+    const m = this.mmenu;
+    if (!m) return;
+    const dx = sx - m.cx;
+    const dy = sy - m.cy;
+    let hi = -1;
+    if (Math.hypot(dx, dy) > 28) {
+      const a = Math.atan2(-dy, dx);
+      hi = ((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8;
+    }
+    if (hi !== m.hi) {
+      m.hi = hi;
+      m.el.querySelectorAll(".mm-item").forEach((b) => b.classList.toggle("hi", Number(b.dataset.i) === hi));
+    }
+  }
+
+  runMarking(i) {
+    const m = this.mmenu;
+    if (!m || !m.items[i]) return;
+    const it = m.items[i];
+    this.closeMarkingMenu();
+    it.run();
+  }
+
+  closeMarkingMenu() {
+    if (this.mmenu) this.mmenu.el.remove();
+    this.mmenu = null;
+  }
+
+  pinchState() {
+    const [a, b] = [...this.touches.values()];
+    return { cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2, d0: Math.hypot(a[0] - b[0], a[1] - b[1]) };
+  }
+
+  /** Un click al uneltei active (puncte de cotă, vârfuri de polilinie…). */
+  toolClick(pt) {
+    const t = TOOL_BY_ID[this.tool];
+    if (t.kind === "poly") {
+      const v = this.view;
+      const near = (q) => {
+        const [ax, ay] = v.toScreen(q);
+        const [bx, by] = v.toScreen(pt);
+        return Math.hypot(ax - bx, ay - by);
+      };
+      const n = this.clicks.length;
+      // click pe primul punct: contur închis · al doilea click în același loc (dublu-click): gata
+      if (n >= Math.max(3, t.min || 2) && near(this.clicks[0]) < 8) return this.finishPoly(true);
+      if (n && near(this.clicks[n - 1]) < 3) return this.finishPoly(false);
+      this.clicks.push(pt);
+      this.updateOverlay(pt, null);
+      return;
+    }
+    if (t.kind === "clicks") {
+      this.clicks.push(pt);
+      if (this.clicks.length >= t.n) {
+        const pts = this.clicks;
+        this.clicks = [];
+        this.view.overlay = null;
+        if (t.id === "measure") {
+          this.showMeasure(pts[0], pts[1]);
+          return;
+        }
+        if (t.id === "calib") {
+          const d = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]) / K;
+          if (d > 0.1) dlg.calibDialog(this, d);
+          return;
+        }
+        this.addAnnot(finalize(t.make(pts, this)));
+        if (!t.chain) this.clearAcq();
+        if (t.chain) {
+          // ca LINE din CAD: următorul segment pornește din capătul celui desenat
+          this.clicks = [pts[pts.length - 1]];
+          this.updateOverlay(pt, null);
+        }
+      } else {
+        this.updateOverlay(pt, null);
+      }
+    }
   }
 
   /** Termină polilinia sau hașura în curs. */
@@ -146,6 +300,8 @@ class App {
     });
     $("btnExport").addEventListener("click", () => this.doc && dlg.exportDialog(this));
     $("btnClose").addEventListener("click", () => this.closeDoc());
+    $("btnPanel").addEventListener("click", () => this.setPanelOpen(!$("app").classList.contains("panel-open")));
+    $("btnPanelClose").addEventListener("click", () => this.setPanelOpen(false));
     // salvarea în așteptare nu se pierde la închiderea tab-ului
     window.addEventListener("pagehide", () => this.flushSaveBeacon());
     $("btnSettings").addEventListener("click", () => this.doc && dlg.settingsDialog(this));
@@ -200,10 +356,22 @@ class App {
 
   setHint(txt) {
     $("stHint").textContent = txt || "";
+    const vh = $("vpHint");
+    if (vh) vh.textContent = this.doc && this.tool !== "select" && this.tool !== "pan" ? txt || "" : "";
+  }
+
+  compact() {
+    return window.matchMedia("(max-width: 1100px)").matches;
+  }
+
+  setPanelOpen(open) {
+    $("app").classList.toggle("panel-open", open);
+    $("btnPanel").setAttribute("aria-expanded", String(open));
   }
 
   setTool(id) {
     if (!TOOL_BY_ID[id]) return;
+    if (id !== "select" && id !== "pan") this.lastTool = id;
     this.tool = id;
     this.clicks = [];
     this.lastMeasure = null;
@@ -253,7 +421,7 @@ class App {
     this.unexported = false;
     $("docName").textContent = meta.name;
     $("docMeta").textContent = `${meta.kind === "image" ? "imagine" : "PDF"} · ${meta.pages.length} ${meta.pages.length === 1 ? "pagină" : "pagini"}`;
-    document.title = `${meta.name} — Cotare`;
+    document.title = `${meta.name} — DrawCAD`;
     this.setPage(0);
     this.updateButtons();
   }
@@ -333,7 +501,7 @@ class App {
     $("pageTabs").innerHTML = "";
     $("docName").textContent = "Niciun document";
     $("docMeta").textContent = "";
-    document.title = "Cotare — editor PDF pentru desene tehnice";
+    document.title = "DrawCAD — editor PDF pentru desene tehnice";
     try {
       localStorage.removeItem("cotare.lastDoc");
     } catch (_) { /* stocare indisponibilă */ }
@@ -370,6 +538,7 @@ class App {
   changed() {
     this.unexported = true;
     this.view.redraw();
+    this.view.loadImage(false); // se reîncarcă doar dacă s-a schimbat înnegrirea originalului
     this.scheduleSave();
     this.updateButtons();
   }
@@ -397,10 +566,24 @@ class App {
   }
 
   setSettings(patch) {
+    const inkBefore = JSON.stringify(this.settings.ink || null);
     this.settings = { ...this.settings, ...patch };
     this.cache.clear();
     this.panel.render();
     this.changed();
+    if (JSON.stringify(this.settings.ink || null) !== inkBefore) this.view.loadImage(true);
+  }
+
+  /** Parametrii de randare ai paginii: înnegrirea originalului (tot desenul sau obiecte alese). */
+  renderQuery(n) {
+    const ink = this.settings.ink;
+    let q = "";
+    if (ink && ink.all) q += `&ink=1&fills=${ink.fills || "black"}${ink.images ? "&img=1" : ""}`;
+    else {
+      const ids = this.annots.filter((a) => a.type === "ink" && a.page === n).flatMap((a) => a.ids || []);
+      if (ids.length) q += `&bk=${encodeURIComponent([...new Set(ids)].join(","))}`;
+    }
+    return q;
   }
 
   // ------------------------------------------------------------ adnotări
@@ -423,7 +606,7 @@ class App {
   }
 
   layerOf(a) {
-    if (a.type === "white" || a.type === "redact") return "del";
+    if (a.type === "white" || a.type === "redact" || a.type === "ink") return "del";
     return a.layer === "rev" ? "rev" : "add";
   }
 
@@ -466,6 +649,13 @@ class App {
     this.sel = new Set(id ? [id] : []);
     this.panel.render();
     this.view.redraw();
+    if (this.compact()) {
+      // pe ecran mic panoul se deschide singur doar când e de scris ceva sau ai ales o adnotare
+      const a = id && this.annots.find((x) => x.id === id);
+      const typing = a && ["text", "note", "lead", "strike", "revtab", "bom", "gdt", "rough", "balloon", "datum"].includes(a.type);
+      if (!id) this.setPanelOpen(false);
+      else if (this.tool === "select" || typing) this.setPanelOpen(true);
+    }
   }
 
   selectMany(ids, add = false) {
@@ -656,6 +846,10 @@ class App {
     return "A";
   }
 
+  editInk(a) {
+    dlg.inkDialog(this, a, false);
+  }
+
   editRedaction(a) {
     dlg.redactDialog(this, a, false);
   }
@@ -686,8 +880,12 @@ class App {
         const op = a.mode === "objects" ? { mode: "objects", ids: a.ids || [] } : { mode: a.mode, rect: a.r };
         if (a.mode !== "objects" || op.ids.length) (removals[a.page] = removals[a.page] || []).push(op);
       }
+      if (a.type === "ink" && (a.ids || []).length && !(this.settings.ink && this.settings.ink.all)) {
+        (removals[a.page] = removals[a.page] || []).push({ mode: "black", ids: a.ids });
+      }
     }
-    return api.exportPdf(this.doc.id, { filename, colorMode, embed, pages, removals, state: this.stateJson() });
+    const ink = this.settings.ink && this.settings.ink.all ? this.settings.ink : null;
+    return api.exportPdf(this.doc.id, { filename, colorMode, embed, pages, removals, ink, state: this.stateJson() });
   }
 
   // ------------------------------------------------------------ mouse
@@ -876,7 +1074,46 @@ class App {
       cv.setPointerCapture(e.pointerId);
       const [sx, sy] = pos(e);
       const raw = this.view.toPage(sx, sy);
-      if (e.button === 1 || e.button === 2 || this.space || this.tool === "pan") {
+      if (this.mmenu) {
+        // meniul radial deschis: un click în afara lui îl închide
+        this.closeMarkingMenu();
+        return;
+      }
+      // două degete: pan + zoom; renunță la ce începuse primul deget
+      if (e.pointerType === "touch") {
+        this.touches.set(e.pointerId, [sx, sy]);
+        if (this.touches.size === 2) {
+          clearTimeout(this.pressTimer);
+          this.drag = { kind: "pinch", ...this.pinchState() };
+          return;
+        }
+        if (this.touches.size > 2) return;
+      }
+      if (e.button === 2) {
+        // click dreapta: scurt = Esc / gata, ținut = meniu radial, tras = mută foaia
+        this.drag = { kind: "rclick", sx, sy, x0: sx, y0: sy };
+        clearTimeout(this.pressTimer);
+        this.pressTimer = setTimeout(() => {
+          if (this.drag && this.drag.kind === "rclick") {
+            this.drag = { kind: "mmenu" };
+            this.openMarkingMenu(sx, sy);
+          }
+        }, 350);
+        e.preventDefault();
+        return;
+      }
+      if (e.pointerType === "touch" && e.button === 0) {
+        // apăsare lungă cu degetul: meniul radial
+        clearTimeout(this.pressTimer);
+        this.pressStart = [sx, sy];
+        this.pressTimer = setTimeout(() => {
+          if (this.touches.size !== 1 || !this.pressStart) return;
+          this.drag = { kind: "mmenu", touch: true };
+          this.view.overlay = null;
+          this.openMarkingMenu(...this.pressStart);
+        }, 550);
+      }
+      if (e.button === 1 || this.space || this.tool === "pan") {
         this.drag = { kind: "pan", sx, sy };
         cv.style.cursor = "grabbing";
         e.preventDefault();
@@ -891,52 +1128,18 @@ class App {
       // înainte de primul click al unei unelte, pătrățelele selecției au prioritate
       if (!this.clicks.length && this.tryHandleDrag(sx, sy, true)) return;
       const anchor = this.clicks[this.clicks.length - 1];
-      const { pt } = this.snapPoint(raw, e, anchor);
       if (t.kind === "rect") {
+        const { pt } = this.snapPoint(raw, e, anchor);
         this.drag = { kind: "rect", start: pt };
         return;
       }
-      if (t.kind === "poly") {
-        const v = this.view;
-        const near = (q) => {
-          const [ax, ay] = v.toScreen(q);
-          const [bx, by] = v.toScreen(pt);
-          return Math.hypot(ax - bx, ay - by);
-        };
-        const n = this.clicks.length;
-        // click pe primul punct: contur închis · al doilea click în același loc (dublu-click): gata
-        if (n >= Math.max(3, t.min || 2) && near(this.clicks[0]) < 8) return this.finishPoly(true);
-        if (n && near(this.clicks[n - 1]) < 3) return this.finishPoly(false);
-        this.clicks.push(pt);
-        this.updateOverlay(pt, null);
+      if (e.pointerType === "touch") {
+        // pe ecran tactil punctul se pune la ridicarea degetului: poți ajusta poziția cu snap,
+        // iar apăsarea lungă deschide meniul fără să lase un punct în urmă
+        this.drag = { kind: "tap" };
         return;
       }
-      if (t.kind === "clicks") {
-        this.clicks.push(pt);
-        if (this.clicks.length >= t.n) {
-          const pts = this.clicks;
-          this.clicks = [];
-          this.view.overlay = null;
-          if (t.id === "measure") {
-            this.showMeasure(pts[0], pts[1]);
-            return;
-          }
-          if (t.id === "calib") {
-            const d = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]) / K;
-            if (d > 0.1) dlg.calibDialog(this, d);
-            return;
-          }
-          this.addAnnot(finalize(t.make(pts, this)));
-          if (!t.chain) this.clearAcq();
-          if (t.chain) {
-            // ca LINE din CAD: următorul segment pornește din capătul celui desenat
-            this.clicks = [pts[pts.length - 1]];
-            this.updateOverlay(pt, null);
-          }
-        } else {
-          this.updateOverlay(pt, null);
-        }
-      }
+      this.toolClick(this.snapPoint(raw, e, anchor).pt);
     });
 
     cv.addEventListener("pointermove", (e) => {
@@ -945,6 +1148,33 @@ class App {
       const raw = this.view.toPage(sx, sy);
       this.lastPt = raw;
       const d = this.drag;
+      if (e.pointerType === "touch" && this.touches.has(e.pointerId)) {
+        this.touches.set(e.pointerId, [sx, sy]);
+        if (this.pressStart && Math.hypot(sx - this.pressStart[0], sy - this.pressStart[1]) > 8) {
+          clearTimeout(this.pressTimer);
+          this.pressStart = null;
+        }
+      }
+      if (d && d.kind === "pinch") {
+        if (this.touches.size < 2) return;
+        const st = this.pinchState();
+        if (st.d0 > 0 && d.d0 > 0) this.view.zoomAt(st.d0 / d.d0, st.cx, st.cy);
+        this.view.pan(st.cx - d.cx, st.cy - d.cy);
+        Object.assign(d, st);
+        return;
+      }
+      if (d && d.kind === "rclick") {
+        if (Math.hypot(sx - d.x0, sy - d.y0) > 5) {
+          clearTimeout(this.pressTimer);
+          this.drag = { kind: "pan", sx, sy };
+          cv.style.cursor = "grabbing";
+        }
+        return;
+      }
+      if (d && d.kind === "mmenu") {
+        this.hoverMarking(sx, sy);
+        return;
+      }
       if (d && d.kind === "pan") {
         this.view.pan(sx - d.sx, sy - d.sy);
         d.sx = sx;
@@ -1014,9 +1244,35 @@ class App {
     });
 
     const up = (e) => {
+      if (e.pointerType === "touch") {
+        this.touches.delete(e.pointerId);
+        clearTimeout(this.pressTimer);
+        this.pressStart = null;
+      }
       const d = this.drag;
+      if (d && d.kind === "pinch") {
+        // al doilea deget ridicat: gestul se termină, fără click
+        if (this.touches.size === 0) this.drag = null;
+        return;
+      }
       this.drag = null;
       if (!d) return;
+      if (d.kind === "rclick") {
+        clearTimeout(this.pressTimer);
+        this.escape();
+        return;
+      }
+      if (d.kind === "tap") {
+        const [ux, uy] = pos(e);
+        const raw = this.view.toPage(ux, uy);
+        this.toolClick(this.snapPoint(raw, e, this.clicks[this.clicks.length - 1]).pt);
+        return;
+      }
+      if (d.kind === "mmenu") {
+        const m = this.mmenu;
+        if (m && m.hi >= 0) this.runMarking(m.hi);
+        return; // fără direcție: meniul rămâne deschis pentru click
+      }
       if (d.kind === "pan") {
         $("canvas").style.cursor = this.tool === "pan" ? "grab" : this.tool === "select" ? "default" : "crosshair";
         return;
@@ -1069,6 +1325,9 @@ class App {
         if (a.type === "redact") {
           a.page = this.page;
           dlg.redactDialog(this, a, true);
+        } else if (a.type === "ink") {
+          a.page = this.page;
+          dlg.inkDialog(this, a, true);
         } else this.addAnnot(finalize(a));
       }
     };
@@ -1237,26 +1496,12 @@ class App {
         e.preventDefault();
         return;
       }
-      if ((e.key === "Escape" || e.key === "Enter") && this.clicks.length && TOOL_BY_ID[this.tool].kind === "poly") {
-        this.finishPoly(false);
+      if (e.key === "Escape" && this.mmenu) {
+        this.closeMarkingMenu();
         return;
       }
-      if (e.key === "Enter" && this.clicks.length && TOOL_BY_ID[this.tool].chain) {
-        this.clicks = [];
-        this.view.overlay = null;
-        this.setHint(TOOL_BY_ID[this.tool].hint);
-        this.view.redraw();
-        return;
-      }
-      if (e.key === "Escape" && (this.acq.length || this.parDir)) this.clearAcq();
-      if (e.key === "Escape") {
-        if (this.clicks.length) {
-          this.clicks = [];
-          this.view.overlay = null;
-          this.setHint(TOOL_BY_ID[this.tool].hint);
-          this.view.redraw();
-        } else if (this.selectedId) this.select(null);
-        else this.setTool("select");
+      if (e.key === "Escape" || (e.key === "Enter" && this.clicks.length)) {
+        this.escape();
         return;
       }
       if (e.key.startsWith("Arrow") && this.sel.size) {
@@ -1302,5 +1547,6 @@ class App {
 }
 
 const app = new App();
-window.cotare = app; // pentru depanare din consolă
+window.drawcad = app; // pentru depanare din consolă
+window.cotare = app; // numele vechi, folosit de testele e2e
 app.init();

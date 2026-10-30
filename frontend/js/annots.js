@@ -41,6 +41,7 @@ export const TYPE_NAMES = {
   detail: "Detaliu",
   balloon: "Reper de poziție",
   bom: "Listă de componente",
+  ink: "Înnegrire linii originale",
 };
 
 export function typeName(a) {
@@ -822,6 +823,16 @@ function buildWhite(a) {
   };
 }
 
+function buildInk(a) {
+  const r = normRect(a.r);
+  const prims = [rectOutline(r, "edgray")];
+  for (const o of a.objs || []) {
+    for (const poly of o.poly || []) if (poly.length >= 2) prims.push({ t: "P", p: poly.flat(), w: 1.2, c: "edgreen", ed: true });
+    if (!o.poly && o.bbox) prims.push(rectOutline(o.bbox, "edgreen"));
+  }
+  return { prims, handles: [] };
+}
+
 function buildRedact(a) {
   const r = normRect(a.r);
   const prims = [rectOutline(r, "edred")];
@@ -840,7 +851,7 @@ function buildRedact(a) {
   return { prims, handles: [{ k: "r0", p: [a.r[0], a.r[1]] }, { k: "r1", p: [a.r[2], a.r[3]] }] };
 }
 
-const BUILDERS = { dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, shape: buildShape, section: buildSection, detail: buildDetail, balloon: buildBalloon, bom: buildBom };
+const BUILDERS = { dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, ink: buildInk, shape: buildShape, section: buildSection, detail: buildDetail, balloon: buildBalloon, bom: buildBom };
 
 // caractere fără glifă în osifont → echivalente care există (la fel pe ecran și în PDF)
 const GLYPH_SUBST = { "…": "...", "„": '"', "”": '"', "“": '"', "«": '"', "»": '"', "‚": ",", "‘": "'", "\u00a0": " ", "−": "-" };
@@ -948,7 +959,7 @@ export function hit(built, a, pt, tol) {
   if (!built.bbox) return false;
   const [x0, y0, x1, y1] = built.bbox;
   if (pt[0] < x0 - tol || pt[0] > x1 + tol || pt[1] < y0 - tol || pt[1] > y1 + tol) return false;
-  if (a.type === "white" || a.type === "redact") {
+  if (a.type === "white" || a.type === "redact" || a.type === "ink") {
     const r = normRect(a.r);
     return pt[0] >= r[0] - tol && pt[0] <= r[2] + tol && pt[1] >= r[1] - tol && pt[1] <= r[3] + tol;
   }

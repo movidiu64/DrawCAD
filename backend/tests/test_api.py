@@ -1,4 +1,5 @@
 """Teste cap-coadă pentru API. Rulează: python -m unittest discover -s tests (din backend/)."""
+import io
 import json
 import os
 import socket
@@ -11,8 +12,8 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-TMP = tempfile.mkdtemp(prefix="cotare-test-")
-os.environ["COTARE_DATA"] = TMP
+TMP = tempfile.mkdtemp(prefix="drawcad-test-")
+os.environ["DRAWCAD_DATA"] = TMP
 sys.path.insert(0, str(ROOT / "backend"))
 sys.path.insert(0, str(ROOT / "tools"))
 
@@ -163,6 +164,77 @@ class ApiTest(unittest.TestCase):
         self.assertIn([125.0, 155.0, 5.0, -90.0], arcs)
         # centrul racordării devine punct de snap
         self.assertTrue(any(abs(p[0] - 165 * MM) < 0.05 and abs(p[1] - 155 * MM) < 0.05 and p[2] == "c" for p in d["pts"]))
+
+    def test_ink_for_print(self):
+        """Liniile și textul colorate devin negre; albul rămâne; blocurile și imaginile la cerere."""
+        import pypdfium2 as pdfium
+        from PIL import Image
+        from reportlab.lib.utils import ImageReader
+        from reportlab.pdfgen import canvas
+
+        buf = io.BytesIO()
+        c = canvas.Canvas(buf, pagesize=(400, 300))
+        c.setStrokeColorRGB(0.55, 0.95, 0.55)
+        c.setLineWidth(3)
+        c.line(20, 250, 380, 250)
+        c.setFillColorRGB(0.95, 0.9, 0.2)
+        c.setFont("Helvetica-Bold", 40)
+        c.drawString(20, 190, "IIII")
+        c.setFillColorRGB(0.7, 1, 0.7)
+        c.rect(20, 120, 100, 50, stroke=0, fill=1)
+        c.setFillColorRGB(1, 1, 1)
+        c.rect(60, 130, 20, 20, stroke=0, fill=1)
+        c.beginForm("blk")
+        c.setStrokeColorCMYK(0.4, 0, 0.4, 0)
+        c.setLineWidth(3)
+        c.line(200, 150, 380, 150)
+        c.endForm()
+        c.doForm("blk")
+        im = Image.new("RGB", (60, 40), (255, 255, 255))
+        for x in range(60):
+            for y in range(18, 22):
+                im.putpixel((x, y), (150, 240, 150))
+        c.drawImage(ImageReader(im), 200, 30, 120, 80)
+        c.showPage()
+        c.save()
+        src = buf.getvalue()
+
+        def px(pdf, x, y):
+            img = pdfium.PdfDocument(pdf)[0].render(scale=1).to_pil().convert("RGB")
+            return img.getpixel((x, 300 - y))
+
+        out = pdfcore.ink_pdf(src, None, "black", True)
+        self.assertEqual(px(out, 100, 250), (0, 0, 0))  # linie
+        self.assertEqual(px(out, 300, 150), (0, 0, 0))  # linie din bloc (Form XObject)
+        self.assertEqual(px(out, 40, 160), (0, 0, 0))  # umplere colorată → neagră
+        self.assertEqual(px(out, 70, 140), (255, 255, 255))  # albul rămâne
+        self.assertEqual(px(out, 260, 70), (0, 0, 0))  # linia verde din imagine
+        self.assertEqual(px(out, 260, 100), (255, 255, 255))  # fundalul imaginii
+        keep = pdfcore.ink_pdf(src, None, "keep", False)
+        self.assertNotEqual(px(keep, 40, 160), (0, 0, 0))  # umplerea rămâne colorată
+        self.assertNotEqual(px(keep, 260, 70), (0, 0, 0))  # imaginea neschimbată
+        text_dark = min(sum(px(keep, x, 200)) for x in range(22, 60))
+        self.assertLess(text_dark, 60)  # textul tot negru
+        # un singur obiect: doar linia de sus (primul obiect de pe pagină)
+        objs = pdfcore.objects_in_rect(src, 0, [50, 40, 150, 60])
+        ids = [o["id"] for o in objs if o["type"] == "path"]
+        one, rep = pdfcore.apply_removals(src, {0: [{"mode": "black", "ids": ids}]})
+        self.assertEqual(rep[0]["black"], 1)
+        self.assertEqual(px(one, 100, 250), (0, 0, 0))
+        self.assertNotEqual(px(one, 300, 150), (0, 0, 0))
+
+    def test_legacy_attachment_names(self):
+        """PDF-urile exportate înainte de redenumire (atașamente cotare.*) se redeschid."""
+        import pikepdf
+
+        pk = pikepdf.open(self.sample)
+        pk.attachments["cotare.json"] = pikepdf.AttachedFileSpec(pk, b'{"v":1,"annots":[]}', mime_type="application/json")
+        pk.attachments["cotare-original.pdf"] = pikepdf.AttachedFileSpec(pk, self.sample.read_bytes(), mime_type="application/pdf")
+        b = io.BytesIO()
+        pk.save(b)
+        got = pdfcore.extract_embedded(b.getvalue())
+        self.assertIsNotNone(got)
+        self.assertEqual(got[0], self.sample.read_bytes())
 
     def test_image_open(self):
         from PIL import Image

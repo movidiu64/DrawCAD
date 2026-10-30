@@ -1,26 +1,26 @@
-# Cotare (DrawCAD) — stack pentru Dockhand / docker compose
+# DrawCAD — stack pentru Dockhand / docker compose
 # Imaginea e construită și testată de GitHub Actions la fiecare push pe main.
 # Toate valorile ${...} se pot suprascrie din variabilele stack-ului (vezi .env.example).
 
-name: cotare
+name: drawcad
 
 services:
-  cotare:
-    image: ghcr.io/gg64nou/drawcad:${COTARE_TAG:-latest}
-    container_name: cotare
+  drawcad:
+    image: ghcr.io/gg64nou/drawcad:${DRAWCAD_TAG:-${COTARE_TAG:-latest}}
+    container_name: drawcad
     restart: unless-stopped
     pull_policy: always
     ports:
-      - "${COTARE_PORT:-8478}:8080"
+      - "${DRAWCAD_PORT:-${COTARE_PORT:-8478}}:8080"
     volumes:
       # documentele încărcate și starea lor (cotele, setările)
-      - ${COTARE_DATA_DIR:-/mnt/user/appdata/cotare}:/data
+      - ${DRAWCAD_DATA_DIR:-${COTARE_DATA_DIR:-/mnt/user/appdata/drawcad}}:/data
     environment:
       PUID: ${PUID:-99}
       PGID: ${PGID:-100}
-      COTARE_MAX_UPLOAD_MB: ${COTARE_MAX_UPLOAD_MB:-200}
-      COTARE_MAX_RENDER_PX: ${COTARE_MAX_RENDER_PX:-12000}
-      COTARE_RETENTION_DAYS: ${COTARE_RETENTION_DAYS:-30}
+      DRAWCAD_MAX_UPLOAD_MB: ${DRAWCAD_MAX_UPLOAD_MB:-${COTARE_MAX_UPLOAD_MB:-200}}
+      DRAWCAD_MAX_RENDER_PX: ${DRAWCAD_MAX_RENDER_PX:-${COTARE_MAX_RENDER_PX:-12000}}
+      DRAWCAD_RETENTION_DAYS: ${DRAWCAD_RETENTION_DAYS:-${COTARE_RETENTION_DAYS:-30}}
     security_opt:
       - no-new-privileges:true
     healthcheck:

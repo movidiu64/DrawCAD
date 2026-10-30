@@ -7,6 +7,7 @@ export const COLORS = {
   white: "#ffffff",
   edgray: "#8a929c",
   edred: "#d32f2f",
+  edgreen: "#2e9d5b",
   sel: "#f2a93b",
   preview: "#2f6fd6",
 };
@@ -146,8 +147,10 @@ export class View {
     const want = this.zoom * this.dpr;
     const q = Math.pow(2, Math.ceil(Math.log2(want) * 2) / 2); // trepte de √2
     const scale = Math.min(Math.max(q, 0.25), 16);
-    if (!force && this.img && scale <= this.imgScale * 1.01 && scale >= this.imgScale / 2.9) return;
-    const key = `${this.docId}/${this.pageN}/${scale}`;
+    const q2 = this.app.renderQuery ? this.app.renderQuery(this.pageN) : "";
+    if (!force && this.img && q2 === this.imgQuery && scale <= this.imgScale * 1.01 && scale >= this.imgScale / 2.9) return;
+    const extra = this.app.renderQuery ? this.app.renderQuery(this.pageN) : "";
+    const key = `${this.docId}/${this.pageN}/${scale}${extra}`;
     if (this.loadingKey === key) return;
     this.loadingKey = key;
     const im = new Image();
@@ -155,13 +158,14 @@ export class View {
       if (this.loadingKey !== key) return;
       this.img = im;
       this.imgScale = scale;
+      this.imgQuery = extra;
       this.loadingKey = null;
       this.redraw();
     };
     im.onerror = () => {
       this.loadingKey = null;
     };
-    im.src = api.renderUrl(this.docId, this.pageN, scale);
+    im.src = api.renderUrl(this.docId, this.pageN, scale, extra);
   }
 
   redraw() {

@@ -2,26 +2,26 @@
 # Potrivită pentru Dockhand cu stack din Git: fișierul compose = compose.build.yaml.
 #   docker compose -f compose.build.yaml up -d --build
 
-name: cotare
+name: drawcad
 
 services:
-  cotare:
+  drawcad:
     build: .
-    image: cotare:local
+    image: drawcad:local
     # reconstruiește la fiecare deploy, ca un redeploy după git sync să ia codul nou
     pull_policy: build
-    container_name: cotare
+    container_name: drawcad
     restart: unless-stopped
     ports:
-      - "${COTARE_PORT:-8478}:8080"
+      - "${DRAWCAD_PORT:-${COTARE_PORT:-8478}}:8080"
     volumes:
-      - ${COTARE_DATA_DIR:-/mnt/user/appdata/cotare}:/data
+      - ${DRAWCAD_DATA_DIR:-${COTARE_DATA_DIR:-/mnt/user/appdata/drawcad}}:/data
     environment:
       PUID: ${PUID:-99}
       PGID: ${PGID:-100}
-      COTARE_MAX_UPLOAD_MB: ${COTARE_MAX_UPLOAD_MB:-200}
-      COTARE_MAX_RENDER_PX: ${COTARE_MAX_RENDER_PX:-12000}
-      COTARE_RETENTION_DAYS: ${COTARE_RETENTION_DAYS:-30}
+      DRAWCAD_MAX_UPLOAD_MB: ${DRAWCAD_MAX_UPLOAD_MB:-${COTARE_MAX_UPLOAD_MB:-200}}
+      DRAWCAD_MAX_RENDER_PX: ${DRAWCAD_MAX_RENDER_PX:-${COTARE_MAX_RENDER_PX:-12000}}
+      DRAWCAD_RETENTION_DAYS: ${DRAWCAD_RETENTION_DAYS:-${COTARE_RETENTION_DAYS:-30}}
     security_opt:
       - no-new-privileges:true
     logging:

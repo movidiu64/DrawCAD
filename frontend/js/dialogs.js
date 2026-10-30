@@ -183,11 +183,16 @@ export function exportDialog(app, opts = {}) {
       <div class="cards">
         <div class="lbl">Opțiuni</div>
         <label class="chk" style="font-size:13px"><input type="checkbox" id="eEmbed" checked> Atașează stratul editabil (la redeschidere cotele rămân editabile)</label>
+        <label class="chk" style="font-size:13px"><input type="checkbox" id="eInk" ${app.settings.ink && app.settings.ink.all ? "checked" : ""}> Liniile originale negre, pentru imprimantă (culorile deschise ies palid)</label>
         <div class="note">${nAnn} adnotări · ${nDel} ștergeri din original. Cotele se scriu vectorial în pagină, cu fontul ISO 3098 încorporat. Originalul de pe server nu se modifică.</div>
       </div>
     </div>
     <div class="foot"><span class="muted" id="eMsg"></span><button class="ghost" data-close>Anulează</button><button class="primary" id="eGo">Exportă</button></div>`);
   let color = "black";
+  dlg.querySelector("#eInk").addEventListener("change", (e) => {
+    const cur = app.settings.ink || {};
+    app.setSettings({ ink: { fills: "black", ...cur, all: e.target.checked, images: app.doc.kind === "image" ? true : !!cur.images } });
+  });
   dlg.querySelectorAll("[data-col]").forEach((b) => b.addEventListener("click", () => {
     color = b.dataset.col;
     dlg.querySelectorAll("[data-col]").forEach((x) => x.classList.toggle("on", x === b));
@@ -209,11 +214,12 @@ export function exportDialog(app, opts = {}) {
       setTimeout(() => URL.revokeObjectURL(url), 30000);
       closeModal();
       const removed = Object.values(report).reduce((s, r) => s + (r.removed || 0), 0);
+      const blackened = Object.values(report).reduce((s, r) => s + (r.black || 0), 0);
       const sum = (k) => Object.values(report).reduce((s, r) => s + (r[k] || 0), 0);
       const cut = sum("cut");
       const left = sum("partial") + sum("locked");
       app.markExported();
-      toast(`Exportat ${a.download}${removed ? ` · ${removed} obiecte eliminate` : ""}${cut ? ` · ${cut} linii tăiate la margine` : ""}${left ? ` · ${left} doar acoperite/rămase` : ""}`);
+      toast(`Exportat ${a.download}${removed ? ` · ${removed} obiecte eliminate` : ""}${blackened ? ` · ${blackened} înnegrite` : ""}${cut ? ` · ${cut} linii tăiate la margine` : ""}${left ? ` · ${left} doar acoperite/rămase` : ""}`);
       if (opts.afterExport) opts.afterExport();
     } catch (e) {
       dlg.querySelector("#eMsg").textContent = e.message;
@@ -475,6 +481,113 @@ export async function redactDialog(app, annot, isNew) {
       .map((o) => ({ id: o.id, type: o.type, poly: o.poly, bbox: o.bbox }));
     const keepIds = [...ids].filter((id) => !objs.some((o) => o.id === id && o.locked));
     app.commitRedaction(annot, { mode, ids: keepIds, objs: keep, cover: mode === "zone" ? cover : undefined }, isNew);
+    closeModal();
+  });
+}
+
+// ------------------------------------------------------------------ înnegrire linii originale
+export async function inkDialog(app, annot, isNew) {
+  const rect = annot.r;
+  let objs = [];
+  try {
+    objs = (await api.objectsInRect(app.doc.id, annot.page, rect)).objects;
+  } catch (e) {
+    toast(e.message);
+    return;
+  }
+  // implicit: tot ce atinge zona, mai puțin ce e în blocuri (acelea doar cu înnegrirea întregului desen)
+  const ids = new Set(isNew ? objs.filter((o) => !o.locked && o.type !== "image").map((o) => o.id) : annot.ids || []);
+  const label = (o) => (o.type === "text" ? `Text „${esc(o.text || "?")}”` : o.type === "path" ? `Linie / contur · ${o.segments} puncte` : o.type === "image" ? "Imagine" : o.type);
+  const dlg = showModal(`
+    <h2>Înnegrește linii din original</h2>
+    <div class="sub">Pagina ${annot.page + 1} · ${objs.length} obiecte în zonă. Culoarea devine neagră; forma, grosimea și tipul liniei rămân.</div>
+    <div class="cols">
+      <div class="sec">
+        <div class="row"><div class="field"><span class="lbl">Înainte</span><div class="prevbox"><canvas id="kBefore"></canvas></div></div>
+        <div class="field"><span class="lbl">După</span><div class="prevbox"><canvas id="kAfter"></canvas></div></div></div>
+      </div>
+      <div class="sec">
+        <div class="lbl">Obiecte (bifează ce devine negru)</div>
+        <div class="objlist" id="kList"></div>
+        <div class="row"><button class="ghost" id="kAll">Toate</button><button class="ghost" id="kNone">Niciunul</button></div>
+        <div class="note">Pentru tot desenul (inclusiv blocuri și imagini) folosește „Linii și text negre, pe tot desenul” din panoul documentului sau din export.</div>
+      </div>
+    </div>
+    <div class="foot"><span class="muted">Se aplică la export; originalul de pe server rămâne neatins.</span><button class="ghost" data-close>Anulează</button><button class="primary" id="kOk">Aplică</button></div>`);
+  const list = dlg.querySelector("#kList");
+  const x0 = Math.min(rect[0], rect[2]);
+  const x1 = Math.max(rect[0], rect[2]);
+  const y0 = Math.min(rect[1], rect[3]);
+  const y1 = Math.max(rect[1], rect[3]);
+  const m = Math.max(10 * K, (x1 - x0) * 0.3, (y1 - y0) * 0.3);
+  const crop = [x0 - m, y0 - m, x1 + m, y1 + m];
+  const pvScale = Math.min(8, 300 / (crop[2] - crop[0]), 240 / (crop[3] - crop[1]));
+  const imgScale = Math.min(6, pvScale * 1.5);
+  const paint = (cv, im) => {
+    const w = (crop[2] - crop[0]) * pvScale;
+    const h = (crop[3] - crop[1]) * pvScale;
+    cv.width = Math.round(w * 2);
+    cv.height = Math.round(h * 2);
+    cv.style.width = `${Math.round(w)}px`;
+    cv.style.height = `${Math.round(h)}px`;
+    const ctx = cv.getContext("2d");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    const k = 2 * pvScale;
+    ctx.setTransform(k, 0, 0, k, -crop[0] * k, -crop[1] * k);
+    if (im) ctx.drawImage(im, 0, 0, im.width / imgScale, im.height / imgScale);
+    ctx.setLineDash([4 / k, 3 / k]);
+    ctx.strokeStyle = "#2e9d5b";
+    ctx.lineWidth = 1.2 / k;
+    ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+  };
+  const loadImg = (src) => new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = rej;
+    im.src = src;
+  });
+  let timer = null;
+  const preview = () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      try {
+        const url = await api.previewRemoval(app.doc.id, annot.page, [{ mode: "black", ids: [...ids] }], imgScale);
+        paint(dlg.querySelector("#kAfter"), await loadImg(url));
+        URL.revokeObjectURL(url);
+      } catch (_) { /* fără previzualizare */ }
+    }, 150);
+  };
+  const render = () => {
+    list.innerHTML = objs.length ? objs.map((o) => `<label data-oid="${o.id}"><input type="checkbox" ${ids.has(o.id) ? "checked" : ""} ${o.locked || o.type === "image" ? "disabled" : ""}>
+        <span>${label(o)}</span><span class="st" style="color:${o.locked || o.type === "image" ? "var(--warn)" : ids.has(o.id) ? "var(--ok)" : "var(--muted)"}">${o.locked ? "în bloc — doar tot desenul" : o.type === "image" ? "imagine — doar tot desenul" : ids.has(o.id) ? "devine negru" : "rămâne"}</span></label>`).join("")
+      : `<span class="muted">Niciun obiect vectorial în zonă. La un scan folosește înnegrirea pe tot desenul.</span>`;
+    list.querySelectorAll("input").forEach((cb) => cb.addEventListener("change", () => {
+      const id = cb.closest("label").dataset.oid;
+      if (cb.checked) ids.add(id);
+      else ids.delete(id);
+      render();
+      preview();
+    }));
+  };
+  dlg.querySelector("#kAll").addEventListener("click", () => {
+    for (const o of objs) if (!o.locked && o.type !== "image") ids.add(o.id);
+    render();
+    preview();
+  });
+  dlg.querySelector("#kNone").addEventListener("click", () => {
+    ids.clear();
+    render();
+    preview();
+  });
+  try {
+    paint(dlg.querySelector("#kBefore"), await loadImg(api.renderUrl(app.doc.id, annot.page, imgScale)));
+  } catch (_) { /* fără imagine */ }
+  render();
+  preview();
+  dlg.querySelector("#kOk").addEventListener("click", () => {
+    const keep = objs.filter((o) => ids.has(o.id)).map((o) => ({ id: o.id, type: o.type, poly: o.poly, bbox: o.bbox }));
+    app.commitRedaction(annot, { ids: [...ids], objs: keep }, isNew);
     closeModal();
   });
 }

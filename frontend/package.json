@@ -1,5 +1,5 @@
 {
-  "name": "cotare-frontend",
+  "name": "drawcad-frontend",
   "private": true,
   "type": "module",
   "description": "Frontend fără build: module ES servite direct de backend",

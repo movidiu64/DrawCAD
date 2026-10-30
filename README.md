@@ -1,4 +1,4 @@
-# Cotare — editor PDF pentru desene tehnice
+# DrawCAD — editor PDF pentru desene tehnice
 
 Aplicație web self-hosted (Docker) pentru a adăuga pe un PDF sau pe un scan:
 
@@ -12,6 +12,7 @@ Aplicație web self-hosted (Docker) pentru a adăuga pe un PDF sau pe un scan:
 - **vederi**: plan de secționare A–A (ISO 128-44), cerc de detaliu, etichete de vedere și repere de poziție (ISO 6433);
 - **desen**: linie, polilinie, dreptunghi, cerc, arc, axe de cerc, hașură și linie de ruptură, cu tipurile de linie ISO 128 (continuă, întreruptă, linie-punct, linie-două puncte, punctată) și grosimile standard;
 - **ștergere** din original, cu acoperire albă sau eliminare reală a obiectelor PDF;
+- **înnegrirea originalului pentru tipărire**: desenele colorate (verde deschis, galben) ies negre, pe tot desenul sau doar pentru liniile alese; scanurile devin alb-negru;
 - **export PDF** vectorial, cu font ISO 3098 încorporat și strat editabil atașat.
 
 Originalul nu se modifică. Adnotările se păstrează separat și se aplică abia la export.
@@ -30,10 +31,12 @@ Dockhand clonează repo-ul și construiește imaginea direct pe server. Nu e nev
    - ramura: `main`
    - fișierul compose: **`compose.build.yaml`**
 3. **Variabile ale stack-ului** (opțional; lista completă e în `.env.example`):
-   - `COTARE_PORT=8478`
-   - `COTARE_DATA_DIR=/mnt/user/appdata/cotare` — cale absolută pe server, nu relativă
+   - `DRAWCAD_PORT=8478`
+   - `DRAWCAD_DATA_DIR=/mnt/user/appdata/drawcad` — cale absolută pe server, nu relativă
    - `PUID=99`, `PGID=100`
 4. **Deploy.** Primul build durează 1–2 minute. Aplicația pornește pe `http://<ip>:8478`.
+
+**Trecerea de la numele vechi (Cotare):** containerul se numește acum `drawcad`. Înainte de primul redeploy oprește și șterge containerul vechi `cotare`, altfel portul 8478 rămâne ocupat. Datele implicite stau acum în `/mnt/user/appdata/drawcad`. Documentele de lucru din `/mnt/user/appdata/cotare` se pot muta acolo sau se poate păstra calea veche cu `DRAWCAD_DATA_DIR`. Variabilele `COTARE_*` merg în continuare.
 
 La fiecare redeploy după un git sync imaginea se reconstruiește (`pull_policy: build`). Pentru sincronizare automată la push, setează în Dockhand webhook-ul stack-ului și adaugă-l în GitHub la **Settings → Webhooks** al repo-ului.
 
@@ -66,15 +69,17 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 
 ### Variabile de mediu
 
+Aplicația s-a numit inițial „Cotare”: variabilele vechi `COTARE_*` sunt acceptate în continuare, iar PDF-urile exportate de versiunile vechi se redeschid editabile.
+
 | Variabilă | Implicit | Rol |
 |---|---|---|
-| `COTARE_TAG` | `latest` | tag-ul imaginii; un SHA de commit fixează versiunea |
-| `COTARE_PORT` | `8478` | portul de pe server |
-| `COTARE_DATA_DIR` | `/mnt/user/appdata/cotare` | folderul de date de pe server |
+| `DRAWCAD_TAG` | `latest` | tag-ul imaginii; un SHA de commit fixează versiunea |
+| `DRAWCAD_PORT` | `8478` | portul de pe server |
+| `DRAWCAD_DATA_DIR` | `/mnt/user/appdata/drawcad` | folderul de date de pe server |
 | `PUID` / `PGID` | `99` / `100` | utilizatorul cu care rulează aplicația |
-| `COTARE_MAX_UPLOAD_MB` | `200` | dimensiunea maximă a unui fișier încărcat |
-| `COTARE_MAX_RENDER_PX` | `12000` | latura maximă, în pixeli, a randării unei pagini |
-| `COTARE_RETENTION_DAYS` | `30` | zile după care un document nefolosit se șterge de pe server; `0` = niciodată |
+| `DRAWCAD_MAX_UPLOAD_MB` | `200` | dimensiunea maximă a unui fișier încărcat |
+| `DRAWCAD_MAX_RENDER_PX` | `12000` | latura maximă, în pixeli, a randării unei pagini |
+| `DRAWCAD_RETENTION_DAYS` | `30` | zile după care un document nefolosit se șterge de pe server; `0` = niciodată |
 
 ## Utilizare
 
@@ -112,6 +117,23 @@ Modurile se aleg din săgeata de lângă „Snap”, în bara de jos. Taste: **F
 | I | linie | P | polilinie |
 | J | dreptunghi | Y | cerc |
 | Z | arc | M | măsoară (fără să adauge nimic) |
+
+**Mouse:**
+- **click dreapta** = Esc: termină polilinia, oprește lanțul de linii, renunță la punctele date sau deselectează
+- **click dreapta ținut** = meniu radial cu comenzile uzuale. Sus e ultima comandă folosită, apoi Diametru, Rază, Text, Linie (sau Șterge selecția), Indicație, Anulează, Măsoară. Alegi trăgând în direcția comenzii și eliberând, sau eliberezi pe loc și dai click pe comandă.
+- **click dreapta tras** sau rotița apăsată = mută foaia
+
+**Tabletă și telefon:** panoul de proprietăți devine un sertar (pe telefon, o foaie care urcă de jos). Se deschide singur când alegi o adnotare sau ai de scris un text, iar butonul cu glisoare din antet îl deschide oricând. Pe ecran tactil:
+- **două degete** mută foaia și fac zoom
+- **punctul** se pune la ridicarea degetului, așa că îl poți ajusta cu snap
+- **apăsare lungă** deschide meniul radial
+
+**Original la tipărire:** desenele colorate ies palid la imprimantă. Ai două variante:
+- **Tot desenul.** În panoul documentului (sau în dialogul de export) bifezi „Linii și text negre, pe tot desenul”. Liniile și textul originalului devin negre, inclusiv cele din blocuri (indicatorul). Albul rămâne alb, iar cotele tale nu se schimbă.
+  - Suprafețele pline colorate pot deveni negre, gri sau rămâne neschimbate.
+  - Imaginile (și scanurile) pot deveni alb-negru: tot ce nu e hârtie devine negru.
+  - Se vede pe ecran și se aplică la export.
+- **Doar unele linii.** Unealta **Înnegrește** din grupul Revizie: tragi o zonă și bifezi obiectele care devin negre.
 
 **Taste generale:**
 - Ctrl+Z / Ctrl+Y: anulează / refă
@@ -185,7 +207,7 @@ Modurile se aleg din săgeata de lângă „Snap”, în bara de jos. Taste: **F
   - **Închide fără export:** lucrul rămâne pe server și îl redeschizi din Recente;
   - **Închide și șterge de pe server.**
 - **Salvarea pe server** e automată, la fiecare modificare, și se face și la închiderea tab-ului.
-- **Cât stau documentele pe server:** `COTARE_RETENTION_DAYS` zile (implicit 30) de la ultima folosire; deschiderea unui document resetează termenul. Curățarea rulează la pornire și apoi la 6 ore.
+- **Cât stau documentele pe server:** `DRAWCAD_RETENTION_DAYS` zile (implicit 30) de la ultima folosire; deschiderea unui document resetează termenul. Curățarea rulează la pornire și apoi la 6 ore.
 - **În Recente** vezi câte zile mai are fiecare document. Butonul coș îl șterge imediat.
 - **PDF-urile exportate pe calculator** nu sunt afectate de această curățare.
 

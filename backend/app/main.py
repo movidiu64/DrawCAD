@@ -23,12 +23,17 @@ from starlette.staticfiles import StaticFiles
 
 from . import pdfcore
 
-DATA_DIR = Path(os.environ.get("COTARE_DATA", "/data"))
-FRONTEND_DIR = Path(os.environ.get("COTARE_FRONTEND", Path(__file__).resolve().parents[2] / "frontend"))
-MAX_UPLOAD = int(os.environ.get("COTARE_MAX_UPLOAD_MB", "200")) * 1024 * 1024
-MAX_RENDER_PX = int(os.environ.get("COTARE_MAX_RENDER_PX", "12000"))
+def _env(name, default):
+    """DRAWCAD_<nume>, cu COTARE_<nume> acceptat în continuare (numele vechi al aplicației)."""
+    return os.environ.get(f"DRAWCAD_{name}") or os.environ.get(f"COTARE_{name}") or default
+
+
+DATA_DIR = Path(_env("DATA", "/data"))
+FRONTEND_DIR = Path(_env("FRONTEND", Path(__file__).resolve().parents[2] / "frontend"))
+MAX_UPLOAD = int(_env("MAX_UPLOAD_MB", "200")) * 1024 * 1024
+MAX_RENDER_PX = int(_env("MAX_RENDER_PX", "12000"))
 # documentele nefolosite atâtea zile se șterg automat (0 = niciodată)
-RETENTION_DAYS = float(os.environ.get("COTARE_RETENTION_DAYS", "30"))
+RETENTION_DAYS = float(_env("RETENTION_DAYS", "30"))
 
 DOCS = DATA_DIR / "docs"
 _ID_RE = re.compile(r"^[a-f0-9]{32}$")
@@ -203,7 +208,7 @@ def cleanup_expired(now: float | None = None) -> list[str]:
         _bytes_cache.pop(d.name, None)
         removed.append(d.name)
     if removed:
-        logging.getLogger("cotare").info("curățare: %d documente expirate șterse", len(removed))
+        logging.getLogger("drawcad").info("curățare: %d documente expirate șterse", len(removed))
     return removed
 
 
@@ -249,9 +254,16 @@ async def api_render(request: Request):
     if max_side > MAX_RENDER_PX:
         scale = MAX_RENDER_PX / max(p["w"], p["h"])
     scale = round(max(0.1, scale), 3)
+    # înnegrire pentru tipărire: tot desenul (ink) și/sau obiecte anume (bk = id-uri separate prin virgulă)
+    ink = None
+    if request.query_params.get("ink"):
+        ink = {"all": True, "fills": request.query_params.get("fills", "black"), "images": request.query_params.get("img") == "1"}
+    bk = [x for x in request.query_params.get("bk", "").split(",") if x][:5000]
+    ops = [{"mode": "black", "ids": bk}] if bk else None
+    key = (doc_id, n, scale, json.dumps(ink, sort_keys=True), ",".join(bk))
 
     def work():
-        return _render_cache.get_or((doc_id, n, scale), lambda: pdfcore.render_png(_original(doc_id), n, scale))
+        return _render_cache.get_or(key, lambda: pdfcore.render_png(_original(doc_id), n, scale, ops, ink))
 
     png = await run_in_threadpool(work)
     return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=3600", "X-Scale": str(scale)})
@@ -267,7 +279,7 @@ async def api_preview(request: Request):
     body = await request.json()
     ops = body.get("ops", [])
     scale = min(float(body.get("scale", 2)), 6)
-    png = await run_in_threadpool(pdfcore.render_png, _original(doc_id), n, scale, ops)
+    png = await run_in_threadpool(pdfcore.render_png, _original(doc_id), n, scale, ops, body.get("ink") or None)
     return Response(png, media_type="image/png")
 
 
@@ -313,10 +325,11 @@ async def api_export(request: Request):
     state = body.get("state")
     embed = bool(body.get("embed", True))
     color = body.get("colorMode", "black")
+    ink = body.get("ink") or None
 
     def work():
         st = json.dumps(state, ensure_ascii=False).encode("utf-8") if (embed and state is not None) else None
-        return pdfcore.export_pdf(_original(doc_id), prims, rem, color, st, embed)
+        return pdfcore.export_pdf(_original(doc_id), prims, rem, color, st, embed, ink)
 
     try:
         pdf, reports = await run_in_threadpool(work)

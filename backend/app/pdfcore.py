@@ -24,14 +24,16 @@ from reportlab.pdfgen import canvas as rl_canvas
 PDFIUM_LOCK = threading.RLock()
 
 FONT_NAME = "osifont"
-FONT_PATH = os.environ.get(
+FONT_PATH = os.environ.get("DRAWCAD_FONT") or os.environ.get(
     "COTARE_FONT",
     os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "fonts", "osifont.ttf"),
 )
 _font_registered = False
 
-ATTACH_JSON = "cotare.json"
-ATTACH_ORIGINAL = "cotare-original.pdf"
+ATTACH_JSON = "drawcad.json"
+ATTACH_ORIGINAL = "drawcad-original.pdf"
+# exporturile făcute înainte de redenumire (Cotare) se redeschid în continuare
+LEGACY_ATTACH = [("cotare.json", "cotare-original.pdf")]
 
 OBJ_TYPE_NAMES = {
     R.FPDF_PAGEOBJ_TEXT: "text",
@@ -241,10 +243,11 @@ def extract_embedded(pdf_bytes: bytes):
     try:
         with pikepdf.open(io.BytesIO(pdf_bytes)) as pk:
             att = pk.attachments
-            if ATTACH_JSON in att and ATTACH_ORIGINAL in att:
-                js = att[ATTACH_JSON].get_file().read_bytes()
-                orig = att[ATTACH_ORIGINAL].get_file().read_bytes()
-                return orig, js
+            for jn, on in [(ATTACH_JSON, ATTACH_ORIGINAL), *LEGACY_ATTACH]:
+                if jn in att and on in att:
+                    js = att[jn].get_file().read_bytes()
+                    orig = att[on].get_file().read_bytes()
+                    return orig, js
     except Exception:
         pass
     return None
@@ -279,7 +282,9 @@ def image_to_pdf(data: bytes, dpi: float | None) -> tuple[bytes, float]:
 # ---------------------------------------------------------------- randare
 
 
-def render_png(pdf_bytes: bytes, page_index: int, scale: float, removals=None) -> bytes:
+def render_png(pdf_bytes: bytes, page_index: int, scale: float, removals=None, ink=None) -> bytes:
+    if ink and ink.get("all"):
+        pdf_bytes = ink_pdf(pdf_bytes, {page_index}, ink.get("fills", "black"), bool(ink.get("images")))
     with PDFIUM_LOCK:
         doc = pdfium.PdfDocument(pdf_bytes)
         try:
@@ -294,6 +299,244 @@ def render_png(pdf_bytes: bytes, page_index: int, scale: float, removals=None) -
             return out.getvalue()
         finally:
             doc.close()
+
+
+# ---------------------------------------------------------------- înnegrire pentru tipărire
+# Desenele colorate (verde deschis, galben…) ies aproape invizibile la imprimantă. Liniile și textul
+# se fac negre rescriind operatorii de culoare din fluxurile de conținut (pagină și blocuri), deci
+# geometria, fonturile și ordinea obiectelor rămân neatinse. Albul (hârtia, mascările) rămâne alb.
+
+INK_FILLS = ("black", "gray", "keep")
+
+
+def _num(v):
+    try:
+        return float(v)
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
+def _cs_kind(name, resources, depth=0):
+    """Tipul unui spațiu de culoare: (familie, nr. componente, extra)."""
+    if depth > 6:
+        return ("unknown", 0, None)
+    if isinstance(name, pikepdf.Array):
+        arr = name
+    else:
+        n = str(name)
+        dev = {"/DeviceGray": ("gray", 1), "/G": ("gray", 1), "/CalGray": ("gray", 1), "/DeviceRGB": ("rgb", 3),
+               "/RGB": ("rgb", 3), "/CalRGB": ("rgb", 3), "/DeviceCMYK": ("cmyk", 4), "/CMYK": ("cmyk", 4),
+               "/Pattern": ("pattern", 0)}
+        if n in dev:
+            return (*dev[n], None)
+        try:
+            arr = resources.ColorSpace[name]
+        except Exception:  # noqa: BLE001
+            return ("unknown", 0, None)
+        if isinstance(arr, pikepdf.Name):
+            return _cs_kind(arr, resources, depth + 1)
+    try:
+        fam = str(arr[0])
+        if fam == "/ICCBased":
+            nc = int(arr[1].get("/N", 3))
+            return ({1: "gray", 3: "rgb", 4: "cmyk"}.get(nc, "unknown"), nc, None)
+        if fam in ("/CalRGB", "/CalGray", "/Lab"):
+            return ({"/CalRGB": "rgb", "/CalGray": "gray", "/Lab": "lab"}[fam], 1 if fam == "/CalGray" else 3, None)
+        if fam == "/Separation":
+            return ("sep", 1, None)
+        if fam == "/DeviceN":
+            return ("devn", len(arr[1]), None)
+        if fam == "/Indexed":
+            base = _cs_kind(arr[1], resources, depth + 1)
+            look = arr[3]
+            data = bytes(look.read_bytes()) if isinstance(look, pikepdf.Stream) else bytes(look)
+            return ("indexed", 1, (base, data))
+        if fam == "/Pattern":
+            return ("pattern", 0, None)
+    except Exception:  # noqa: BLE001
+        pass
+    return ("unknown", 0, None)
+
+
+def _color_eval(kind, vals):
+    """(e_alb, luminozitate 0…1) pentru o culoare."""
+    fam, _n, extra = kind
+    v = [_num(x) for x in vals if not isinstance(x, pikepdf.Name)]
+    if fam == "gray" and v:
+        return v[0] >= 0.97, v[0]
+    if fam == "rgb" and len(v) >= 3:
+        r, g, b = v[:3]
+        return min(r, g, b) >= 0.97, 0.299 * r + 0.587 * g + 0.114 * b
+    if fam == "cmyk" and len(v) >= 4:
+        c, m, y, k = v[:4]
+        r, g, b = (1 - c) * (1 - k), (1 - m) * (1 - k), (1 - y) * (1 - k)
+        return max(v[:4]) <= 0.03, 0.299 * r + 0.587 * g + 0.114 * b
+    if fam in ("sep", "devn") and v:
+        return max(v) <= 0.03, 1 - max(v)
+    if fam == "lab" and v:
+        return v[0] >= 97, v[0] / 100
+    if fam == "indexed" and v and extra:
+        base, data = extra
+        nb = base[1] or 3
+        i = int(v[0])
+        comps = [b / 255 for b in data[i * nb:(i + 1) * nb]]
+        if len(comps) == nb:
+            return _color_eval(base, comps)
+    return False, 0.0
+
+
+def _ink_instrs(instrs, resources, fills):
+    """Rescrie operatorii de culoare: contururile și textul devin negre, umplerile după `fills`."""
+    out = []
+    st = {"S": ("gray", 1, None), "F": ("gray", 1, None), "fw": False, "last": []}
+    stack = []
+    in_text = False
+    keep = fills == "keep"
+
+    def fill_value(white, lum):
+        if white:
+            return 1
+        return 0 if fills == "black" else round(max(0.0, min(1.0, lum)) * 0.85, 3)
+
+    for operands, op in instrs:
+        o = str(op)
+        if o == "q":
+            stack.append((dict(st), list(st["last"])))
+            out.append((operands, op))
+            continue
+        if o == "Q":
+            if stack:
+                saved, last = stack.pop()
+                st.update(saved)
+                st["last"] = last
+            out.append((operands, op))
+            continue
+        if o in ("CS", "cs"):
+            kind = _cs_kind(operands[0], resources) if operands else ("gray", 1, None)
+            if o == "CS":
+                st["S"] = kind
+                out.append(([0], pikepdf.Operator("G")))
+            else:
+                st["F"] = kind
+                if keep and not in_text:
+                    out.append((operands, op))
+                    st["last"] = [(operands, op)]
+                else:
+                    em = ([0], pikepdf.Operator("g"))
+                    out.append(em)
+                    if not in_text:
+                        st["last"] = [em]
+            continue
+        if o in ("G", "RG", "K", "SC", "SCN"):
+            kind = {"G": ("gray", 1, None), "RG": ("rgb", 3, None), "K": ("cmyk", 4, None)}.get(o, st["S"])
+            if o in ("G", "RG", "K"):
+                st["S"] = kind
+            white, _lum = _color_eval(kind, operands)
+            out.append(([1 if white else 0], pikepdf.Operator("G")))
+            continue
+        if o in ("g", "rg", "k", "sc", "scn"):
+            kind = {"g": ("gray", 1, None), "rg": ("rgb", 3, None), "k": ("cmyk", 4, None)}.get(o, st["F"])
+            if o in ("g", "rg", "k"):
+                st["F"] = kind
+            white, lum = _color_eval(kind, operands)
+            if in_text:
+                # textul e întotdeauna negru (sau alb, dacă era alb)
+                out.append(([1 if white else 0], pikepdf.Operator("g")))
+                continue
+            st["fw"] = white
+            if keep:
+                prev_cs = [st["last"][0]] if o in ("sc", "scn") and st["last"] and str(st["last"][0][1]) == "cs" else []
+                st["last"] = prev_cs + [(operands, op)]
+                out.append((operands, op))
+            else:
+                em = ([fill_value(white, lum)], pikepdf.Operator("g"))
+                st["last"] = [em]
+                out.append(em)
+            continue
+        if o == "BT":
+            in_text = True
+            out.append((operands, op))
+            if fills != "black":
+                out.append(([1 if st["fw"] else 0], pikepdf.Operator("g")))
+            continue
+        if o == "ET":
+            in_text = False
+            out.append((operands, op))
+            if fills != "black" and st["last"]:
+                out.extend(st["last"])
+            continue
+        out.append((operands, op))
+    return out
+
+
+def _ink_image(obj):
+    """Imagine → alb-negru pentru tipărire: tot ce nu e hârtie (închis sau colorat) devine negru."""
+    from PIL import Image, ImageChops  # noqa: PLC0415
+
+    if obj.get("/ImageMask", False):
+        return False  # mască: se desenează cu culoarea de umplere, deja înnegrită
+    try:
+        im = pikepdf.PdfImage(obj).as_pil_image()
+    except Exception:  # noqa: BLE001
+        return False
+    rgb = im.convert("RGB")
+    lum = rgb.convert("L")
+    r, g, b = rgb.split()
+    spread = ImageChops.subtract(ImageChops.lighter(ImageChops.lighter(r, g), b), ImageChops.darker(ImageChops.darker(r, g), b))
+    ink = ImageChops.lighter(lum.point(lambda v: 255 if v < 215 else 0), spread.point(lambda v: 255 if v > 45 else 0))
+    out = ImageChops.invert(ink)
+    import zlib  # noqa: PLC0415
+
+    obj.write(zlib.compress(out.tobytes(), 6), filter=pikepdf.Name.FlateDecode)
+    obj.ColorSpace = pikepdf.Name.DeviceGray
+    obj.BitsPerComponent = 8
+    obj.Width = out.width
+    obj.Height = out.height
+    for k in ("/DecodeParms", "/Decode", "/Intent"):
+        if k in obj:
+            del obj[k]
+    return True
+
+
+def ink_pdf(pdf_bytes: bytes, pages=None, fills: str = "black", images: bool = False) -> bytes:
+    """Face negre liniile și textul originalului (opțional și imaginile) pe paginile date."""
+    fills = fills if fills in INK_FILLS else "black"
+    pk = pikepdf.open(io.BytesIO(pdf_bytes))
+    done = set()
+
+    def process_resources(res, depth=0):
+        if depth > 8 or res is None or "/XObject" not in res:
+            return
+        for _name, xo in res.XObject.items():
+            try:
+                key = xo.objgen
+            except Exception:  # noqa: BLE001
+                key = None
+            if key in done:
+                continue
+            done.add(key)
+            sub = str(xo.get("/Subtype", ""))
+            if sub == "/Form":
+                xres = xo.get("/Resources", res)
+                try:
+                    instrs = pikepdf.parse_content_stream(xo)
+                    xo.write(pikepdf.unparse_content_stream(_ink_instrs(instrs, xres, fills)))
+                except Exception:  # noqa: BLE001
+                    pass
+                process_resources(xres, depth + 1)
+            elif sub == "/Image" and images:
+                _ink_image(xo)
+
+    for i, page in enumerate(pk.pages):
+        if pages is not None and i not in pages:
+            continue
+        res = page.obj.get("/Resources", pikepdf.Dictionary())
+        instrs = pikepdf.parse_content_stream(page)
+        page.obj.Contents = pk.make_stream(pikepdf.unparse_content_stream(_ink_instrs(instrs, res, fills)))
+        process_resources(res)
+    out = io.BytesIO()
+    pk.save(out)
+    return out.getvalue()
 
 
 # ---------------------------------------------------------------- geometrie pentru snap
@@ -688,9 +931,25 @@ def _apply_removals_page(page: pdfium.PdfPage, ops: list[dict]) -> dict:
     g = PageGeo.of(page)
     targets = {}
     cuts = {}
-    report = {"removed": 0, "cut": 0, "partial": 0, "locked": 0}
+    report = {"removed": 0, "cut": 0, "partial": 0, "locked": 0, "black": 0}
     all_objs = list(_walk(page.raw))
     by_id = {oid: (obj, typ, pm, cont, nested) for oid, obj, typ, pm, cont, nested in all_objs}
+    recolored = False
+    for op in ops:
+        if op.get("mode") != "black":
+            continue
+        for oid in op.get("ids", []):
+            if oid not in by_id:
+                continue
+            obj, typ, _pm, _cont, nested = by_id[oid]
+            if nested:
+                report["locked"] += 1
+                continue
+            if _blacken_obj(obj, typ):
+                report["black"] += 1
+                recolored = True
+            else:
+                report["partial"] += 1
     for op in ops:
         mode = op.get("mode")
         if mode == "objects":
@@ -765,9 +1024,32 @@ def _apply_removals_page(page: pdfium.PdfPage, ops: list[dict]) -> dict:
             R.FPDFPageObj_Destroy(obj)
             if oid not in cuts:
                 report["removed"] += 1
-    if targets:
+    if targets or recolored:
         R.FPDFPage_GenerateContent(page.raw)
     return report
+
+
+def _blacken_obj(obj, typ) -> bool:
+    """Un obiect de nivel 1 devine negru (contur și umplere); albul rămâne alb."""
+    r, g, b, a = (ctypes.c_uint() for _ in range(4))
+
+    def is_white(getter):
+        if not getter(obj, ctypes.byref(r), ctypes.byref(g), ctypes.byref(b), ctypes.byref(a)):
+            return False
+        return min(r.value, g.value, b.value) >= 247
+
+    if typ == R.FPDF_PAGEOBJ_TEXT:
+        if not is_white(R.FPDFPageObj_GetFillColor):
+            R.FPDFPageObj_SetFillColor(obj, 0, 0, 0, a.value or 255)
+        R.FPDFPageObj_SetStrokeColor(obj, 0, 0, 0, 255)
+        return True
+    if typ == R.FPDF_PAGEOBJ_PATH:
+        if not is_white(R.FPDFPageObj_GetStrokeColor):
+            R.FPDFPageObj_SetStrokeColor(obj, 0, 0, 0, a.value or 255)
+        if not is_white(R.FPDFPageObj_GetFillColor):
+            R.FPDFPageObj_SetFillColor(obj, 0, 0, 0, a.value or 255)
+        return True
+    return False
 
 
 def apply_removals(pdf_bytes: bytes, removals: dict[int, list[dict]]) -> tuple[bytes, dict]:
@@ -808,7 +1090,7 @@ def _overlay_pdf(page_specs, color_mode) -> bytes:
     _register_font()
     buf = io.BytesIO()
     c = rl_canvas.Canvas(buf, pageCompression=1)
-    c.setCreator("Cotare")
+    c.setCreator("DrawCAD")
     for g, mb, prims in page_specs:
         c.setPageSize((max(mb[2], 1), max(mb[3], 1)))
         c.setLineJoin(1)
@@ -878,8 +1160,11 @@ def export_pdf(
     color_mode: str = "black",
     state_json: bytes | None = None,
     embed_original: bool = True,
+    ink: dict | None = None,
 ) -> tuple[bytes, dict]:
     base, reports = apply_removals(original, removals) if any(removals.values()) else (original, {})
+    if ink and ink.get("all"):
+        base = ink_pdf(base, None, ink.get("fills", "black"), bool(ink.get("images")))
     pk = pikepdf.open(io.BytesIO(base))
     targets = []
     with PDFIUM_LOCK:
