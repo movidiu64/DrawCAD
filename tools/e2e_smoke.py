@@ -26,6 +26,7 @@ def main(url, out):
         b = p.chromium.launch()
         # CSP-ul aplicației interzice eval; Playwright îl folosește pentru wait_for_function, deci aici e ocolit
         page = b.new_page(viewport={"width": 1600, "height": 1000}, accept_downloads=True, bypass_csp=True)
+        page.set_default_timeout(60000)  # CI poate fi lent (citirea izolată a fișierului durează câteva secunde)
         page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
         page.on("pageerror", lambda e: errors.append(str(e)))
         page.goto(url)
