@@ -68,9 +68,13 @@ jobs:
         run: |
           pip install -r backend/requirements.txt playwright
           python -m playwright install --with-deps chromium
-          python tools/e2e_smoke.py http://127.0.0.1:8080 e2e_out
+          mkdir -p e2e_out
+          python tools/e2e_smoke.py http://127.0.0.1:8080 e2e_out 2>&1 | tee e2e_out/e2e.log
+          test "${PIPESTATUS[0]}" = 0
       - name: Verificare de securitate pe container
-        run: python tools/security_smoke.py http://127.0.0.1:8080
+        run: |
+          python tools/security_smoke.py http://127.0.0.1:8080 2>&1 | tee e2e_out/security.log
+          test "${PIPESTATUS[0]}" = 0
       - name: Verifică utilizatorul și permisiunile
         run: |
           docker exec drawcad grep -E "^(Uid|Gid):" /proc/1/status
@@ -80,6 +84,15 @@ jobs:
       - name: Jurnal container
         if: always()
         run: docker logs drawcad
+      - name: Diagnostic (ultimele linii ca adnotări)
+        if: failure()
+        run: |
+          for f in e2e_out/e2e.log e2e_out/security.log; do
+            [ -f "$f" ] && tail -n 15 "$f" | sed "s|^|::error title=$f::|"
+          done
+          docker ps -a --format '{{.Names}} {{.Status}}' | sed 's|^|::error title=docker ps::|'
+          docker logs drawcad 2>&1 | tail -n 25 | sed 's|^|::error title=container::|'
+          true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
