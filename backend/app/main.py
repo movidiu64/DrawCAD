@@ -38,6 +38,16 @@ MAX_RENDER_PX = int(_env("MAX_RENDER_PX", "12000"))
 # documentele nefolosite atâtea zile se șterg automat (0 = niciodată)
 RETENTION_DAYS = float(_env("RETENTION_DAYS", "30"))
 
+# mod de lucru:
+#   personal — un singur utilizator: toate documentele se văd din orice browser (implicit)
+#   private  — fiecare browser are spațiul lui de documente (cookie permanent, 1 an)
+#   session  — ca private, dar spațiul ține doar până la închiderea browserului
+MODE = str(_env("MODE", "personal")).strip().lower()
+if MODE not in ("personal", "private", "session"):
+    MODE = "personal"
+WS_COOKIE = "drawcad_ws"
+_WS_RE = re.compile(r"^[A-Za-z0-9_-]{24,64}$")
+
 DOCS = DATA_DIR / "docs"
 _ID_RE = re.compile(r"^[a-f0-9]{32}$")
 _OID_RE = re.compile(r"^\d{1,6}(\.\d{1,6}){0,8}$")  # id-ul unui obiect din pagină: „12” sau „3.4.1”
@@ -90,6 +100,17 @@ def _source(doc_id, n, ink):
         return _original(doc_id)
     key = (doc_id, n, str(ink.get("fills", "black")), bool(ink.get("images")))
     return _ink_cache.get_or(key, lambda: pdfcore.ink_pdf(_original(doc_id), {n}, key[2], key[3]))
+
+
+def _owner_of(token: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(("drawcad-ws:" + token).encode()).hexdigest()[:32]
+
+
+def _req_owner(request: Request):
+    """Proprietarul cererii în modurile private (hash al codului spațiului de lucru), altfel None."""
+    return request.scope.get("state", {}).get("owner") if MODE != "personal" else None
 
 
 def _err(msg, code=400):
@@ -280,13 +301,14 @@ async def api_open(request: Request):
             "created": time.time(),
             "updated": time.time(),
             "pages": res["pages"],
+            "owner": _req_owner(request),
             "fromExport": state is not None,
             "removed": res.get("removed") or {},
         }
         _write_json(d / "meta.json", meta)
         if state is not None:
             _write_json(d / "state.json", state)
-        return JSONResponse({**meta, "expires": _expires(meta), "state": state})
+        return JSONResponse({**{k: v for k, v in meta.items() if k != "owner"}, "expires": _expires(meta), "state": state})
     finally:
         upload.unlink(missing_ok=True)
         shutil.rmtree(out_dir, ignore_errors=True)
@@ -294,10 +316,11 @@ async def api_open(request: Request):
 
 async def api_docs(request: Request):
     out = []
+    owner = _req_owner(request)
     if DOCS.is_dir():
         for d in DOCS.iterdir():
             m = _read_json(d / "meta.json")
-            if m:
+            if m and (MODE == "personal" or (owner and m.get("owner") == owner)):
                 item = {k: m.get(k) for k in ("id", "name", "kind", "updated", "pages")}
                 item["updated"] = _last_used(m)
                 item["expires"] = _expires(m)
@@ -357,7 +380,8 @@ async def api_doc(request: Request):
         return JSONResponse({"ok": True})
     meta["accessed"] = time.time()
     _write_json(d / "meta.json", meta)
-    return JSONResponse({**meta, "expires": _expires(meta), "state": _read_json(d / "state.json")})
+    pub = {k: v for k, v in meta.items() if k != "owner"}
+    return JSONResponse({**pub, "expires": _expires(meta), "state": _read_json(d / "state.json")})
 
 
 async def api_state(request: Request):
@@ -545,13 +569,38 @@ async def api_export(request: Request):
 
 
 async def api_health(request: Request):
-    return JSONResponse({"ok": True, "retentionDays": RETENTION_DAYS})
+    return JSONResponse({"ok": True, "retentionDays": RETENTION_DAYS, "mode": MODE})
+
+
+async def api_workspace(request: Request):
+    """Codul spațiului de lucru (doar în modurile private): îl poți copia ca să continui în alt
+    browser; POST cu alt cod mută browserul acesta în spațiul acela."""
+    if MODE == "personal":
+        return JSONResponse({"mode": MODE})
+    if request.method == "POST":
+        try:
+            body = await _json_body(request, 4096)
+        except (OverflowError, ValueError):
+            return _err("Cerere invalidă")
+        code = str((body or {}).get("code", "")).strip()
+        if not _WS_RE.match(code):
+            return _err("Cod invalid")
+        resp = JSONResponse({"mode": MODE, "ok": True})
+        _set_ws_cookie(resp, request, code)
+        return resp
+    return JSONResponse({"mode": MODE, "code": request.scope.get("state", {}).get("ws")})
+
+
+def _set_ws_cookie(resp, request, token):
+    secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+    resp.set_cookie(WS_COOKIE, token, max_age=None if MODE == "session" else 365 * 86400, httponly=True, samesite="strict", secure=secure, path="/")
 
 
 routes = [
     Route("/api/health", api_health),
     Route("/api/open", api_open, methods=["POST"]),
     Route("/api/docs", api_docs),
+    Route("/api/workspace", api_workspace, methods=["GET", "POST"]),
     Route("/api/doc/{doc_id}", api_doc, methods=["GET", "DELETE"]),
     Route("/api/doc/{doc_id}/state", api_state, methods=["PUT", "POST"]),  # POST pentru sendBeacon
     Route("/api/doc/{doc_id}/page/{n:int}/render", api_render),
@@ -613,6 +662,9 @@ def _auth_ok(header: str) -> bool:
     return hmac.compare_digest(user.encode(), AUTH_USER.encode()) & hmac.compare_digest(pw.encode(), AUTH_PASSWORD.encode())
 
 
+_DOC_PATH = re.compile(r"^/api/doc/([a-f0-9]{32})(/|$)")
+
+
 class SecurityMiddleware:
     """Antete de securitate pe toate răspunsurile și refuzul cererilor care modifică date venite
     de pe alt site (o pagină străină deschisă în browser nu poate încărca sau șterge documente)."""
@@ -635,11 +687,43 @@ class SecurityMiddleware:
                 resp = JSONResponse({"error": "Cerere refuzată: vine de pe alt site"}, status_code=403)
                 return await resp(scope, receive, send)
 
+        new_cookie = None
+        if MODE != "personal":
+            # fiecare browser are un cod secret (cookie HttpOnly); documentele lui poartă hash-ul codului
+            token = None
+            for part in hdr.get("cookie", "").split(";"):
+                k, _, v = part.strip().partition("=")
+                if k == WS_COOKIE and _WS_RE.match(v):
+                    token = v
+            if not token:
+                import secrets
+
+                token = secrets.token_urlsafe(24)
+                new_cookie = token
+            st = scope.setdefault("state", {})
+            st["ws"] = token
+            st["owner"] = _owner_of(token)
+            m = _DOC_PATH.match(scope.get("path", ""))
+            if m:
+                meta = _read_json(DOCS / m.group(1) / "meta.json") or {}
+                if meta.get("owner") != st["owner"]:
+                    # documentul altcuiva (sau din modul personal): pentru acest browser nu există
+                    resp = JSONResponse({"error": "Document inexistent"}, status_code=404)
+                    return await resp(scope, receive, send)
+
         async def send_wrapped(message):
             if message["type"] == "http.response.start":
                 headers = list(message.get("headers", []))
                 have = {k.lower() for k, _ in headers}
                 headers += [(k, v) for k, v in SECURITY_HEADERS if k not in have]
+                if new_cookie and b"set-cookie" not in have:
+                    secure = scope.get("scheme") == "https" or hdr.get("x-forwarded-proto") == "https"
+                    c = f"{WS_COOKIE}={new_cookie}; Path=/; HttpOnly; SameSite=Strict"
+                    if MODE != "session":
+                        c += f"; Max-Age={365 * 86400}"
+                    if secure:
+                        c += "; Secure"
+                    headers.append((b"set-cookie", c.encode("latin-1")))
                 message["headers"] = headers
             await send(message)
 

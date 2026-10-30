@@ -201,6 +201,52 @@ class SecurityTest(unittest.TestCase):
         finally:
             appmain.AUTH_PASSWORD = old
 
+    def test_private_mode_isolates_browsers(self):
+        """În modul private, fiecare browser își vede doar documentele lui."""
+        old = appmain.MODE
+        appmain.MODE = "private"
+        try:
+            def cookie_of(h):
+                for k, v in h.items():
+                    if k.lower() == "set-cookie" and v.startswith("drawcad_ws="):
+                        return v.split(";")[0]
+                return None
+
+            st, h, _b = self.call("GET", "/api/docs")
+            ca = cookie_of(h)
+            self.assertIsNotNone(ca)
+            self.assertIn("HttpOnly", h["Set-Cookie"])
+            self.assertIn("SameSite=Strict", h["Set-Cookie"])
+            st, h, _b = self.call("GET", "/api/docs")
+            cb = cookie_of(h)
+            self.assertNotEqual(ca, cb)
+            # A încarcă un document
+            st, _h, body = self.call("POST", "/api/open", self.sample.read_bytes(), {"X-Filename": "al-lui-A.pdf", "Cookie": ca})
+            self.assertEqual(st, 200)
+            doc = json.loads(body)
+            self.assertNotIn("owner", doc)
+            # A îl vede, B nu
+            names_a = [d["name"] for d in json.loads(self.call("GET", "/api/docs", headers={"Cookie": ca})[2])]
+            names_b = [d["name"] for d in json.loads(self.call("GET", "/api/docs", headers={"Cookie": cb})[2])]
+            self.assertIn("al-lui-A.pdf", names_a)
+            self.assertNotIn("al-lui-A.pdf", names_b)
+            for path in (f"/api/doc/{doc['id']}", f"/api/doc/{doc['id']}/page/0/render?scale=0.3", f"/api/doc/{doc['id']}/page/0/snap"):
+                self.assertEqual(self.call("GET", path, headers={"Cookie": cb})[0], 404, path)
+                self.assertEqual(self.call("GET", path, headers={"Cookie": ca})[0], 200, path)
+            self.assertEqual(self.call("DELETE", f"/api/doc/{doc['id']}", headers={"Cookie": cb})[0], 404)
+            self.assertEqual(self.call("GET", f"/api/doc/{doc['id']}", headers={"Cookie": ca})[0], 200)
+            # fără cookie (alt browser nou): nici atât
+            self.assertEqual(self.call("GET", f"/api/doc/{doc['id']}")[0], 404)
+            # codul spațiului se poate muta în alt browser, la cerere
+            code = json.loads(self.call("GET", "/api/workspace", headers={"Cookie": ca})[2])["code"]
+            st, h, _b = self.call("POST", "/api/workspace", {"code": code}, {"Cookie": cb})
+            self.assertEqual(st, 200)
+            moved = cookie_of(h)
+            self.assertEqual(moved, ca)
+            self.assertEqual(self.call("POST", "/api/workspace", {"code": "scurt"}, {"Cookie": cb})[0], 400)
+        finally:
+            appmain.MODE = old
+
     def test_bad_inputs_do_not_crash(self):
         st, meta = self.upload(self.sample.read_bytes(), "a.pdf")
         doc = meta["id"]

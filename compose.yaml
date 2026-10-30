@@ -21,6 +21,9 @@ services:
       DRAWCAD_MAX_UPLOAD_MB: ${DRAWCAD_MAX_UPLOAD_MB:-${COTARE_MAX_UPLOAD_MB:-200}}
       DRAWCAD_MAX_RENDER_PX: ${DRAWCAD_MAX_RENDER_PX:-${COTARE_MAX_RENDER_PX:-12000}}
       DRAWCAD_RETENTION_DAYS: ${DRAWCAD_RETENTION_DAYS:-${COTARE_RETENTION_DAYS:-30}}
+      # personal = un utilizator, documentele se văd din orice browser; private = fiecare browser
+      # are documentele lui (pentru serviciu); session = ca private, dar doar până la închiderea browserului
+      DRAWCAD_MODE: ${DRAWCAD_MODE:-personal}
       DRAWCAD_MAX_PAGES: ${DRAWCAD_MAX_PAGES:-300}
       DRAWCAD_MAX_IMAGE_MPX: ${DRAWCAD_MAX_IMAGE_MPX:-400}
       # parolă opțională (utilizator „drawcad”); goală = fără parolă, ca în rețeaua de acasă

@@ -266,7 +266,9 @@ class App {
   async init() {
     await document.fonts.load("16px osifont").catch(() => {});
     try {
-      this.retentionDays = (await (await fetch("api/health")).json()).retentionDays;
+      const h = await (await fetch("api/health")).json();
+      this.retentionDays = h.retentionDays;
+      this.mode = h.mode || "personal";
     } catch (_) {
       this.retentionDays = 0;
     }
@@ -357,7 +359,7 @@ class App {
   async refreshRecent() {
     try {
       const docs = await api.listDocs();
-      $("recentList").innerHTML = dlg.recentHtml(docs, this.retentionDays);
+      $("recentList").innerHTML = dlg.recentHtml(docs, this.retentionDays, this.mode);
       dlg.bindRecent($("recentList"), this);
     } catch (_) { /* fără listă */ }
   }

@@ -62,12 +62,18 @@ function daysLeft(expires) {
   return ` · se șterge în ${d} zile`;
 }
 
-export function recentHtml(docs, retentionDays) {
-  if (!docs.length) return "";
+const MODE_NOTE = {
+  private: "Documentele tale sunt legate de acest browser: alți utilizatori ai serverului nu le văd. Ca să continui pe alt calculator, folosește codul din Setări.",
+  session: "Documentele tale sunt legate de această sesiune a browserului: după închiderea lui nu le mai regăsești aici (exportă PDF-ul înainte). Alți utilizatori nu le văd.",
+};
+
+export function recentHtml(docs, retentionDays, mode = "personal") {
+  const modeNote = MODE_NOTE[mode] ? `<div class="sub" style="margin:6px 4px">${MODE_NOTE[mode]}</div>` : "";
+  if (!docs.length) return modeNote;
   const note = retentionDays > 0
     ? `<div class="sub" style="margin:6px 4px">Documentele stau pe server ${fmtNum(retentionDays, ",", 1)} zile de la ultima folosire, apoi se șterg automat. Ce ai exportat pe PC nu e afectat.</div>`
     : "";
-  return `<div class="ttl">Recente</div>` + docs.slice(0, 12).map((d) => `
+  return `<div class="ttl">${mode === "personal" ? "Recente" : "Documentele tale"}</div>` + docs.slice(0, 12).map((d) => `
     <div class="item">
       <button class="open" data-doc="${d.id}">
         <span class="badge ${d.kind === "image" ? "img" : "pdf"}">${d.kind === "image" ? "IMG" : "PDF"}</span>
@@ -75,7 +81,7 @@ export function recentHtml(docs, retentionDays) {
         <span class="muted" style="font-size:12px">${(d.pages || []).length} pagini · ${ago(d.updated)}${daysLeft(d.expires)}</span></span>
       </button>
       <button class="icon del" data-del="${d.id}" data-name="${esc(d.name)}" title="Șterge de pe server" aria-label="Șterge ${esc(d.name)} de pe server"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></button>
-    </div>`).join("") + note;
+    </div>`).join("") + note + modeNote;
 }
 
 /** Leagă butoanele din lista de recente: deschidere și ștergere (cu confirmare). */
@@ -291,7 +297,8 @@ export function settingsDialog(app) {
   const S = app.settings;
   const opt = (name, cur, list) => list.map(([v, l]) => `<button class="${String(cur) === String(v) ? "on" : ""}" data-set="${name}" data-v="${v}">${l}</button>`).join("");
   const dlg = showModal(`
-    <h2>Stil cote · documentul curent</h2>
+    <h2>Setări</h2>
+    <div class="lbl" style="margin-bottom:-6px">Stil cote · documentul curent</div>
     <div class="cols">
       <div class="sec">
         <div class="lbl">Înălțime text (ISO 3098)</div><div class="seg">${opt("textH", S.textH, [[2.5, "2,5 mm"], [3.5, "3,5 mm"], [5, "5 mm"], [7, "7 mm"]])}</div>
@@ -309,6 +316,12 @@ export function settingsDialog(app) {
         <div class="field"><label for="sScale">Scară (mm reali / mm hârtie)</label><input type="text" id="sScale" class="mono" value="${fmtNum(S.scale, ",", 4)}"></div></div>
       </div>
     </div>
+    ${app.mode && app.mode !== "personal" ? `<div class="sec">
+      <div class="lbl">Spațiul tău de lucru · ${app.mode === "session" ? "până la închiderea browserului" : "legat de acest browser"}</div>
+      <div class="row"><input type="text" class="mono" id="wsCode" readonly value="…" aria-label="Codul spațiului de lucru"><button class="ghost" id="wsCopy">Copiază</button></div>
+      <div class="row"><input type="text" class="mono" id="wsNew" placeholder="Lipește codul din alt browser" aria-label="Cod din alt browser"><button class="ghost" id="wsUse">Folosește</button></div>
+      <div class="sub">Codul e ca o cheie: cine îl are vede documentele tale. Îl folosești ca să continui pe alt calculator sau browser; documentele deschise cu codul vechi rămân la codul vechi.</div>
+    </div>` : ""}
     <div class="sec">
       <div class="lbl">Meniul de la click dreapta ținut · comenzile tale favorite (pentru toate documentele)</div>
       <div class="mmgrid" id="sMm">${mmGridHtml(markingConfig())}</div>
@@ -325,6 +338,29 @@ export function settingsDialog(app) {
     pending[k] = v;
     dlg.querySelectorAll(`[data-set="${k}"]`).forEach((x) => x.classList.toggle("on", x === b));
   }));
+  if (dlg.querySelector("#wsCode")) {
+    api.workspace().then((w) => { dlg.querySelector("#wsCode").value = w.code || ""; }).catch(() => {});
+    dlg.querySelector("#wsCopy").addEventListener("click", async () => {
+      const inp = dlg.querySelector("#wsCode");
+      try {
+        await navigator.clipboard.writeText(inp.value);
+        toast("Cod copiat");
+      } catch (_) {
+        inp.select();
+        toast("Selectat: apasă Ctrl+C");
+      }
+    });
+    dlg.querySelector("#wsUse").addEventListener("click", async () => {
+      const code = dlg.querySelector("#wsNew").value.trim();
+      try {
+        await api.useWorkspace(code);
+        localStorage.removeItem("cotare.lastDoc");
+        location.reload();
+      } catch (e) {
+        toast(e.message);
+      }
+    });
+  }
   dlg.querySelector("#sMmReset").addEventListener("click", () => {
     dlg.querySelector("#sMm").innerHTML = mmGridHtml(MM_DEFAULT);
   });

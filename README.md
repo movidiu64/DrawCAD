@@ -79,6 +79,7 @@ Aplicația s-a numit inițial „Cotare”: variabilele vechi `COTARE_*` sunt ac
 | `PUID` / `PGID` | `99` / `100` | utilizatorul cu care rulează aplicația |
 | `DRAWCAD_MAX_UPLOAD_MB` | `200` | dimensiunea maximă a unui fișier încărcat |
 | `DRAWCAD_MAX_RENDER_PX` | `12000` | latura maximă, în pixeli, a randării unei pagini |
+| `DRAWCAD_MODE` | `personal` | `personal`, `private` sau `session` (vezi „Mod de lucru”) |
 | `DRAWCAD_MAX_PAGES` | `300` | numărul maxim de pagini al unui document |
 | `DRAWCAD_MAX_IMAGE_MPX` | `400` | megapixelii maximi ai unei imagini încărcate |
 | `DRAWCAD_PASSWORD` | gol | parolă HTTP Basic (utilizator `drawcad`); gol = fără parolă |
@@ -227,6 +228,18 @@ Modurile se aleg din săgeata de lângă „Snap”, în bara de jos. Taste: **F
 - **PDF-urile exportate pe calculator** nu sunt afectate de această curățare.
 
 **Redeschidere:** un PDF exportat cu „strat editabil” se poate redeschide. Cotele revin editabile, iar originalul este recuperat din fișier, deci nimic nu se desenează de două ori.
+
+## Mod de lucru: personal sau pentru serviciu
+
+`DRAWCAD_MODE` alege cine vede ce documente:
+
+| Mod | Cine vede documentele | Potrivit pentru |
+|---|---|---|
+| `personal` (implicit) | oricine deschide aplicația, din orice browser | un singur utilizator: acasă, pe Unraid; continui pe alt calculator fără nimic în plus |
+| `private` | doar browserul care le-a încărcat (cookie secret, 1 an) | serviciu, mai mulți colegi pe același server |
+| `session` | doar browserul care le-a încărcat, până la închiderea lui | calculatoare comune; după închidere nu mai rămâne nimic vizibil |
+
+În `private` și `session`, un document al altui browser nu apare în Recente și nici nu se poate deschide, randa sau șterge, nici dacă cineva îi știe adresa: serverul răspunde ca și cum n-ar exista. Ca să continui pe alt calculator, în **Setări → Spațiul tău de lucru** copiezi codul și îl lipești în celălalt browser („Folosește”). Codul e ca o cheie, așa că nu-l da altcuiva. Documentele încărcate înainte în modul `personal` nu apar în spațiile private.
 
 ## Securitate
 

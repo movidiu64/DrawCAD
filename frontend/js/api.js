@@ -73,3 +73,10 @@ export async function exportPdf(id, payload) {
   const report = JSON.parse(r.headers.get("X-Removal-Report") || "{}");
   return { blob: await r.blob(), report, kind: r.headers.get("X-Export-Kind") || "pdf" };
 }
+
+export const workspace = () => fetch("api/workspace").then(jsonOrThrow);
+
+export async function useWorkspace(code) {
+  const r = await fetch("api/workspace", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }) });
+  return jsonOrThrow(r);
+}
