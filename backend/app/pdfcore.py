@@ -283,6 +283,20 @@ def image_to_pdf(data: bytes, dpi: float | None) -> tuple[bytes, float]:
 # ---------------------------------------------------------------- randare
 
 
+def _to_png(img, out):
+    """PNG rapid; desenele alb-negru / gri (majoritatea) se salvează pe un singur canal, de ~2× mai mic."""
+    from PIL import ImageChops
+
+    if img.mode == "RGB":
+        r, g, b = img.split()
+        if ImageChops.difference(r, g).getbbox() is None and ImageChops.difference(g, b).getbbox() is None:
+            img = r
+    elif img.mode == "RGBA":
+        img = img.convert("RGB")
+        return _to_png(img, out)
+    img.save(out, format="PNG", compress_level=1)
+
+
 def render_png(pdf_bytes: bytes, page_index: int, scale: float, removals=None, ink=None) -> bytes:
     if ink and ink.get("all"):
         pdf_bytes = ink_pdf(pdf_bytes, {page_index}, ink.get("fills", "black"), bool(ink.get("images")))
@@ -295,7 +309,7 @@ def render_png(pdf_bytes: bytes, page_index: int, scale: float, removals=None, i
             bmp = page.render(scale=scale, rotation=0, may_draw_forms=True, draw_annots=True)
             img = bmp.to_pil()
             out = io.BytesIO()
-            img.save(out, format="PNG", compress_level=1)
+            _to_png(img, out)
             page.close()
             return out.getvalue()
         finally:

@@ -212,6 +212,8 @@ export class View {
   }
 
   draw() {
+    // cadru nou: modificările făcute între timp (tragere, panou) se văd la redesenare
+    this.app.frame = (this.app.frame || 0) + 1;
     const ctx = this.ctx;
     const d = this.dpr;
     ctx.setTransform(1, 0, 0, 1, 0, 0);

@@ -488,7 +488,8 @@ async def api_snap(request: Request):
     def work():
         return _snap_cache.get_or((doc_id, n), lambda: pdfcore.snap_points(_original(doc_id), n))
 
-    return JSONResponse(await run_in_threadpool(work))
+    # geometria vine doar din original, care nu se schimbă: browserul o poate păstra
+    return JSONResponse(await run_in_threadpool(work), headers={"Cache-Control": "private, max-age=3600"})
 
 
 async def api_objects(request: Request):

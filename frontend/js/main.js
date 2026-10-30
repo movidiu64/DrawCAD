@@ -635,6 +635,7 @@ class App {
   }
 
   pushHistory(key) {
+    this.frame = (this.frame || 0) + 1; // adnotările se pot schimba: cache-ul de cadru nu mai e valabil
     const now = Date.now();
     if (key && this.lastHistKey === key && now - this.lastHistTime < 1500) {
       this.lastHistTime = now;
@@ -649,6 +650,7 @@ class App {
   }
 
   changed() {
+    this.frame = (this.frame || 0) + 1; // adnotările se pot schimba: cache-ul de cadru nu mai e valabil
     this.unexported = true;
     this.view.redraw();
     this.view.loadImage(false); // se reîncarcă doar dacă s-a schimbat înnegrirea originalului
@@ -679,6 +681,7 @@ class App {
   }
 
   setSettings(patch) {
+    this.frame = (this.frame || 0) + 1; // adnotările se pot schimba: cache-ul de cadru nu mai e valabil
     const inkBefore = JSON.stringify(this.settings.ink || null);
     this.settings = { ...this.settings, ...patch };
     this.cache.clear();
@@ -728,11 +731,17 @@ class App {
 
   builtOf(a) {
     const S = this.S();
-    const stamp = JSON.stringify(a) + this._Skey;
     const c = this.cache.get(a.id);
-    if (c && c.stamp === stamp) return c.built;
+    // în același eveniment (o mișcare de mouse, un cadru) geometria nu se schimbă: fără JSON.stringify
+    if (c && c.frame === this.frame && c.obj === a) return c.built;
+    const stamp = JSON.stringify(a) + this._Skey;
+    if (c && c.stamp === stamp) {
+      c.frame = this.frame;
+      c.obj = a;
+      return c.built;
+    }
     const built = build(a, S, this.measure);
-    this.cache.set(a.id, { stamp, built });
+    this.cache.set(a.id, { stamp, built, frame: this.frame, obj: a });
     return built;
   }
 
@@ -809,6 +818,7 @@ class App {
   }
 
   updateSel(fn, key) {
+    this.frame = (this.frame || 0) + 1; // adnotările se pot schimba: cache-ul de cadru nu mai e valabil
     const a = this.selected();
     if (!a) return;
     this.pushHistory(key ? `${a.id}:${key}` : null);
@@ -818,6 +828,7 @@ class App {
 
   /** Aceeași modificare pe toate adnotările selectate (un singur pas de anulare). */
   updateMany(fn) {
+    this.frame = (this.frame || 0) + 1; // adnotările se pot schimba: cache-ul de cadru nu mai e valabil
     const list = this.selectedAll();
     if (!list.length) return;
     this.pushHistory();
@@ -1199,6 +1210,7 @@ class App {
     }, { passive: false });
 
     cv.addEventListener("pointerdown", (e) => {
+      this.frame = (this.frame || 0) + 1;
       if (!this.doc) return;
       // tastele de unelte nu trebuie să ajungă într-un câmp din panou rămas activ
       if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
@@ -1274,6 +1286,7 @@ class App {
     });
 
     cv.addEventListener("pointermove", (e) => {
+      this.frame = (this.frame || 0) + 1;
       if (!this.doc) return;
       const [sx, sy] = pos(e);
       const raw = this.view.toPage(sx, sy);
@@ -1351,6 +1364,7 @@ class App {
         }
         const a = this.annots.find((x) => x.id === d.id);
         setHandle(a, d.k, d.k === "tx" ? raw : pt, this.builtOf(a));
+        this.frame++;
         this.view.overlay = { snap: d.k === "tx" ? null : sn };
         cv.style.cursor = "grabbing";
         const bm = this.builtOf(a);
@@ -1767,6 +1781,7 @@ class App {
   // ------------------------------------------------------------ tastatură
   bindKeys() {
     window.addEventListener("keydown", (e) => {
+      this.frame = (this.frame || 0) + 1;
       if (dlg.isModalOpen()) return;
       const fk = { F3: "on", F8: "ortho", F10: "polar", F11: "tracking" }[e.key];
       if (fk) {
