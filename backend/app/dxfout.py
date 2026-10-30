@@ -10,10 +10,18 @@ from __future__ import annotations
 import ctypes
 import io
 import math
+import os
 import re
+import tempfile
 
-import ezdxf
-from ezdxf import zoom
+# ezdxf caută la import ~/.config/ezdxf/ezdxf.ini: în container, procesul rulează ca alt
+# utilizator decât proprietarul lui HOME (/root), iar căutarea ar da „Permission denied”
+if not os.access(os.path.expanduser("~"), os.R_OK | os.X_OK):
+    os.environ["HOME"] = tempfile.gettempdir()
+os.environ.setdefault("XDG_CACHE_HOME", os.path.join(tempfile.gettempdir(), "drawcad-cache"))
+
+import ezdxf  # noqa: E402
+from ezdxf import zoom  # noqa: E402
 
 from .pdfcore import (
     PDFIUM_LOCK,

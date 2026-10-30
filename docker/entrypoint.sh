@@ -14,6 +14,8 @@ if [ "$(id -u)" = "0" ]; then
     echo "drawcad: ajustez proprietarul $DATA la $PUID:$PGID"
     chown -R "$PUID:$PGID" "$DATA"
   fi
+  # HOME-ul lui root nu e accesibil utilizatorului aplicației; bibliotecile își caută acolo configurări
+  export HOME=/tmp
   exec setpriv --reuid="$PUID" --regid="$PGID" --clear-groups "$@"
 fi
 
