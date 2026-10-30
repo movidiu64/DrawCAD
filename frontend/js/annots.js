@@ -3,6 +3,7 @@
 import { deviations, fmtDev } from "./iso286.js";
 import { symbolPrims, GDT_BY_ID, MODIFIERS } from "./gdt.js";
 import { buildShape, SHAPE_NAMES } from "./shapes.js";
+import { buildSection, buildDetail, buildBalloon } from "./symbols.js";
 
 export const K = 72 / 25.4; // pt pe mm
 export const CAP = 1515 / 2048; // înălțimea majusculelor în osifont, raportată la em
@@ -36,6 +37,9 @@ export const TYPE_NAMES = {
   white: "Acoperire albă",
   redact: "Ștergere din original",
   shape: "Desen",
+  section: "Plan de secționare",
+  detail: "Detaliu",
+  balloon: "Reper de poziție",
 };
 
 export function typeName(a) {
@@ -818,7 +822,7 @@ function buildRedact(a) {
   return { prims, handles: [{ k: "r0", p: [a.r[0], a.r[1]] }, { k: "r1", p: [a.r[2], a.r[3]] }] };
 }
 
-const BUILDERS = { dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, shape: buildShape };
+const BUILDERS = { dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, shape: buildShape, section: buildSection, detail: buildDetail, balloon: buildBalloon };
 
 // caractere fără glifă în osifont → echivalente care există (la fel pe ecran și în PDF)
 const GLYPH_SUBST = { "…": "...", "„": '"', "”": '"', "“": '"', "«": '"', "»": '"', "‚": ",", "‘": "'", "\u00a0": " ", "−": "-" };
@@ -827,7 +831,7 @@ export function fontSafe(txt) {
   return String(txt ?? "").replace(GLYPH_RE, (ch) => GLYPH_SUBST[ch]);
 }
 
-export const SCALABLE = new Set(["dim", "rad", "ang", "rough", "lead", "text", "note", "gdt", "datum", "strike", "revtab"]);
+export const SCALABLE = new Set(["dim", "rad", "ang", "rough", "lead", "text", "note", "gdt", "datum", "strike", "revtab", "section", "detail", "balloon"]);
 export const SCALE_MIN = 0.3;
 export const SCALE_MAX = 5;
 
@@ -976,7 +980,7 @@ export function setHandle(a, k, pt, built) {
 
 export function moveAnnot(a, dx, dy) {
   const mv = (p) => (p ? [p[0] + dx, p[1] + dy] : p);
-  for (const k of ["p1", "p2", "p3", "c", "p", "v", "target", "pos"]) if (a[k]) a[k] = mv(a[k]);
+  for (const k of ["p1", "p2", "p3", "c", "p", "v", "target", "pos", "vp", "tp"]) if (a[k]) a[k] = mv(a[k]);
   if (a.pts) a.pts = a.pts.map(mv);
   if (a.r) a.r = [a.r[0] + dx, a.r[1] + dy, a.r[2] + dx, a.r[3] + dy];
 }

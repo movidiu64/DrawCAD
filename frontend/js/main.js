@@ -5,6 +5,7 @@ import { View, SnapIndex, COLORS } from "./view.js";
 import { Panel } from "./panel.js";
 import { TOOLS, TOOL_BY_ID, TOOL_BY_KEY, finalize } from "./tools.js";
 import * as dlg from "./dialogs.js";
+import { VIEW_LETTERS } from "./symbols.js";
 
 const $ = (id) => document.getElementById(id);
 const DATUM_LETTERS = "ABCDEFGHJKLMNPRSTUVWXYZ"; // ISO 5459: fără I, O, Q
@@ -167,6 +168,7 @@ class App {
     if (!TOOL_BY_ID[id]) return;
     this.tool = id;
     this.clicks = [];
+    this.lastMeasure = null;
     this.view.overlay = null;
     $("tools").querySelectorAll("[data-tool]").forEach((b) => b.classList.toggle("on", b.dataset.tool === id));
     this.setHint(TOOL_BY_ID[id].hint);
@@ -549,6 +551,27 @@ class App {
     return { mode: "none" };
   }
 
+  nextViewLetter() {
+    const used = new Set(this.annots.filter((a) => a.type === "section" || a.type === "detail").map((a) => a.letter));
+    for (const ch of VIEW_LETTERS) if (!used.has(ch)) return ch;
+    return "A";
+  }
+
+  /** Eticheta propusă pentru vederea următoare: prima secțiune sau primul detaliu fără etichetă. */
+  nextViewLabel() {
+    const texts = this.annots.filter((a) => a.type === "text").map((a) => String(a.text || "").replace(/\s+/g, ""));
+    const has = (l) => texts.some((t) => t.startsWith(`${l}–`) || t.startsWith(`${l}-`) || t.startsWith(`${l}(`) || t === l);
+    for (const a of this.annots) {
+      if ((a.type === "section" || a.type === "detail") && !has(a.letter)) return a.type === "section" ? `${a.letter}–${a.letter}` : `${a.letter} (2:1)`;
+    }
+    return "A–A";
+  }
+
+  nextBalloon() {
+    const nums = this.annots.filter((a) => a.type === "balloon").map((a) => parseInt(a.num, 10)).filter(Number.isFinite);
+    return String(nums.length ? Math.max(...nums) + 1 : 1);
+  }
+
   nextDatumLetter() {
     const used = new Set(this.annots.filter((a) => a.type === "datum").map((a) => a.letter));
     for (const ch of DATUM_LETTERS) if (!used.has(ch)) return ch;
@@ -596,11 +619,15 @@ class App {
     let sn = null;
     if ($("stSnap").checked && !e.altKey) {
       const extra = [];
+      const segs = [];
       for (const { a, built } of this.visibleBuilt()) {
         if (this.drag && this.drag.id === a.id) continue;
-        extra.push(...annotSnapPoints(built));
+        if (built.snap) {
+          extra.push(...built.snap.pts);
+          segs.push(...built.snap.segs);
+        } else extra.push(...annotSnapPoints(built));
       }
-      sn = this.snapIdx.nearest(raw[0], raw[1], 10 / v.zoom, extra);
+      sn = this.snapIdx.nearest(raw[0], raw[1], 10 / v.zoom, extra, segs);
       if (sn) pt = sn.p;
     }
     if (!sn && anchor && (e.shiftKey || $("stOrtho").checked)) {
@@ -672,6 +699,10 @@ class App {
           const pts = this.clicks;
           this.clicks = [];
           this.view.overlay = null;
+          if (t.id === "measure") {
+            this.showMeasure(pts[0], pts[1]);
+            return;
+          }
           if (t.id === "calib") {
             const d = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]) / K;
             if (d > 0.1) dlg.calibDialog(this, d);
@@ -888,6 +919,7 @@ class App {
       }
       else if (pv) prims = build({ ...pv, layer: "add" }, this.S(), this.measure).prims;
     }
+    if (!prims && t.id === "measure" && this.lastMeasure) prims = this.lastMeasure;
     this.view.overlay = { prims, snap: sn };
     this.view.redraw();
     const t2 = TOOL_BY_ID[this.tool];
@@ -896,6 +928,20 @@ class App {
       else if (t2.chain) this.setHint(t2.hint);
       else this.setHint(`${t2.hint} · pas ${this.clicks.length + 1}/${t2.n} · Esc renunță`);
     }
+  }
+
+  showMeasure(p, q) {
+    const k = this.settings.scale || 1;
+    const dx = ((q[0] - p[0]) / K) * k;
+    const dy = ((q[1] - p[1]) / K) * k;
+    const L = Math.hypot(dx, dy);
+    const ang = ((Math.atan2(-dy, dx) * 180) / Math.PI + 360) % 180;
+    const f = (v) => fmtNum(v, ",", 3);
+    // linia măsurată rămâne vizibilă până la măsurătoarea următoare
+    this.lastMeasure = [{ t: "L", p: [...p, ...q], w: 0.6, c: "sel" }, { t: "C", p: [...p], r: 1.2, w: 0.6, c: "sel" }, { t: "C", p: [...q], r: 1.2, w: 0.6, c: "sel" }];
+    this.view.overlay = { prims: this.lastMeasure };
+    this.view.redraw();
+    dlg.toast(`L = ${f(L)} mm · Δx ${f(Math.abs(dx))} · Δy ${f(Math.abs(dy))} · ${fmtNum(ang, ",", 2)}°${Math.abs(k - 1) > 1e-9 ? ` (scara ${this.scaleLabel()})` : ""}`, 8000);
   }
 
   showCoords(pt, anchor) {

@@ -34,6 +34,7 @@ export const SHAPE_NAMES = {
   arc: "Arc",
   cross: "Axe de cerc",
   hatch: "Hașură",
+  break: "Linie de ruptură",
 };
 
 const TAU = Math.PI * 2;
@@ -140,6 +141,7 @@ export function rectCorners(a) {
 export function shapeInfo(a) {
   const m = (v) => v / K;
   switch (a.kind) {
+    case "break":
     case "line":
       return { len: m(dist(a.pts[0], a.pts[1])), ang: ((angOf(a.pts[0], a.pts[1]) * 180) / Math.PI + 360) % 360 };
     case "poly":
@@ -225,10 +227,95 @@ export function buildShape(a) {
         else prims.push({ t: "P", p: pts.flat(), close: true, w: 0.4, c: "edgray", ed: true, dash: true });
       }
       break;
+    case "break":
+      if (pts.length >= 2) prims.push(polyPrim(breakPoints(pts[0], pts[1], a.style || "zigzag"), false));
+      break;
     default:
       break;
   }
-  return { prims, handles, info: shapeInfo(a) };
+  return { prims, handles, info: shapeInfo(a), snap: shapeSnap(a) };
+}
+
+/** Linia de ruptură (ISO 128-20 tip 01.1): dreaptă cu zigzag la mijloc, sau ondulată (trasă „cu mâna”). */
+export function breakPoints(A, B, style) {
+  const L = dist(A, B);
+  if (L < 1e-6) return [A, B];
+  const u = [(B[0] - A[0]) / L, (B[1] - A[1]) / L];
+  const n = [-u[1], u[0]];
+  const at = (t, h) => [A[0] + u[0] * t + n[0] * h, A[1] + u[1] * t + n[1] * h];
+  if (style === "wave") {
+    const wl = Math.min(L / 1.5, 12 * K);
+    const amp = Math.min(1.5 * K, L * 0.06);
+    const out = [];
+    const steps = Math.max(24, Math.ceil(L / (0.5 * K)));
+    for (let i = 0; i <= steps; i++) {
+      const t = (L * i) / steps;
+      out.push(at(t, amp * Math.sin((TAU * t) / wl)));
+    }
+    return out;
+  }
+  // zigzag: lățime 3,5 mm, înălțime ±2,5 mm, centrat (se micșorează pe linii scurte)
+  const half = Math.min(1.75 * K, L / 4);
+  const h = Math.min(2.5 * K, L / 3);
+  const m = L / 2;
+  return [A, at(m - half, 0), at(m - half / 3, h), at(m + half / 3, -h), at(m + half, 0), B];
+}
+
+/** Puncte (capăt e, mijloc m, centru c, cadran q) și segmente pentru snap pe forma desenată. */
+export function shapeSnap(a) {
+  const pts = [];
+  const segs = [];
+  const P = a.pts || [];
+  const seg = (p, q, mid = true) => {
+    segs.push([p[0], p[1], q[0], q[1]]);
+    if (mid) pts.push([(p[0] + q[0]) / 2, (p[1] + q[1]) / 2, "m"]);
+  };
+  const chain = (Q, closed) => {
+    Q.forEach((q) => pts.push([q[0], q[1], "e"]));
+    for (let i = 1; i < Q.length; i++) seg(Q[i - 1], Q[i]);
+    if (closed && Q.length > 2) seg(Q[Q.length - 1], Q[0]);
+  };
+  const ring = (c, r) => {
+    pts.push([c[0], c[1], "c"]);
+    for (let i = 0; i < 4; i++) pts.push([...polar(c, r, (i * Math.PI) / 2), "q"]);
+    const R = arcPoints(c, r, 0, TAU);
+    for (let i = 1; i < R.length; i++) segs.push([...R[i - 1], ...R[i]]);
+  };
+  switch (a.kind) {
+    case "line":
+    case "break":
+      if (P.length >= 2) chain([P[0], P[1]], false);
+      break;
+    case "poly":
+      chain(P, a.closed);
+      break;
+    case "rect":
+      if (P.length >= 2) {
+        chain(rectCorners(a), true);
+        pts.push([(P[0][0] + P[1][0]) / 2, (P[0][1] + P[1][1]) / 2, "c"]);
+      }
+      break;
+    case "circle":
+      if (P.length >= 2) ring(P[0], dist(P[0], P[1]));
+      break;
+    case "cross":
+      if (P.length >= 1) pts.push([P[0][0], P[0][1], "c"]);
+      break;
+    case "arc":
+      if (P.length >= 3) {
+        const g = arcGeom(a);
+        const R = arcPoints(g.c, g.r, g.a0, g.sw);
+        pts.push([g.c[0], g.c[1], "c"], [...R[0], "e"], [...R[R.length - 1], "e"], [...polar(g.c, g.r, g.a0 + g.sw / 2), "m"]);
+        for (let i = 1; i < R.length; i++) segs.push([...R[i - 1], ...R[i]]);
+      }
+      break;
+    case "hatch":
+      P.forEach((q) => pts.push([q[0], q[1], "e"]));
+      break;
+    default:
+      break;
+  }
+  return { pts, segs };
 }
 
 /** Schimbă dimensiunea principală păstrând primul punct (și direcția). */

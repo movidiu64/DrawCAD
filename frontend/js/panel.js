@@ -1,5 +1,5 @@
 // Panoul de proprietăți din dreapta.
-import { typeName, fmtNum, parseNum, build, derive, K, SCALABLE, SCALE_MIN, SCALE_MAX } from "./annots.js";
+import { typeName, newId, fmtNum, parseNum, build, derive, K, SCALABLE, SCALE_MIN, SCALE_MAX } from "./annots.js";
 import { LTYPES, LTYPE_BY_ID, WIDTHS, PRESETS, resizeShape } from "./shapes.js";
 import { fmtDev } from "./iso286.js";
 import { GDT_SYMBOLS, GDT_BY_ID, MODIFIERS, symbolPrims } from "./gdt.js";
@@ -114,7 +114,7 @@ export class Panel {
     return `<div class="sec"><div class="h">Taste</div><div class="keys">
       <b>V</b> selecție · <b>H</b> mută · <b>D</b> liniară · <b>A</b> aliniată · <b>O</b> diametru · <b>R</b> rază · <b>U</b> unghi · <b>C</b> teșitură · <b>L</b> indicație · <b>T</b> text<br>
       <b>G</b> GD&amp;T · <b>B</b> bază · <b>Q</b> rugozitate · <b>S</b> taie cota · <b>W</b> acoperă · <b>X</b> șterge · <b>K</b> calibrare<br>
-      <b>I</b> linie · <b>P</b> polilinie · <b>J</b> dreptunghi · <b>Y</b> cerc · <b>Z</b> arc · <b>Enter</b> termină polilinia<br>
+      <b>I</b> linie · <b>P</b> polilinie · <b>J</b> dreptunghi · <b>Y</b> cerc · <b>Z</b> arc · <b>M</b> măsoară · <b>Enter</b> termină polilinia<br>
       <b>Shift</b> ortho · <b>Alt</b> fără snap · <b>Esc</b> renunță · <b>Del</b> șterge selecția<br>
       <b>Ctrl+C / Ctrl+V</b> copiază / lipește la cursor · <b>Ctrl+D</b> duplică · <b>Ctrl+A</b> selectează tot<br>
       <b>Shift+click</b> sau dreptunghi pe zonă goală = selecție multiplă · <b>săgeți</b> mută 0,5 mm<br>
@@ -424,6 +424,10 @@ export class Panel {
       geo = `<div class="sub">${inf.n} vârfuri · lungime ${fmtNum(inf.len, ",", 2)} mm</div>
         <div class="seg"><button data-act="shset" data-k="closed" data-v="0" class="${!a.closed ? "on" : ""}">Deschisă</button><button data-act="shset" data-k="closed" data-v="1" class="${a.closed ? "on" : ""}">Închisă</button></div>`;
     }
+    if (a.kind === "break") {
+      geo = `<div class="seg"><button data-act="shset" data-k="style" data-v="zigzag" class="${a.style !== "wave" ? "on" : ""}">Cu zigzag</button><button data-act="shset" data-k="style" data-v="wave" class="${a.style === "wave" ? "on" : ""}">Ondulată</button></div>
+        <div class="sub">Linie subțire continuă (ISO 128-20 tip 01.1); zigzagul e varianta pentru desenul pe calculator.</div>`;
+    }
     if (a.kind === "hatch") {
       const ang = a.angle ?? 45;
       const sp = a.sp ?? 2;
@@ -434,6 +438,33 @@ export class Panel {
         <div class="sub">Piesele alăturate dintr-un ansamblu se hașurează cu unghi sau pas diferit (ISO 128-50). Poți trage de vârfuri ca să ajustezi zona.</div>`;
     }
     return `${geo ? `<div class="sec"><div class="h">Geometrie</div>${geo}</div>` : ""}${this.styleHtml(a, "sel")}`;
+  }
+
+  html_section(a) {
+    return `<div class="sec"><div class="h">Identificare</div>
+      <div class="field" style="max-width:100px"><label for="vLet">Literă</label><input type="text" class="mono" id="vLet" data-f="letter" value="${esc(a.letter)}" maxlength="2" style="text-align:center"></div>
+      <div class="sub">Linie-punct subțire, groasă la capete; săgețile arată direcția de privire (ISO 128-44). Trage de pătrățelul din mijloc pe cealaltă parte ca să le întorci.</div>
+      <div class="btns"><button class="ghost" data-act="vlabel">Adaugă eticheta „${esc(a.letter)}–${esc(a.letter)}”</button></div></div>`;
+  }
+
+  html_detail(a) {
+    return `<div class="sec"><div class="h">Identificare</div>
+      <div class="field" style="max-width:100px"><label for="vLet">Literă</label><input type="text" class="mono" id="vLet" data-f="letter" value="${esc(a.letter)}" maxlength="2" style="text-align:center"></div>
+      <div class="sub">Cerc subțire continuu în jurul zonei mărite. Vederea de detaliu se notează „${esc(a.letter)} (2:1)”, cu scara ei.</div>
+      <div class="btns"><button class="ghost" data-act="vlabel">Adaugă eticheta „${esc(a.letter)} (2:1)”</button></div></div>`;
+  }
+
+  html_balloon(a) {
+    return `<div class="sec"><div class="h">Reper</div>
+      <div class="field" style="max-width:120px"><label for="bNum">Număr de poziție</label><input type="text" class="mono" id="bNum" data-f="num" value="${esc(a.num)}" style="text-align:center"></div>
+      <div class="field"><span class="lbl">Formă</span><div class="seg">
+        <button data-act="bshape" data-v="circle" class="${a.shape !== "plain" ? "on" : ""}">Încercuit</button>
+        <button data-act="bshape" data-v="plain" class="${a.shape === "plain" ? "on" : ""}">Pe linie</button></div></div>
+      <div class="field"><span class="lbl">Capăt pe piesă</span><div class="seg">
+        <button data-act="bend" data-v="dot" class="${!a.end || a.end === "dot" ? "on" : ""}">Punct (în interior)</button>
+        <button data-act="bend" data-v="arrow" class="${a.end === "arrow" ? "on" : ""}">Săgeată (pe contur)</button>
+        <button data-act="bend" data-v="none" class="${a.end === "none" ? "on" : ""}">Fără</button></div></div>
+      <div class="sub">ISO 6433: punct când linia se termină în interiorul piesei, săgeată când atinge conturul.</div></div>`;
   }
 
   html_white(a) {
@@ -701,7 +732,7 @@ export class Panel {
         });
         break;
       case "shset":
-        upd((a) => { a[k] = k === "closed" ? v === "1" : Number(v); });
+        upd((a) => { a[k] = k === "closed" ? v === "1" : k === "style" ? v : Number(v); });
         break;
       case "shtog":
         upd((a) => { a[k] = !a[k]; });
@@ -710,6 +741,20 @@ export class Panel {
         // aceleași capete, celălalt sens: arcul complementar
         upd((a) => { a.ccw = a.ccw === false; });
         break;
+      case "bshape":
+        upd((a) => { a.shape = v; });
+        break;
+      case "bend":
+        upd((a) => { a.end = v; });
+        break;
+      case "vlabel": {
+        const a = app.selected();
+        const r = 30 * K;
+        const p = a.type === "section" ? [Math.min(a.pts[0][0], a.pts[1][0]), Math.min(a.pts[0][1], a.pts[1][1]) - 12 * K] : [a.pts[0][0] + r, a.pts[0][1] - r];
+        app.addAnnot({ id: newId(), layer: a.layer || "add", type: "text", p, angle: 0, scale: 1.4, text: a.type === "section" ? `${a.letter}–${a.letter}` : `${a.letter} (2:1)` });
+        app.setHint("Eticheta e selectată: trage-o deasupra vederii respective");
+        break;
+      }
       case "redit":
         app.editRedaction(app.selected());
         break;

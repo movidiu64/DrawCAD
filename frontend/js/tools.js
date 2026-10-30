@@ -46,6 +46,10 @@ export const TOOLS = [
   { id: "pan", label: "Mută", key: "H", group: "Navigare", icon: "M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3", kind: "pan",
     hint: "Trage pentru a muta foaia · rotița = zoom · oricând: butonul din mijloc sau Space + tragere" },
 
+  { id: "measure", label: "Măsoară", key: "M", group: "Navigare", icon: "M3 17L17 3l4 4L7 21zM7 13l2 2M10 10l2 2M13 7l2 2", kind: "clicks", n: 2,
+    hint: "Două puncte (cu snap) → distanța, Δx, Δy și unghiul, la scara desenului; nu se adaugă nimic pe desen",
+    preview(pts, cur) { return { line: [pts[0], cur] }; } },
+
   { id: "dimLin", label: "Liniară", key: "D", group: "Cote", icon: "M4 6v12M20 6v12M4 12h16M4 12l3-2M4 12l3 2M20 12l-3-2M20 12l-3 2",
     hint: "Punct 1 → punct 2 → poziția liniei de cotă (orizontală sau verticală după unde muți)", ...dimTool("lin", "") },
   { id: "dimAli", label: "Aliniată", key: "A", group: "Cote", icon: "M5 15L15 5M5 15l1-3.5M5 15l3.5-1M15 5l-3.5 1M15 5l-1 3.5M3 13l4 4M13 3l4 4",
@@ -144,6 +148,30 @@ export const TOOLS = [
       const all = [...pts, cur];
       return all.length >= 3 ? this.make(all, app) : { type: "shape", kind: "poly", pts: all, ltype: "cont", w: 0.18 };
     } },
+
+  { id: "break", label: "Ruptură", key: "", group: "Desen", icon: "M2 12h7l2-5 2 10 2-5h7", kind: "clicks", n: 2,
+    hint: "Capetele liniei de ruptură; zigzagul se pune la mijloc (sau ondulată, din panou)",
+    make: (pts) => ({ type: "shape", kind: "break", pts: [pts[0], pts[1]], ltype: "cont", w: 0.25, style: "zigzag" }),
+    preview(pts, cur, app) { return this.make([pts[0], cur], app); } },
+
+  { id: "section", label: "Secțiune", key: "", group: "Vederi", icon: "M4 4v16M20 4v16M4 8h-0M4 12l4 0M20 12l-4 0M6 10l2 2-2 2M18 10l-2 2 2 2", kind: "clicks", n: 3,
+    hint: "Capetele planului de secționare → partea spre care privești (acolo arată săgețile)",
+    make: (pts, app) => ({ type: "section", pts: [pts[0], pts[1]], vp: pts[2], letter: app.nextViewLetter() }),
+    preview(pts, cur, app) {
+      if (pts.length === 1) return { line: [pts[0], cur] };
+      return this.make([pts[0], pts[1], cur], app);
+    } },
+  { id: "detail", label: "Detaliu", key: "", group: "Vederi", icon: "M4 12a8 8 0 1 0 16 0a8 8 0 1 0 -16 0M17 7l3-3", kind: "clicks", n: 2,
+    hint: "Centrul zonei → raza cercului de detaliu; litera se poate muta din pătrățelul ei",
+    make: (pts, app) => ({ type: "detail", pts: [pts[0], pts[1]], letter: app.nextViewLetter() }),
+    preview(pts, cur, app) { return this.make([pts[0], cur], app); } },
+  { id: "viewlabel", label: "Etichetă", key: "", group: "Vederi", icon: "M4 18L8 6l4 12M5.5 14h5M14 12h6", kind: "clicks", n: 1,
+    hint: "Click deasupra vederii: se propune „A–A” pentru secțiuni sau „B (2:1)” pentru detalii încă neetichetate",
+    make: (pts, app) => ({ type: "text", p: pts[0], text: app.nextViewLabel(), angle: 0, scale: 1.4 }) },
+  { id: "balloon", label: "Reper", key: "", group: "Vederi", icon: "M14 9a5 5 0 1 0 0.01 0M10.5 12.5L4 19M4 19h0", kind: "clicks", n: 2,
+    hint: "Punct pe piesă → poziția cercului; numărul crește automat",
+    make: (pts, app) => ({ type: "balloon", target: pts[0], pos: pts[1], num: app.nextBalloon(), shape: "circle", end: "dot" }),
+    preview(pts, cur, app) { return this.make([pts[0], cur], app); } },
 
   { id: "strike", label: "Taie cota", key: "S", group: "Revizie", icon: "M5 7h6M8 7v10M14 7h5M16.5 7v10M3 12h18", kind: "rect",
     hint: "Trage un dreptunghi peste valoarea veche → scrie valoarea nouă în panou",

@@ -8,7 +8,8 @@ Aplicație web self-hosted (Docker) pentru a adăuga pe un PDF sau pe un scan:
 - **rugozitate** după ISO 1302 / ISO 21920-1: cu sau fără îndepărtare de material, parametru (Ra, Rz…), procedeu, direct pe suprafață sau cu linie de indicație;
 - **revizii**: cotă tăiată + valoare nouă + triunghi de revizie, plus **tabel de revizii** (Rev. / Modificare / Data / Nume) completat din cotele tăiate;
 - **note tehnice** pe mai multe rânduri, numerotate automat, cu titlu și chenar opțional;
-- **desen**: linie, polilinie, dreptunghi, cerc, arc, axe de cerc și hașură, cu tipurile de linie ISO 128 (continuă, întreruptă, linie-punct, linie-două puncte, punctată) și grosimile standard;
+- **vederi**: plan de secționare A–A (ISO 128-44), cerc de detaliu, etichete de vedere și repere de poziție (ISO 6433);
+- **desen**: linie, polilinie, dreptunghi, cerc, arc, axe de cerc, hașură și linie de ruptură, cu tipurile de linie ISO 128 (continuă, întreruptă, linie-punct, linie-două puncte, punctată) și grosimile standard;
 - **ștergere** din original, cu acoperire albă sau eliminare reală a obiectelor PDF;
 - **export PDF** vectorial, cu font ISO 3098 încorporat și strat editabil atașat.
 
@@ -107,7 +108,7 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 | N | note tehnice | E | tabel de revizii |
 | I | linie | P | polilinie |
 | J | dreptunghi | Y | cerc |
-| Z | arc | | axe cerc, hașură: din bară |
+| Z | arc | M | măsoară (fără să adauge nimic) |
 
 **Taste generale:**
 - Ctrl+Z / Ctrl+Y: anulează / refă
@@ -152,9 +153,18 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 - **Dreptunghi (J), Cerc (Y):** două click-uri; lățimea, înălțimea sau diametrul exact se scriu apoi în panou.
 - **Arc (Z):** centrul → începutul → sfârșitul. Sensul e cel în care miști cursorul după al doilea click; „Arcul complementar” din panou îl întoarce.
 - **Axe cerc:** centrul (snap ○) → un punct pe cerc. Axele linie-punct depășesc conturul cu 3 mm (2 / 3 / 5 mm din panou) și se intersectează pe liniuțe.
+- **Ruptură:** capetele liniei; zigzag la mijloc sau ondulată (din panou), linie subțire tip 01.1.
+- **Snap pe ce ai desenat:** capete, mijloace, centre, cadrane de cerc și intersecții, inclusiv cu geometria PDF-ului.
 - **Hașură:** click pe vârfurile zonei secționate, cu snap pe contur; Enter sau click pe primul punct termină. Unghiul (45°, 135°…), pasul și varianta încrucișată se aleg din panou.
 - **Tipul de linie și grosimea** se aleg din panou înainte de desen (cu unealta activă) sau după, pe forma selectată. Sunt și presetări ISO 128-24: contur vizibil 0,5, contur ascuns, axă, piese vecine etc. Ultima alegere rămâne implicită.
 - **Modelul liniei** respectă lungimile din ISO 128-20 (liniuță 12d, linie lungă 24d, gol 3d) și se ajustează la lungimea fiecărei linii, astfel încât să înceapă și să se termine cu liniuță. „Scara modelului” îl mărește pentru desene mari.
+
+**Vederi:**
+- **Secțiune:** capetele planului de secționare → un click pe partea spre care privești. Se desenează linie-punct subțire, groasă la capete, cu săgeți și litere (A, B, C…, fără I, O, Q). Pătrățelul din mijloc întoarce săgețile.
+- **Detaliu:** centrul zonei → raza; litera următoare se pune lângă cerc și se poate muta.
+- **Etichetă:** propune „A–A” pentru prima secțiune neetichetată, apoi „B (2:1)” pentru detalii. Același lucru îl face butonul „Adaugă eticheta” din panoul secțiunii sau al detaliului.
+- **Reper:** punct pe piesă → poziția cercului; numerele cresc automat. Din panou: încercuit sau pe linie, capăt cu punct (în interiorul piesei) sau săgeată (pe contur).
+- **Măsoară (M):** două puncte cu snap; arată distanța, Δx, Δy și unghiul, la scara desenului.
 
 **Ștergere din original:** după ce tragi zona, dialogul arată obiectele găsite și o previzualizare înainte/după. Ai trei moduri:
 - **Selecție pe obiecte:** bifezi exact ce se elimină. E modul recomandat.

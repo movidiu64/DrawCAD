@@ -106,7 +106,11 @@ export class SnapIndex {
     }
   }
 
-  nearest(x, y, tol, extra = []) {
+  /**
+   * extra: puncte suplimentare [x, y, tip?] (adnotări, forme desenate);
+   * extraSegs: segmente ale formelor desenate, pentru intersecții și „pe linie”.
+   */
+  nearest(x, y, tol, extra = [], extraSegs = []) {
     const PRIO = { c: 0, e: 1, a: 1, x: 1, q: 2, m: 3 };
     let best = null;
     let bestScore = Infinity;
@@ -128,7 +132,7 @@ export class SnapIndex {
         if (arr) arr.forEach(consider);
       }
     }
-    extra.forEach((q) => consider([q[0], q[1], "a"]));
+    extra.forEach((q) => consider([q[0], q[1], q[2] || "a"]));
     // intersecții între segmentele din jurul cursorului
     const near = [];
     const seenI = new Set();
@@ -144,6 +148,9 @@ export class SnapIndex {
         }
       }
     }
+    const close = (sg) => Math.min(sg[0], sg[2]) - tol <= x && Math.max(sg[0], sg[2]) + tol >= x && Math.min(sg[1], sg[3]) - tol <= y && Math.max(sg[1], sg[3]) + tol >= y;
+    const own = extraSegs.filter(close);
+    for (const sg of own) if (near.length < 200) near.push(sg);
     for (let i = 0; i < near.length; i++) {
       for (let j = i + 1; j < near.length; j++) {
         const q = segIntersect(near[i], near[j]);
@@ -154,6 +161,20 @@ export class SnapIndex {
     // cel mai apropiat punct pe o linie
     let bd = tol;
     const seen = new Set();
+    const onSeg = (sg) => {
+      const bx = sg[2] - sg[0];
+      const by = sg[3] - sg[1];
+      const L2 = bx * bx + by * by;
+      const t = Math.max(0, Math.min(1, L2 ? ((x - sg[0]) * bx + (y - sg[1]) * by) / L2 : 0));
+      const px = sg[0] + bx * t;
+      const py = sg[1] + by * t;
+      const d = Math.hypot(px - x, py - y);
+      if (d < bd) {
+        bd = d;
+        best = { p: [px, py], kind: "n" };
+      }
+    };
+    own.forEach(onSeg);
     for (let i = ci - r; i <= ci + r; i++) {
       for (let j = cj - r; j <= cj + r; j++) {
         const arr = this.sgrid.get(this.key(i, j));
