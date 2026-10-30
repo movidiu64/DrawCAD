@@ -848,20 +848,12 @@ function buildInk(a) {
 }
 
 function buildRedact(a) {
+  // pagina din editor e deja randată cu ștergerile aplicate: aici rămâne doar conturul zonei
   const r = normRect(a.r);
-  const prims = [rectOutline(r, "edred")];
+  const prims = [rectOutline(r, a.mode === "cover" ? "edgray" : "edred")];
   // vechile zone (fără „cover”) se acopereau mereu cu alb
   const cover = (a.mode === "zone" && a.cover !== false) || a.mode === "cover";
   if (cover) prims.unshift({ t: "R", p: r, c: a.mode === "cover" ? coverColor(a) : "white", cover: true });
-  for (const o of a.objs || []) {
-    if (a.mode === "objects" && !(a.ids || []).includes(o.id)) continue;
-    if (a.mode === "text" && o.type !== "text") continue;
-    if (cover) continue;
-    for (const poly of o.poly || []) {
-      if (poly.length >= 2) prims.push({ t: "P", p: poly.flat(), w: 1.2, c: "edred", ed: true });
-    }
-    if (!o.poly && o.bbox) prims.push(rectOutline(o.bbox, "edred"));
-  }
   return { prims, handles: [{ k: "r0", p: [a.r[0], a.r[1]] }, { k: "r1", p: [a.r[2], a.r[3]] }] };
 }
 

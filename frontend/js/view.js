@@ -156,8 +156,11 @@ export class View {
     if (this.loadingKey === key) return;
     this.loadingKey = key;
     const im = new Image();
+    let blobUrl = null;
     im.onload = () => {
       if (this.loadingKey !== key) return;
+      if (this.imgBlob) URL.revokeObjectURL(this.imgBlob);
+      this.imgBlob = blobUrl;
       this.img = im;
       this.imgScale = scale;
       this.imgQuery = extra;
@@ -167,6 +170,24 @@ export class View {
     im.onerror = () => {
       this.loadingKey = null;
     };
+    const ops = this.app.removalOps ? this.app.removalOps(this.pageN) : [];
+    if (ops.length) {
+      // cu ștergeri: pagina se randează cu ele aplicate, ca în PDF-ul exportat
+      const ink = this.app.settings.ink && this.app.settings.ink.all ? this.app.settings.ink : null;
+      const bk = ink ? [] : this.app.annots.filter((a) => a.type === "ink" && a.page === this.pageN).flatMap((a) => a.ids || []);
+      const all = bk.length ? [{ mode: "black", ids: bk }, ...ops] : ops;
+      api.previewRemoval(this.docId, this.pageN, all, scale, ink).then((url) => {
+        if (this.loadingKey !== key) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        blobUrl = url;
+        im.src = url;
+      }).catch(() => {
+        this.loadingKey = null;
+      });
+      return;
+    }
     im.src = api.renderUrl(this.docId, this.pageN, scale, extra);
   }
 

@@ -7,8 +7,19 @@ import { Panel } from "./panel.js";
 import { TOOLS, TOOL_BY_ID, TOOL_BY_KEY, finalize } from "./tools.js";
 import * as dlg from "./dialogs.js";
 import { VIEW_LETTERS } from "./symbols.js";
+import { markingConfig, MM_ICONS } from "./mmenu.js";
 
 const $ = (id) => document.getElementById(id);
+/** Hash scurt (FNV-1a) pentru cheile de randare. */
+function hashStr(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
 const DATUM_LETTERS = "ABCDEFGHJKLMNPRSTUVWXYZ"; // ISO 5459: fără I, O, Q
 
 class App {
@@ -91,21 +102,36 @@ class App {
   }
 
   // ------------------------------------------------------------ meniu radial (ca la Inventor)
+  /** Comenzile din meniul radial, în ordinea E, NE, N, NV, V, SV, S, SE (alese din Setări). */
   markingItems() {
-    const last = this.lastTool && TOOL_BY_ID[this.lastTool];
-    const tool = (id) => ({ id, label: TOOL_BY_ID[id].label, icon: TOOL_BY_ID[id].icon, run: () => this.setTool(id) });
-    const sel = this.sel.size > 0;
-    // poziții fixe (E, NE, N, NV, V, SV, S, SE), cu ultima comandă sus
-    return [
-      tool("dimRad"),
-      tool("dimDia"),
-      last && last.id !== "select" ? { ...tool(last.id), label: `${last.label}` , repeat: true } : tool("dimLin"),
-      tool("measure"),
-      { id: "undo", label: "Anulează", icon: "M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3", run: () => this.doUndo() },
-      tool("lead"),
-      sel ? { id: "del", label: "Șterge selecția", icon: "M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13", run: () => this.deleteSelected() } : tool("line"),
-      tool("text"),
-    ];
+    return markingConfig().map((id) => this.markingAction(id)).map((it) => it || this.markingAction("dimLin"));
+  }
+
+  markingAction(id) {
+    const tool = (tid) => TOOL_BY_ID[tid] && { id: tid, label: TOOL_BY_ID[tid].label, icon: TOOL_BY_ID[tid].icon, run: () => this.setTool(tid) };
+    const del = { id: "del", label: "Șterge selecția", icon: "M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13", run: () => this.deleteSelected() };
+    switch (id) {
+      case "last": {
+        const last = this.lastTool && TOOL_BY_ID[this.lastTool];
+        return last ? tool(last.id) : tool("dimLin");
+      }
+      case "undo":
+        return { id, label: "Anulează", icon: MM_ICONS.undo, run: () => this.doUndo() };
+      case "redo":
+        return { id, label: "Refă", icon: MM_ICONS.redo, run: () => this.doRedo() };
+      case "del":
+        return del;
+      case "seldel":
+        return this.sel.size ? del : tool("line");
+      case "dup":
+        return { id, label: "Duplică", icon: MM_ICONS.dup, run: () => this.copySelected(true) && this.paste(true) };
+      case "fit":
+        return { id, label: "Potrivește", icon: MM_ICONS.fit, run: () => this.view.fit() };
+      case "export":
+        return { id, label: "Exportă PDF", icon: MM_ICONS.export, run: () => this.doc && dlg.exportDialog(this) };
+      default:
+        return tool(id);
+    }
   }
 
   openMarkingMenu(sx, sy) {
@@ -167,7 +193,10 @@ class App {
   }
 
   closeMarkingMenu() {
-    if (this.mmenu) this.mmenu.el.remove();
+    if (this.mmenu) {
+      this.mmenu.el.remove();
+      this.mmenuClosedAt = performance.now();
+    }
     this.mmenu = null;
   }
 
@@ -575,7 +604,25 @@ class App {
   }
 
   /** Parametrii de randare ai paginii: înnegrirea originalului (tot desenul sau obiecte alese). */
+  /** Ștergerile reale de pe pagina n, ca operații pentru randare (editorul arată rezultatul exportului). */
+  removalOps(n) {
+    const ops = [];
+    for (const a of this.annots) {
+      if (a.page !== n || a.type !== "redact" || a.mode === "cover") continue;
+      if (a.mode === "objects") {
+        if ((a.ids || []).length) ops.push({ mode: "objects", ids: a.ids });
+      } else ops.push({ mode: a.mode, rect: a.r });
+    }
+    return ops;
+  }
+
   renderQuery(n) {
+    const rem = this.removalOps(n);
+    if (rem.length) return `#rm${JSON.stringify(rem).length}:${hashStr(JSON.stringify(rem))}${this.renderQueryBase(n)}`;
+    return this.renderQueryBase(n);
+  }
+
+  renderQueryBase(n) {
     const ink = this.settings.ink;
     let q = "";
     if (ink && ink.all) q += `&ink=1&fills=${ink.fills || "black"}${ink.images ? "&img=1" : ""}`;
@@ -1373,7 +1420,12 @@ class App {
     };
     cv.addEventListener("pointerup", up);
     cv.addEventListener("pointercancel", up);
-    cv.addEventListener("contextmenu", (e) => e.preventDefault());
+    // meniul contextual al browserului nu apare peste desen; nici când click-ul dreapta se
+    // eliberează pe meniul radial (pe Windows evenimentul vine la ridicarea butonului)
+    $("viewport").addEventListener("contextmenu", (e) => e.preventDefault());
+    document.addEventListener("contextmenu", (e) => {
+      if (this.mmenu || this.mmenuClosedAt > performance.now() - 400) e.preventDefault();
+    });
     cv.addEventListener("pointerleave", () => {
       if (!this.drag && this.view.overlay && this.view.overlay.snap) {
         this.view.overlay.snap = null;

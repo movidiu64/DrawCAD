@@ -243,6 +243,28 @@ class ApiTest(unittest.TestCase):
         self.assertTrue(any(abs(f - 0.95) < 0.01 for f in fr), fr)
         self.assertTrue(all(o["frac"] == 1.0 for o in objs if o["inside"]))
 
+    def test_zone_takes_whole_glyphs(self):
+        """Text AutoCAD exportat ca linii: litera cu centrul în zonă se elimină întreagă (codița lui g)."""
+        from reportlab.pdfgen import canvas
+
+        buf = io.BytesIO()
+        c = canvas.Canvas(buf, pagesize=(150 * MM, 60 * MM))
+        y = lambda v: 60 * MM - v * MM  # noqa: E731
+        p = c.beginPath()
+        for i, (gx, gy) in enumerate([(3, 25), (0, 25), (0, 29), (3, 29), (3, 25), (3, 32.5), (0.5, 33.5), (0, 32.5)]):
+            (p.lineTo if i else p.moveTo)((37 + gx) * MM, y(gy))
+        c.drawPath(p, stroke=1, fill=0)
+        c.line(10 * MM, y(28), 140 * MM, y(28))  # linie lungă prin zonă: se taie, nu dispare
+        c.showPage()
+        c.save()
+        src = buf.getvalue()
+        rect = [18 * MM, 20 * MM, 42 * MM, 31 * MM]
+        g = [o for o in pdfcore.objects_in_rect(src, 0, rect) if o["bbox"][2] - o["bbox"][0] < 20][0]
+        self.assertLess(g["frac"], 0.9)
+        _out, rep = pdfcore.apply_removals(src, {0: [{"mode": "zone", "rect": rect}]})
+        self.assertEqual(rep[0]["removed"], 1)
+        self.assertEqual(rep[0]["cut"], 1)
+
     def test_image_open(self):
         from PIL import Image
         import io

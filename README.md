@@ -120,7 +120,7 @@ Modurile se aleg din săgeata de lângă „Snap”, în bara de jos. Taste: **F
 
 **Mouse:**
 - **click dreapta** = Esc: termină polilinia, oprește lanțul de linii, renunță la punctele date sau deselectează
-- **click dreapta ținut** = meniu radial cu comenzile uzuale. Sus e ultima comandă folosită, apoi Diametru, Rază, Text, Linie (sau Șterge selecția), Indicație, Anulează, Măsoară. Alegi trăgând în direcția comenzii și eliberând, sau eliberezi pe loc și dai click pe comandă.
+- **click dreapta ținut** = meniu radial cu comenzile tale favorite (le alegi în **Setări**, pe cele 8 poziții). Sus e ultima comandă folosită, apoi Diametru, Rază, Text, Linie (sau Șterge selecția), Indicație, Anulează, Măsoară. Alegi trăgând în direcția comenzii și eliberând, sau eliberezi pe loc și dai click pe comandă.
 - **click dreapta tras** sau rotița apăsată = mută foaia
 
 **Tabletă și telefon:** panoul de proprietăți devine un sertar (pe telefon, o foaie care urcă de jos). Se deschide singur când alegi o adnotare sau ai de scris un text, iar butonul cu glisoare din antet îl deschide oricând. Pe ecran tactil:
@@ -170,6 +170,8 @@ Modurile se aleg din săgeata de lângă „Snap”, în bara de jos. Taste: **F
 
 **Listă de componente:** dai click pe colțul dreapta-sus al cartușului. Lista se așază deasupra, cu antetul jos și poziția 1 lângă antet (ISO 7573), câte un rând pentru fiecare reper de pe desen. Coloane: Poz., Denumire, Buc., Material, Observații. „Din repere” adaugă reperele puse ulterior.
 
+**Ștergerile se văd direct în editor:** pagina e randată cu ștergerile aplicate, exact ca în PDF-ul exportat; rămâne doar conturul roșu al zonei.
+
 **Casete (acoperiri, ștergeri, înnegriri, cote tăiate, dreptunghiuri desenate):** ca la ferestrele din Windows, cursorul se schimbă în săgeată de redimensionare pe margini și colțuri; tragi de margine și caseta se mărește sau se micșorează, cu snap.
 
 **Cadrul GD&T:** linia de indicație are un pătrățel în cot. Îl tragi oriunde ca s-o frângi în orice unghi; „Cot automat (90°)” din panou revine la varianta implicită.
@@ -201,7 +203,7 @@ Modurile se aleg din săgeata de lângă „Snap”, în bara de jos. Taste: **F
 
 **Ștergere din original:** după ce tragi zona, dialogul arată obiectele găsite și o previzualizare înainte/după. Ai patru moduri:
 - **Acoperă zona** (implicit): un dreptunghi plin peste zonă, fără să elimine ceva din fișier. Culoarea e albă, dar o poți schimba: alegi din paletă, iei o mostră cu „Pipetă” direct din previzualizarea „Înainte” sau, în Chrome/Edge, de oriunde de pe ecran cu „Ecran”. Așa acoperirea se potrivește cu fundalul unui desen colorat sau scanat.
-- **Selecție pe obiecte:** bifezi exact ce se elimină. Sunt bifate din start obiectele aflate cel puțin 90% în zonă (lungimea liniei, aria textului); lista arată procentul pentru fiecare. „Bifează tot ce atinge zona” le bifează pe toate.
+- **Selecție pe obiecte:** bifezi exact ce se elimină. Sunt bifate din start obiectele aflate cel puțin 90% în zonă (lungimea liniei, aria textului) și literele mici cu centrul în zonă, chiar dacă o codiță iese afară (g, p, y la textele AutoCAD exportate ca linii). Lista arată procentul pentru fiecare. „Bifează tot ce atinge zona” le bifează pe toate.
 - **Doar textul:** elimină valorile, iar liniile de cotă rămân.
 - **Tot din zonă:** elimină ce e în zonă și taie liniile care trec prin ea exact la marginea zonei (conturul rămâne, cu o întrerupere; arcele și cercurile se taie la fel). Ce nu se poate tăia (suprafețe pline, imagini, obiecte din blocuri) poate fi acoperit cu alb: opțiunea „Acoperă zona cu alb” e bifată automat când e cazul.
 

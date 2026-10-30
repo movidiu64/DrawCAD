@@ -1,6 +1,8 @@
 // Ferestre de dialog: deschidere, export, setări, ștergere din original, calibrare.
 import * as api from "./api.js";
 import { K, fmtNum, parseNum, DEFAULT_SETTINGS } from "./annots.js";
+import { MM_POSITIONS, MM_DEFAULT, MM_SPECIAL, markingConfig } from "./mmenu.js";
+import { TOOLS } from "./tools.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
@@ -229,6 +231,28 @@ export function exportDialog(app, opts = {}) {
 }
 
 // ------------------------------------------------------------------ setări
+/** Cele 8 poziții ale meniului radial, ca o busolă în jurul cursorului. */
+function mmGridHtml(cfg) {
+  const groups = [];
+  for (const t of TOOLS) {
+    if (t.id === "select" || t.id === "pan" || t.id === "calib") continue;
+    let g = groups.find((x) => x.name === t.group);
+    if (!g) groups.push((g = { name: t.group, tools: [] }));
+    g.tools.push(t);
+  }
+  const options = (cur) => `<optgroup label="Acțiuni">${MM_SPECIAL.map(([v, l]) => `<option value="${v}" ${v === cur ? "selected" : ""}>${esc(l)}</option>`).join("")}</optgroup>
+    ${groups.map((g) => `<optgroup label="${esc(g.name)}">${g.tools.map((t) => `<option value="${t.id}" ${t.id === cur ? "selected" : ""}>${esc(t.label)}</option>`).join("")}</optgroup>`).join("")}`;
+  // poziția în grilă 3×3 pentru indicii E, NE, N, NV, V, SV, S, SE
+  const cell = { 0: [2, 1], 1: [2, 0], 2: [1, 0], 3: [0, 0], 4: [0, 1], 5: [0, 2], 6: [1, 2], 7: [2, 2] };
+  let html = `<div class="mmc" style="grid-column:2;grid-row:2"><span>●</span><span class="sub">cursor</span></div>`;
+  for (let i = 0; i < 8; i++) {
+    const [c, r] = cell[i];
+    html += `<label class="mmc" style="grid-column:${c + 1};grid-row:${r + 1}"><span class="sub">${MM_POSITIONS[i]}</span>
+      <select data-i="${i}" aria-label="Comanda din poziția ${MM_POSITIONS[i]}">${options(cfg[i])}</select></label>`;
+  }
+  return html;
+}
+
 export function settingsDialog(app) {
   const S = app.settings;
   const opt = (name, cur, list) => list.map(([v, l]) => `<button class="${String(cur) === String(v) ? "on" : ""}" data-set="${name}" data-v="${v}">${l}</button>`).join("");
@@ -251,6 +275,11 @@ export function settingsDialog(app) {
         <div class="field"><label for="sScale">Scară (mm reali / mm hârtie)</label><input type="text" id="sScale" class="mono" value="${fmtNum(S.scale, ",", 4)}"></div></div>
       </div>
     </div>
+    <div class="sec">
+      <div class="lbl">Meniul de la click dreapta ținut · comenzile tale favorite (pentru toate documentele)</div>
+      <div class="mmgrid" id="sMm">${mmGridHtml(markingConfig())}</div>
+      <div class="row"><button class="ghost" id="sMmReset">Revino la implicit</button><span class="sub">Alegi trăgând spre comandă și eliberând butonul; pe ecran tactil, apăsare lungă.</span></div>
+    </div>
     <div class="foot"><label class="chk" style="flex:1"><input type="checkbox" id="sDef"> Folosește ca implicit pentru documente noi</label>
       <button class="ghost" data-close>Închide</button><button class="primary" id="sSave">Aplică</button></div>`);
   const pending = {};
@@ -262,7 +291,14 @@ export function settingsDialog(app) {
     pending[k] = v;
     dlg.querySelectorAll(`[data-set="${k}"]`).forEach((x) => x.classList.toggle("on", x === b));
   }));
+  dlg.querySelector("#sMmReset").addEventListener("click", () => {
+    dlg.querySelector("#sMm").innerHTML = mmGridHtml(MM_DEFAULT);
+  });
   dlg.querySelector("#sSave").addEventListener("click", () => {
+    const mm = [...dlg.querySelectorAll("#sMm select")].sort((p, q) => p.dataset.i - q.dataset.i).map((x) => x.value);
+    try {
+      if (mm.length === 8) localStorage.setItem("cotare.mmenu", JSON.stringify(mm));
+    } catch (_) { /* stocare indisponibilă */ }
     pending.revNo = dlg.querySelector("#sRev").value.trim() || "1";
     pending.author = dlg.querySelector("#sAuth").value.trim();
     const sc = parseNum(dlg.querySelector("#sScale").value);
@@ -325,7 +361,19 @@ export async function redactDialog(app, annot, isNew) {
   let mode = annot.mode || (isNew ? "cover" : "objects");
   // implicit: obiectele aflate cel puțin 90% în zonă (lungimea liniei sau aria textului)
   const FRAC = 0.9;
-  const auto = () => objs.filter((o) => !o.locked && (o.inside || (o.frac ?? 0) >= FRAC)).map((o) => o.id);
+  // literele mici (texte AutoCAD exportate ca linii) cu centrul în zonă se iau întregi,
+  // chiar dacă o codiță iese din casetă (g, p, y…)
+  const zx0 = Math.min(rect[0], rect[2]);
+  const zx1 = Math.max(rect[0], rect[2]);
+  const zy0 = Math.min(rect[1], rect[3]);
+  const zy1 = Math.max(rect[1], rect[3]);
+  const glyphIn = (o) => {
+    const [bx0, by0, bx1, by1] = o.bbox;
+    const cx = (bx0 + bx1) / 2;
+    const cy = (by0 + by1) / 2;
+    return Math.max(bx1 - bx0, by1 - by0) <= 12 * K && Math.min(bx1 - bx0, by1 - by0) >= 0.8 * K && cx >= zx0 && cx <= zx1 && cy >= zy0 && cy <= zy1 && (o.frac ?? 0) >= 0.5;
+  };
+  const auto = () => objs.filter((o) => !o.locked && (o.inside || (o.frac ?? 0) >= FRAC || glyphIn(o))).map((o) => o.id);
   const ids = new Set(isNew || !annot.ids ? auto() : annot.ids);
   let color = annot.color || "#ffffff";
   let picking = false;
@@ -341,7 +389,7 @@ export async function redactDialog(app, annot, isNew) {
     if (mode === "objects") return o.locked ? LOCKED : ids.has(o.id) ? ["se elimină", "var(--bad)"] : ["rămâne", "var(--ok)"];
     if (mode === "text") return o.type !== "text" ? ["rămâne", "var(--ok)"] : o.locked ? LOCKED : ["se elimină", "var(--bad)"];
     if (o.locked) return LOCKED;
-    if (o.type === "text" || o.inside) return ["se elimină", "var(--bad)"];
+    if (o.type === "text" || o.inside || glyphIn(o)) return ["se elimină", "var(--bad)"];
     if (o.cuttable) return ["tăiat la margine", "var(--accent)"];
     return ["parțial — doar acoperire", "var(--warn)"];
   };
@@ -365,11 +413,10 @@ export async function redactDialog(app, annot, isNew) {
           <div class="row"><input type="color" id="rColor" aria-label="Culoarea acoperirii">
             <button class="ghost sw" data-sw="#ffffff" title="Alb" aria-label="Alb"><i style="background:#fff"></i></button>
             <button class="ghost sw" data-sw="#f4f1e8" title="Hârtie" aria-label="Hârtie"><i style="background:#f4f1e8"></i></button>
-            <button class="ghost" id="rPick" title="Ia culoarea din previzualizarea „Înainte”"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4.5l5 5M17 2l5 5-3 3-5-5zM14 7l-9 9-1 4 4-1 9-9"/></svg> Pipetă</button>
-            ${window.EyeDropper ? `<button class="ghost" id="rPickScreen" title="Ia culoarea de oriunde de pe ecran">Ecran</button>` : ""}</div>
+            <button class="ghost" id="rPick" title="Ia culoarea dintr-un punct al desenului"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4.5l5 5M17 2l5 5-3 3-5-5zM14 7l-9 9-1 4 4-1 9-9"/></svg> Pipetă</button></div>
           <span class="sub mono" id="rColorTxt"></span>
         </div>
-        <button class="card" data-mode="objects"><b>Selecție pe obiecte</b><span>Elimini exact ce bifezi. Implicit sunt bifate obiectele aflate cel puțin 90% în zonă.</span></button>
+        <button class="card" data-mode="objects"><b>Selecție pe obiecte</b><span>Elimini exact ce bifezi. Implicit sunt bifate obiectele aflate cel puțin 90% în zonă și literele cu centrul în zonă.</span></button>
         <label class="chk" id="rAllRow"><input type="checkbox" id="rAll"> Bifează tot ce atinge zona</label>
         <button class="card" data-mode="text"><b>Doar textul</b><span>Elimină valoarea; liniile de cotă rămân și poți scrie valoarea nouă pe ele.</span></button>
         <button class="card" data-mode="zone"><b>Tot din zonă</b><span>Elimină ce e în zonă și taie liniile care trec prin ea exact la margine (ex. conturul rămâne, cu o întrerupere).</span></button>
@@ -417,33 +464,46 @@ export async function redactDialog(app, annot, isNew) {
   };
   colorInp.addEventListener("input", () => setColor(colorInp.value));
   dlg.querySelectorAll("[data-sw]").forEach((b) => b.addEventListener("click", () => setColor(b.dataset.sw)));
+  // pipeta: un click pe imaginea „Înainte” ia culoarea punctului; în Chrome/Edge se poate lua
+  // și de oriunde de pe ecran (EyeDropper)
   const pickBtn = dlg.querySelector("#rPick");
-  pickBtn.addEventListener("click", () => {
-    picking = !picking;
-    pickBtn.classList.toggle("on", picking);
-    dlg.querySelector("#rBefore").style.cursor = picking ? "crosshair" : "";
+  const before = dlg.querySelector("#rBefore");
+  const setPicking = (on) => {
+    picking = on;
+    pickBtn.classList.toggle("on", on);
+    before.style.cursor = on ? "crosshair" : "";
+    before.closest(".prevbox").classList.toggle("picking", on);
+    dlg.querySelector("#rColorTxt").textContent = on ? "Click pe imaginea „Înainte” în punctul cu culoarea dorită" : color;
+  };
+  pickBtn.addEventListener("click", async () => {
+    if (picking) {
+      setPicking(false);
+      return;
+    }
+    setPicking(true);
+    if (window.EyeDropper) {
+      try {
+        const res = await new window.EyeDropper().open();
+        setPicking(false);
+        setColor(res.sRGBHex);
+      } catch (_) {
+        // anulat cu Esc: rămâne varianta cu click pe previzualizare
+      }
+    }
   });
-  dlg.querySelector("#rBefore").addEventListener("click", (e) => {
+  before.addEventListener("click", (e) => {
     if (!picking) return;
     const cv = e.currentTarget;
     const r = cv.getBoundingClientRect();
-    const x = Math.round(((e.clientX - r.left) / r.width) * cv.width);
-    const y = Math.round(((e.clientY - r.top) / r.height) * cv.height);
+    const x = Math.min(cv.width - 1, Math.max(0, Math.round(((e.clientX - r.left) / r.width) * cv.width)));
+    const y = Math.min(cv.height - 1, Math.max(0, Math.round(((e.clientY - r.top) / r.height) * cv.height)));
+    // fără conturul roșu al zonei: culoarea se citește din imaginea curată
+    paint(cv, beforeImg, null);
     const d = cv.getContext("2d").getImageData(x, y, 1, 1).data;
+    drawBefore(null);
+    setPicking(false);
     setColor(`#${[d[0], d[1], d[2]].map((v) => v.toString(16).padStart(2, "0")).join("")}`);
-    picking = false;
-    pickBtn.classList.remove("on");
-    cv.style.cursor = "";
   });
-  const scr = dlg.querySelector("#rPickScreen");
-  if (scr) {
-    scr.addEventListener("click", async () => {
-      try {
-        const res = await new window.EyeDropper().open();
-        setColor(res.sRGBHex);
-      } catch (_) { /* anulat */ }
-    });
-  }
   const allCb = dlg.querySelector("#rAll");
   allCb.addEventListener("change", () => {
     ids.clear();

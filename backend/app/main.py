@@ -269,6 +269,13 @@ async def api_render(request: Request):
     return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=3600", "X-Scale": str(scale)})
 
 
+def _meta_page(doc_id, n):
+    try:
+        return _page_index(doc_id, n)[1]["pages"][n]
+    except Exception:  # noqa: BLE001
+        return None
+
+
 async def api_preview(request: Request):
     """Randare cu ștergerile aplicate (pentru dialogul de ștergere)."""
     doc_id = request.path_params["doc_id"]
@@ -278,8 +285,18 @@ async def api_preview(request: Request):
         return _err("Pagină inexistentă", 404)
     body = await request.json()
     ops = body.get("ops", [])
-    scale = min(float(body.get("scale", 2)), 6)
-    png = await run_in_threadpool(pdfcore.render_png, _original(doc_id), n, scale, ops, body.get("ink") or None)
+    p = _meta_page(doc_id, n)
+    scale = min(float(body.get("scale", 2)), 16)
+    if p and max(p["w"], p["h"]) * scale > MAX_RENDER_PX:
+        scale = MAX_RENDER_PX / max(p["w"], p["h"])
+    scale = round(max(0.1, scale), 3)
+    ink = body.get("ink") or None
+    key = ("pv", doc_id, n, scale, json.dumps(ops, sort_keys=True), json.dumps(ink, sort_keys=True))
+
+    def work():
+        return _render_cache.get_or(key, lambda: pdfcore.render_png(_original(doc_id), n, scale, ops, ink))
+
+    png = await run_in_threadpool(work)
     return Response(png, media_type="image/png")
 
 

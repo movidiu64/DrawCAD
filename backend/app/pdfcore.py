@@ -710,6 +710,18 @@ def snap_points(pdf_bytes: bytes, page_index: int, limit: int = 60000) -> dict:
 # ---------------------------------------------------------------- obiecte din zonă / ștergere
 
 
+GLYPH_MAX = 12 * 72 / 25.4  # 12 mm
+
+
+def _glyph_in(b, r):
+    """Obiect mic (literă) cu centrul casetei în zonă."""
+    cx = (b[0] + b[2]) / 2
+    cy = (b[1] + b[3]) / 2
+    w, h = b[2] - b[0], b[3] - b[1]
+    # liniile drepte (o dimensiune ~0) nu sunt litere: acelea se taie la margine
+    return max(w, h) <= GLYPH_MAX and min(w, h) >= 2.3 and r[0] <= cx <= r[2] and r[1] <= cy <= r[3]
+
+
 def _area_frac(b, r):
     w = max(b[2] - b[0], 1e-6)
     h = max(b[3] - b[1], 1e-6)
@@ -1034,6 +1046,8 @@ def _apply_removals_page(page: pdfium.PdfPage, ops: list[dict]) -> dict:
                 else:
                     hit = vb[0] >= rx0 and vb[2] <= rx1 and vb[1] >= ry0 and vb[3] <= ry1
                     touches = not (vb[2] < rx0 or vb[0] > rx1 or vb[3] < ry0 or vb[1] > ry1)
+                    if not hit and touches and mode == "zone" and _glyph_in(vb, (rx0, ry0, rx1, ry1)):
+                        hit = True  # literă (text AutoCAD ca linii) cu centrul în zonă: se ia întreagă
                     if not hit and touches:
                         fill = ctypes.c_int()
                         stroke = ctypes.c_int()
