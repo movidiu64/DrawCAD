@@ -40,6 +40,7 @@ export const TYPE_NAMES = {
   section: "Plan de secționare",
   detail: "Detaliu",
   balloon: "Reper de poziție",
+  bom: "Listă de componente",
 };
 
 export function typeName(a) {
@@ -556,14 +557,31 @@ export const REVTAB_COLS = [
   { key: "name", title: "Nume", minMm: 14 },
 ];
 
+// Lista de componente (ISO 7573): deasupra cartușului, antetul jos, poziția 1 lângă antet.
+export const BOM_COLS = [
+  { key: "poz", title: "Poz.", minMm: 10 },
+  { key: "name", title: "Denumire", minMm: 45, left: true },
+  { key: "qty", title: "Buc.", minMm: 10 },
+  { key: "mat", title: "Material", minMm: 28, left: true },
+  { key: "obs", title: "Observații", minMm: 24, left: true },
+];
+
 function buildRevtab(a, S, measure) {
+  return buildTable(a, S, measure, REVTAB_COLS.map((c) => (c.key === "desc" ? { ...c, left: true } : c)));
+}
+
+function buildBom(a, S, measure) {
+  return buildTable(a, S, measure, BOM_COLS);
+}
+
+function buildTable(a, S, measure, COLS) {
   const c = a.layer || "add";
   const h = S.h;
   const F = S.F;
   const rowH = 2 * h; // ca la cadrul GD&T: înălțimea rândului = 2 × înălțimea textului
   const pad = 0.6 * h;
   const rows = a.rows || [];
-  const widths = REVTAB_COLS.map((col) => {
+  const widths = COLS.map((col) => {
     let w = col.minMm * K * (a.scale || 1);
     w = Math.max(w, measure(col.title, F) + 2 * pad);
     for (const r of rows) w = Math.max(w, measure(String(r[col.key] || ""), F) + 2 * pad);
@@ -583,11 +601,11 @@ function buildRevtab(a, S, measure) {
     const top = yt + i * rowH;
     if (i > 0) prims.push(lineP([x0, top], [x0 + W, top], { ...S, lw: item.header || order[i - 1].header ? S.lw * 1.4 : S.lw }, c));
     let x = x0;
-    REVTAB_COLS.forEach((col, j) => {
+    COLS.forEach((col, j) => {
       const txt = item.header ? col.title : String(item.r[col.key] || "");
       if (txt) {
         const tw = measure(txt, F);
-        const tx = col.key === "desc" ? x + pad : x + (widths[j] - tw) / 2;
+        const tx = col.left && !item.header ? x + pad : x + (widths[j] - tw) / 2;
         prims.push({ t: "T", p: [tx, top + rowH / 2 + h / 2], s: F, a: 0, txt, tw, c });
       }
       x += widths[j];
@@ -822,7 +840,7 @@ function buildRedact(a) {
   return { prims, handles: [{ k: "r0", p: [a.r[0], a.r[1]] }, { k: "r1", p: [a.r[2], a.r[3]] }] };
 }
 
-const BUILDERS = { dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, shape: buildShape, section: buildSection, detail: buildDetail, balloon: buildBalloon };
+const BUILDERS = { dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, shape: buildShape, section: buildSection, detail: buildDetail, balloon: buildBalloon, bom: buildBom };
 
 // caractere fără glifă în osifont → echivalente care există (la fel pe ecran și în PDF)
 const GLYPH_SUBST = { "…": "...", "„": '"', "”": '"', "“": '"', "«": '"', "»": '"', "‚": ",", "‘": "'", "\u00a0": " ", "−": "-" };
@@ -831,7 +849,7 @@ export function fontSafe(txt) {
   return String(txt ?? "").replace(GLYPH_RE, (ch) => GLYPH_SUBST[ch]);
 }
 
-export const SCALABLE = new Set(["dim", "rad", "ang", "rough", "lead", "text", "note", "gdt", "datum", "strike", "revtab", "section", "detail", "balloon"]);
+export const SCALABLE = new Set(["dim", "rad", "ang", "rough", "lead", "text", "note", "gdt", "datum", "strike", "revtab", "section", "detail", "balloon", "bom"]);
 export const SCALE_MIN = 0.3;
 export const SCALE_MAX = 5;
 

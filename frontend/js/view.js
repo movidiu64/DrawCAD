@@ -341,7 +341,7 @@ export class View {
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, this.pageW, this.pageH);
     ctx.shadowBlur = 0;
-    if (this.img) {
+    if (this.img && !this.app.hidden.has("orig")) {
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
       ctx.drawImage(this.img, 0, 0, this.pageW, this.pageH);

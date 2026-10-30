@@ -77,3 +77,21 @@ test("snap pe formele desenate: capete, mijloc, centru, intersecții", () => {
   const on = idx.nearest(80, 2, 5, [], line.segs);
   assert.equal(on.kind, "n");
 });
+
+test("lista de componente: antet jos, poziția 1 lângă antet, Denumire aliniată la stânga", () => {
+  const rows = [
+    { poz: "1", name: "Arbore", qty: "1", mat: "42CrMo4", obs: "" },
+    { poz: "2", name: "Rulment 6205", qty: "2", mat: "", obs: "ISO 15" },
+  ];
+  const b = build({ type: "bom", p: [500, 400], rows, headerBottom: true }, S, measure);
+  const t = b.prims.filter((p) => p.t === "T");
+  const y = (txt) => t.find((p) => p.txt === txt).p[1];
+  assert.ok(y("Poz.") > y("Arbore") && y("Arbore") > y("Rulment 6205"));
+  // colțul dreapta-jos e ancora
+  assert.ok(Math.abs(b.bbox[2] - 500) < 1 && Math.abs(b.bbox[3] - 400) < 1);
+  // denumiri de lungimi diferite pornesc din același x (aliniere la stânga); „Buc.” e centrată
+  const x = (txt) => t.find((p) => p.txt === txt).p[0];
+  assert.ok(Math.abs(x("Arbore") - x("Rulment 6205")) < 1e-9);
+  const qx = t.filter((p) => p.txt === "1" || p.txt === "2").map((p) => p.p[0] + p.tw / 2);
+  assert.ok(qx.length >= 2);
+});

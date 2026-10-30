@@ -8,6 +8,7 @@ Aplicație web self-hosted (Docker) pentru a adăuga pe un PDF sau pe un scan:
 - **rugozitate** după ISO 1302 / ISO 21920-1: cu sau fără îndepărtare de material, parametru (Ra, Rz…), procedeu, direct pe suprafață sau cu linie de indicație;
 - **revizii**: cotă tăiată + valoare nouă + triunghi de revizie, plus **tabel de revizii** (Rev. / Modificare / Data / Nume) completat din cotele tăiate;
 - **note tehnice** pe mai multe rânduri, numerotate automat, cu titlu și chenar opțional;
+- **listă de componente** (ISO 7573) completată din reperele de poziție;
 - **vederi**: plan de secționare A–A (ISO 128-44), cerc de detaliu, etichete de vedere și repere de poziție (ISO 6433);
 - **desen**: linie, polilinie, dreptunghi, cerc, arc, axe de cerc, hașură și linie de ruptură, cu tipurile de linie ISO 128 (continuă, întreruptă, linie-punct, linie-două puncte, punctată) și grosimile standard;
 - **ștergere** din original, cu acoperire albă sau eliminare reală a obiectelor PDF;
@@ -142,6 +143,10 @@ Aplicația nu are autentificare, așa că trebuie ținută în rețeaua locală 
 **Note (N):** dai click pe colțul stânga-sus al blocului și scrii notele în panou, câte una pe rând. Numerotarea e automată, iar rândurile goale se sar. Ai și note uzuale de adăugat cu un click: teșiri, raze, ISO 2768, tratament termic.
 
 **Tabel de revizii (E):** dai click pe colțul dreapta-sus al cartușului (se prinde cu snap). Tabelul se așază deasupra, aliniat la dreapta, cu antetul jos și revizia cea mai nouă sus. La creare se completează din cotele tăiate: câte un rând pentru fiecare număr de revizie. Butonul „Din cotele tăiate” adaugă ulterior reviziile noi. Numele implicit se setează în Setări.
+
+**Listă de componente:** dai click pe colțul dreapta-sus al cartușului. Lista se așază deasupra, cu antetul jos și poziția 1 lângă antet (ISO 7573), câte un rând pentru fiecare reper de pe desen. Coloane: Poz., Denumire, Buc., Material, Observații. „Din repere” adaugă reperele puse ulterior.
+
+**Bara de unelte și straturile:** grupurile din bară se pliază din titlul lor (starea se ține minte); tasta unei unelte deschide grupul ei. În panoul documentului, ochiul de lângă fiecare strat (Original, Adăugate, Revizii, Ștergeri) îl ascunde doar pe ecran, pentru verificare; exportul conține tot.
 
 **Rugozitate (Q):** dai două click-uri în același punct pentru simbol direct pe suprafață, sau al doilea click în altă parte pentru simbol cu linie de indicație. Simbolul direct se poate așeza deasupra suprafeței sau la stânga ei; pentru suprafețe văzute de jos sau din dreapta, ISO 1302 cere linie de indicație.
 

@@ -43,6 +43,10 @@ class App {
     this.drag = null;
     this.space = false;
     this.drawStyle = { ltype: "cont", w: 0.5, lscale: 1 };
+    this.hidden = new Set();
+    try {
+      for (const k of JSON.parse(localStorage.getItem("cotare.hidden") || "[]")) this.hidden.add(k);
+    } catch (_) { /* implicit */ }
     try {
       Object.assign(this.drawStyle, JSON.parse(localStorage.getItem("cotare.drawStyle") || "{}"));
     } catch (_) { /* implicit */ }
@@ -92,9 +96,32 @@ class App {
       if (!g) groups.push((g = { name: t.group, tools: [] }));
       g.tools.push(t);
     }
-    $("tools").innerHTML = groups.map((g) => `<div class="grp">${g.name}</div><div class="grid">${g.tools.map((t) => `
+    let collapsed = new Set();
+    try {
+      collapsed = new Set(JSON.parse(localStorage.getItem("cotare.toolGroups") || "[]"));
+    } catch (_) { /* implicit */ }
+    this.collapsedGroups = collapsed;
+    $("tools").innerHTML = groups.map((g) => `<button class="grp" data-grp="${g.name}" aria-expanded="${!collapsed.has(g.name)}">
+        <span>${g.name}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="grid" data-grid="${g.name}" ${collapsed.has(g.name) ? "hidden" : ""}>${g.tools.map((t) => `
       <button class="tool" data-tool="${t.id}" title="${t.label}${t.key ? ` (${t.key})` : ""}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${t.icon}"/></svg><span>${t.label}</span></button>`).join("")}</div>`).join("");
     $("tools").querySelectorAll("[data-tool]").forEach((b) => b.addEventListener("click", () => this.setTool(b.dataset.tool)));
+    $("tools").querySelectorAll("[data-grp]").forEach((b) => b.addEventListener("click", () => this.toggleGroup(b.dataset.grp)));
+  }
+
+  /** Grupurile din bara de unelte se pliază; starea se ține minte în browser. */
+  toggleGroup(name, open) {
+    const c = this.collapsedGroups;
+    const willOpen = open ?? c.has(name);
+    if (willOpen) c.delete(name);
+    else c.add(name);
+    const grid = $("tools").querySelector(`[data-grid="${name}"]`);
+    const btn = $("tools").querySelector(`[data-grp="${name}"]`);
+    if (grid) grid.hidden = !willOpen;
+    if (btn) btn.setAttribute("aria-expanded", String(willOpen));
+    try {
+      localStorage.setItem("cotare.toolGroups", JSON.stringify([...c]));
+    } catch (_) { /* fără memorare */ }
   }
 
   bindUi() {
@@ -169,6 +196,8 @@ class App {
     this.tool = id;
     this.clicks = [];
     this.lastMeasure = null;
+    const grp = TOOL_BY_ID[id].group;
+    if (this.collapsedGroups && this.collapsedGroups.has(grp)) this.toggleGroup(grp, true);
     this.view.overlay = null;
     $("tools").querySelectorAll("[data-tool]").forEach((b) => b.classList.toggle("on", b.dataset.tool === id));
     this.setHint(TOOL_BY_ID[id].hint);
@@ -380,8 +409,30 @@ class App {
     return built;
   }
 
+  layerOf(a) {
+    if (a.type === "white" || a.type === "redact") return "del";
+    return a.layer === "rev" ? "rev" : "add";
+  }
+
+  /** Adnotările paginii curente, fără straturile ascunse pe ecran. */
   visibleBuilt() {
-    return this.annots.filter((a) => a.page === this.page).map((a) => ({ a, built: this.builtOf(a) }));
+    return this.annots
+      .filter((a) => a.page === this.page && !this.hidden.has(this.layerOf(a)))
+      .map((a) => ({ a, built: this.builtOf(a) }));
+  }
+
+  toggleLayer(k) {
+    if (this.hidden.has(k)) this.hidden.delete(k);
+    else this.hidden.add(k);
+    try {
+      localStorage.setItem("cotare.hidden", JSON.stringify([...this.hidden]));
+    } catch (_) { /* fără memorare */ }
+    const keep = [...this.sel].filter((id) => {
+      const a = this.annots.find((x) => x.id === id);
+      return a && !this.hidden.has(this.layerOf(a));
+    });
+    if (keep.length !== this.sel.size) this.selectMany(keep);
+    this.view.redraw();
   }
 
   selected() {
@@ -443,6 +494,10 @@ class App {
   addAnnot(a) {
     this.pushHistory();
     a.page = this.page;
+    if (this.hidden.has(this.layerOf(a))) {
+      this.hidden.delete(this.layerOf(a));
+      dlg.toast("Stratul era ascuns pe ecran; l-am reafișat ca să vezi ce ai adăugat.");
+    }
     this.annots.push(a);
     this.select(a.id);
     this.changed();
@@ -544,6 +599,16 @@ class App {
     if (ensureOne && !rows.length && !existing.length) {
       rows.push({ rev: this.settings.revNo || "1", desc: "", date: today, name: this.settings.author || "" });
     }
+    return rows;
+  }
+
+  /** Rânduri noi pentru lista de componente: câte unul pentru fiecare număr de reper absent. */
+  bomRowsFromBalloons(existing = [], ensureOne = false) {
+    const have = new Set(existing.map((r) => String(r.poz).trim()));
+    const nums = [...new Set(this.annots.filter((a) => a.type === "balloon").map((a) => String(a.num ?? "").trim()).filter(Boolean))];
+    nums.sort((x, y) => (parseFloat(x) || 0) - (parseFloat(y) || 0) || x.localeCompare(y));
+    const rows = nums.filter((n) => !have.has(n)).map((poz) => ({ poz, name: "", qty: "1", mat: "", obs: "" }));
+    if (ensureOne && !rows.length && !existing.length) rows.push({ poz: "1", name: "", qty: "1", mat: "", obs: "" });
     return rows;
   }
 
@@ -979,7 +1044,7 @@ class App {
       }
       if ((e.ctrlKey || e.metaKey) && k === "a") {
         e.preventDefault();
-        if (this.doc) this.selectMany(this.annots.filter((a) => a.page === this.page).map((a) => a.id));
+        if (this.doc) this.selectMany(this.visibleBuilt().map(({ a }) => a.id));
         return;
       }
       if ((e.ctrlKey || e.metaKey) && k === "c") {

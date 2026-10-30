@@ -147,10 +147,14 @@ export class Panel {
         <div class="sub">1 = scara 1:1 · 2 = scara 1:2 · 0,5 = scara 2:1</div>
       </div>
       <div class="sec"><div class="h">Straturi</div>
-        <div class="layer"><i style="background:#e8eaed"></i><span style="flex:1">Original PDF</span><span class="sub">neatins</span></div>
-        <div class="layer"><i style="background:#4c8dff"></i><span style="flex:1">Adăugate</span><span class="mono sub">${counts.add}</span></div>
-        <div class="layer"><i style="background:#ff6b6b"></i><span style="flex:1">Revizii</span><span class="mono sub">${counts.rev}</span></div>
-        <div class="layer"><i style="border:1px dashed #a3acb7"></i><span style="flex:1">Ștergeri / acoperiri</span><span class="mono sub">${counts.del}</span></div>
+        ${[["orig", "background:#e8eaed", "Original PDF", "neatins"], ["add", "background:#4c8dff", "Adăugate", counts.add], ["rev", "background:#ff6b6b", "Revizii", counts.rev], ["del", "border:1px dashed #a3acb7", "Ștergeri / acoperiri", counts.del]]
+          .map(([k, st, name, n]) => {
+            const off = app.hidden.has(k);
+            return `<div class="layer ${off ? "off" : ""}"><i style="${st}"></i><span style="flex:1">${name}</span><span class="${k === "orig" ? "sub" : "mono sub"}">${n}</span>
+              <button class="icon eye" data-act="layervis" data-v="${k}" aria-pressed="${!off}" aria-label="${off ? "Arată" : "Ascunde"} ${name}" title="${off ? "Arată" : "Ascunde"} pe ecran">
+              <svg viewBox="0 0 24 24">${off ? '<path d="M3 3l18 18M10.6 6.1A9.7 9.7 0 0 1 12 6c5 0 9 6 9 6a16 16 0 0 1-2.6 3.2M6.6 6.6C4.3 8.1 3 12 3 12s4 6 9 6a8.8 8.8 0 0 0 4.4-1.2"/>' : '<path d="M3 12s4-6 9-6 9 6 9 6-4 6-9 6-9-6-9-6z"/><circle cx="12" cy="12" r="2.5"/>'}</svg></button></div>`;
+          }).join("")}
+        ${app.hidden.size ? `<div class="sub">Ascunderea e doar pe ecran: exportul conține toate straturile.</div>` : ""}
       </div>
       ${this.keysHtml()}`;
   }
@@ -332,6 +336,28 @@ export class Panel {
         <button data-act="rthead" data-v="bottom" class="${a.headerBottom !== false ? "on" : ""}">Antet jos (peste cartuș)</button>
         <button data-act="rthead" data-v="top" class="${a.headerBottom === false ? "on" : ""}">Antet sus</button></div>
       <div class="sub">Pătrățelul e colțul dreapta-jos: trage-l pe colțul cartușului, se prinde cu snap.</div></div>`;
+  }
+
+  html_bom(a) {
+    const rows = a.rows || [];
+    const inp = (i, col, v, extra = "") => `<input type="text" data-row="${i}" data-col="${col}" value="${esc(v)}" ${extra}>`;
+    const cells = rows.map((r, i) => `<div class="rtrow">
+        ${inp(i, "poz", r.poz, 'class="mono" aria-label="Poziție" style="text-align:center"')}
+        ${inp(i, "name", r.name, 'aria-label="Denumire" placeholder="Denumire" style="grid-column: span 2"')}
+        <button class="icon" data-act="rtdel" data-v="${i}" aria-label="Șterge rândul" title="Șterge rândul"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        ${inp(i, "qty", r.qty, 'class="mono" aria-label="Bucăți" placeholder="buc." style="text-align:center"')}
+        ${inp(i, "mat", r.mat, 'aria-label="Material" placeholder="Material"')}
+        ${inp(i, "obs", r.obs, 'aria-label="Observații" placeholder="Observații / standard"')}
+        <span></span>
+      </div>`).join("");
+    return `<div class="sec"><div class="h">Componente</div>
+      <div class="rtlist">${cells || `<span class="sub">Niciun rând.</span>`}</div>
+      <div class="btns"><button class="ghost" data-act="bmadd">+ Rând nou</button><button class="ghost" data-act="bmsync">Din repere</button></div>
+      <div class="sub">„Din repere” adaugă câte un rând pentru fiecare număr de reper de pe desen încă absent din listă.</div></div>
+      <div class="sec"><div class="h">Așezare</div><div class="seg">
+        <button data-act="rthead" data-v="bottom" class="${a.headerBottom !== false ? "on" : ""}">Antet jos (peste cartuș)</button>
+        <button data-act="rthead" data-v="top" class="${a.headerBottom === false ? "on" : ""}">Antet sus</button></div>
+      <div class="sub">Cu antetul jos, poziția 1 stă lângă antet și numerele cresc în sus (ISO 7573). Pătrățelul e colțul dreapta-jos.</div></div>`;
   }
 
   html_lead(a) {
@@ -662,6 +688,24 @@ export class Panel {
         break;
       case "rtdel":
         upd((x) => { x.rows = (x.rows || []).filter((_r, j) => j !== Number(v)); });
+        break;
+      case "layervis":
+        app.toggleLayer(v);
+        this.render();
+        break;
+      case "bmadd":
+        upd((x) => {
+          const rows = x.rows || [];
+          const last = Math.max(0, ...rows.map((r) => parseInt(r.poz, 10)).filter(Number.isFinite));
+          x.rows = [...rows, { poz: String(last + 1), name: "", qty: "1", mat: "", obs: "" }];
+        });
+        break;
+      case "bmsync":
+        upd((x) => {
+          const rows = [...(x.rows || []), ...app.bomRowsFromBalloons(x.rows || [])];
+          rows.sort((p, q) => (parseFloat(p.poz) || 0) - (parseFloat(q.poz) || 0));
+          x.rows = rows;
+        });
         break;
       case "rtsync":
         upd((x) => { x.rows = [...(x.rows || []), ...app.revRowsFromStrikes(false, x.rows || [])]; });
