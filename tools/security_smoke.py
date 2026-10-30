@@ -14,10 +14,17 @@ from tests.test_security import malicious_pdf  # noqa: E402
 BASE = sys.argv[1].rstrip("/") if len(sys.argv) > 1 else "http://127.0.0.1:8080"
 
 
-def call(method, path, data=None, headers=None):
+import http.cookiejar  # noqa: E402
+
+# ca un browser: păstrează cookie-ul spațiului de lucru (modul implicit e „private”)
+_jar = http.cookiejar.CookieJar()
+_opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(_jar))
+
+
+def call(method, path, data=None, headers=None, opener=None):
     r = urllib.request.Request(BASE + path, data=data, method=method, headers=headers or {})
     try:
-        with urllib.request.urlopen(r, timeout=180) as resp:
+        with (opener or _opener).open(r, timeout=180) as resp:
             return resp.status, resp.headers, resp.read()
     except urllib.error.HTTPError as e:
         return e.code, e.headers, e.read()
@@ -38,6 +45,15 @@ st, _h, _ = call("POST", "/api/open", malicious_pdf(), {"X-Filename": "a.pdf", "
 assert st == 403, st
 st, _h, _ = call("GET", "/api/health")
 assert st == 200, "serverul trebuie să meargă în continuare"
+mode = json.loads(call("GET", "/api/health")[2]).get("mode")
+if mode in ("private", "session"):
+    # alt browser (fără cookie-ul primului) nu vede și nu poate deschide documentul
+    other = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    st, _h, _ = call("GET", f"/api/doc/{meta['id']}", opener=other)
+    assert st == 404, f"document vizibil din alt browser: {st}"
+    st, _h, lst = call("GET", "/api/docs", opener=other)
+    assert meta["id"] not in lst.decode(), "document listat pentru alt browser"
+    print(f"izolare între browsere ({mode}): OK")
 print("securitate: OK", meta["removed"])
 _ = io
 

@@ -324,6 +324,8 @@ class App {
     $("btnOpen").addEventListener("click", () => dlg.openDialog(this));
     $("btnOpen2").addEventListener("click", () => $("fileInput").click());
     $("fileInput").addEventListener("change", (e) => {
+      // fișierul vine din dialogul „Deschide desen”: dialogul se închide
+      if (e.target.files[0] && dlg.isModalOpen()) dlg.closeModal();
       const f = e.target.files[0];
       e.target.value = "";
       if (f) this.openFile(f, this.pendingDpi);

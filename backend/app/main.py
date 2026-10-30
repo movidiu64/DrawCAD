@@ -39,12 +39,12 @@ MAX_RENDER_PX = int(_env("MAX_RENDER_PX", "12000"))
 RETENTION_DAYS = float(_env("RETENTION_DAYS", "30"))
 
 # mod de lucru:
-#   personal — un singur utilizator: toate documentele se văd din orice browser (implicit)
-#   private  — fiecare browser are spațiul lui de documente (cookie permanent, 1 an)
+#   private  — fiecare browser are spațiul lui de documente (cookie permanent, 1 an) (implicit)
+#   personal — un singur utilizator: toate documentele se văd din orice browser
 #   session  — ca private, dar spațiul ține doar până la închiderea browserului
-MODE = str(_env("MODE", "personal")).strip().lower()
+MODE = str(_env("MODE", "private")).strip().lower()
 if MODE not in ("personal", "private", "session"):
-    MODE = "personal"
+    MODE = "private"
 WS_COOKIE = "drawcad_ws"
 _WS_RE = re.compile(r"^[A-Za-z0-9_-]{24,64}$")
 

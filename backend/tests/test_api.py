@@ -14,6 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 TMP = tempfile.mkdtemp(prefix="drawcad-test-")
 os.environ["DRAWCAD_DATA"] = TMP
+os.environ.setdefault("DRAWCAD_MODE", "personal")  # testele generale folosesc un singur spațiu
 sys.path.insert(0, str(ROOT / "backend"))
 sys.path.insert(0, str(ROOT / "tools"))
 

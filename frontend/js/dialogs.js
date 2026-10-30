@@ -152,7 +152,7 @@ export async function openDialog(app) {
         <input type="text" id="dDpi" class="mono" placeholder="din fișier / 300" style="width:140px"></div>
         <span class="muted" style="font-size:12px">La scanuri, scara exactă se fixează apoi cu Calibrare (K).</span>
       </div>
-      <div class="recent" style="width:auto">${recentHtml(docs, app.retentionDays) || `<span class="muted">Niciun document deschis încă.</span>`}</div>
+      <div class="recent" style="width:auto">${recentHtml(docs, app.retentionDays, app.mode) || `<span class="muted">Niciun document deschis încă.</span>`}</div>
     </div>
     <div class="foot"><button class="ghost" data-close>Închide</button></div>`);
   dlg.querySelector("#dPick").addEventListener("click", () => {
