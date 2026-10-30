@@ -245,8 +245,10 @@ def main(url, out):
         page.wait_for_timeout(300)
 
         # redeschidere: cotele revin editabile
+        prev_id = page.evaluate("window.cotare.doc.id")
         page.set_input_files("#fileInput", str(path))
-        page.wait_for_function("window.cotare.annots.length === 15")
+        # așteaptă documentul nou (încărcarea durează), nu cel vechi care avea deja 15 adnotări
+        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 15")
         # închidere fără modificări: direct la pagina de start
         page.click("#btnClose")
         page.wait_for_function("window.cotare.doc === null && !document.getElementById('emptyState').hidden")
