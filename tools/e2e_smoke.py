@@ -244,6 +244,36 @@ def main(url, out):
         dl.value.save_as(str(path))
         page.wait_for_timeout(300)
 
+        # export DXF al paginii curente: cotele ajung pe stratul lor
+        page.click("#btnExport")
+        page.wait_for_selector("#eGo")
+        page.click("[data-fmt=dxf]")
+        if page.query_selector("[data-pg=cur]"):
+            page.click("[data-pg=cur]")
+        with page.expect_download() as dl:
+            page.click("#eGo")
+        dxf_path = out / "export.dxf"
+        dl.value.save_as(str(dxf_path))
+        assert dl.value.suggested_filename.endswith(".dxf"), dl.value.suggested_filename
+        dxf = dxf_path.read_text("utf-8")
+        assert dxf.startswith("  0\nSECTION") and "DRAWCAD-COTE" in dxf and "PDF-GEOMETRIE" in dxf
+        page.wait_for_timeout(300)
+
+        # căutare text (Ctrl+F) pe textele PDF
+        page.keyboard.press("Control+f")
+        page.wait_for_selector("#tQ")
+        page.fill("#tQ", "42crmo")
+        page.wait_for_selector("#tList [data-i]")
+        page.click("#tList [data-i]")
+        page.wait_for_function("window.cotare.hit !== null")
+        # OCR pe pagina curentă, dacă serverul are Tesseract (în imaginea Docker: da)
+        if page.evaluate("!!window.cotare.ocrLang"):
+            page.click("#tRun")
+            page.wait_for_function("document.querySelector('#tStat').textContent.includes('recunoscute')", timeout=120000)
+            got = page.evaluate("(window.cotare.ocr.get(window.cotare.page) || {lines: []}).lines.map(l => l.text)")
+            assert any("42CrMo4" in t for t in got), got
+        page.keyboard.press("Escape")
+
         # redeschidere: cotele revin editabile
         prev_id = page.evaluate("window.cotare.doc.id")
         page.set_input_files("#fileInput", str(path))

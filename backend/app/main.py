@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import shutil
+import subprocess
 import sys
 import time
 import uuid
@@ -374,14 +375,15 @@ async def api_doc(request: Request):
     if request.method == "DELETE":
         shutil.rmtree(d, ignore_errors=True)
         _bytes_cache.pop(doc_id, None)
-        for c in (_render_cache, _ink_cache, _snap_cache):
+        for c in (_render_cache, _ink_cache, _snap_cache, _text_cache):
             for k in [k for k in c if k[0] == doc_id or (len(k) > 1 and k[1] == doc_id)]:
                 c.pop(k, None)
         return JSONResponse({"ok": True})
     meta["accessed"] = time.time()
     _write_json(d / "meta.json", meta)
     pub = {k: v for k, v in meta.items() if k != "owner"}
-    return JSONResponse({**pub, "expires": _expires(meta), "state": _read_json(d / "state.json")})
+    ocr_pages = sorted(int(f.stem[1:]) for f in (d / "ocr").glob("p*.json") if f.stem[1:].isdigit()) if (d / "ocr").is_dir() else []
+    return JSONResponse({**pub, "expires": _expires(meta), "state": _read_json(d / "state.json"), "ocrPages": ocr_pages})
 
 
 async def api_state(request: Request):
@@ -511,6 +513,240 @@ async def api_objects(request: Request):
     return JSONResponse({"objects": res})
 
 
+# ------------------------------------------------------------------ OCR, text, vectorizare
+
+# OCR-ul și vectorizarea țin procesorul ocupat zeci de secunde: câte una pe rând
+_HEAVY = asyncio.Semaphore(1)
+_text_cache = LRU(32)
+VECTOR_TIMEOUT = float(_env("VECTOR_TIMEOUT", "240"))
+VECTOR_PX_MM = 8.0  # rezoluția vectorizării (≈ 200 DPI): destul pentru linii de 0,25 mm
+
+
+def _cache_dir(doc_id, sub):
+    d = _doc_dir(doc_id) / sub
+    d.mkdir(exist_ok=True)
+    return d
+
+
+def _ocr_cached(doc_id, n):
+    return _read_json(_doc_dir(doc_id) / "ocr" / f"p{n}.json", None)
+
+
+async def _ocr_run(doc_id, n, meta_page):
+    from . import ocr as ocrmod
+
+    async with _HEAVY:
+        cached = _ocr_cached(doc_id, n)
+        if cached is not None:
+            return cached
+        scan = True if meta_page.get("paths", 1) == 0 else None  # fără linii vectoriale = imagine
+        res = await run_in_threadpool(lambda: ocrmod.ocr_page(_original(doc_id), n, (meta_page["w"], meta_page["h"]), scan=scan))
+        _write_json(_cache_dir(doc_id, "ocr") / f"p{n}.json", res)
+        return res
+
+
+async def api_ocr(request: Request):
+    """GET: textul recunoscut deja (sau null); POST: recunoaște pagina (rezultatul rămâne pe server)."""
+    from . import ocr as ocrmod
+
+    doc_id = request.path_params["doc_id"]
+    try:
+        n, meta = _page_index(doc_id, request.path_params["n"])
+    except (ValueError, FileNotFoundError, IndexError):
+        return _err("Pagină inexistentă", 404)
+    if request.method == "GET":
+        return JSONResponse({"ocr": _ocr_cached(doc_id, n), "lang": ocrmod.lang()})
+    if not ocrmod.available():
+        return _err("OCR indisponibil: Tesseract nu e instalat pe server", 501)
+    try:
+        body = await _json_body(request, 4096)
+    except (OverflowError, ValueError):
+        body = {}
+    if isinstance(body, dict) and body.get("force"):
+        with contextlib.suppress(FileNotFoundError):
+            (_doc_dir(doc_id) / "ocr" / f"p{n}.json").unlink()
+    try:
+        res = await _ocr_run(doc_id, n, meta["pages"][n])
+    except subprocess.TimeoutExpired:
+        return _err("OCR: pagina a durat prea mult", 504)
+    except Exception as e:  # noqa: BLE001
+        return _err(f"OCR eșuat: {e}", 500)
+    return JSONResponse({"ocr": res, "lang": res.get("lang")})
+
+
+async def api_text(request: Request):
+    """Textele reale ale paginii (pentru căutare), cu încadrarea lor."""
+    from . import ocr as ocrmod
+
+    doc_id = request.path_params["doc_id"]
+    try:
+        n, _meta = _page_index(doc_id, request.path_params["n"])
+    except (ValueError, FileNotFoundError, IndexError):
+        return _err("Pagină inexistentă", 404)
+    items = await run_in_threadpool(lambda: _text_cache.get_or((doc_id, n), lambda: ocrmod.native_text(_original(doc_id), n)))
+    return JSONResponse({"items": items}, headers={"Cache-Control": "private, max-age=3600"})
+
+
+async def _vectorize(doc_id, n, pdf_bytes, masks, key):
+    """Vectorizarea unei pagini scanate, într-un proces separat; rezultatul rămâne în cache."""
+    import hashlib
+    import tempfile
+
+    h = hashlib.sha1((key + json.dumps(masks)).encode()).hexdigest()[:16]
+    path = _doc_dir(doc_id) / "vec" / f"p{n}_{h}.json"
+    cached = _read_json(path, None)
+    if cached is not None:
+        return cached
+    async with _HEAVY:
+        cached = _read_json(path, None)
+        if cached is not None:
+            return cached
+        info = _meta_page(doc_id, n) or {"w": 842, "h": 595}
+        scale = VECTOR_PX_MM * 25.4 / 72
+        if info["w"] * info["h"] * scale * scale > 45e6:
+            scale = (45e6 / (info["w"] * info["h"])) ** 0.5
+        png = await run_in_threadpool(pdfcore.render_png, pdf_bytes, n, scale)
+        with tempfile.TemporaryDirectory(prefix="drawcad-vec-") as td:
+            ip, op, mp = (os.path.join(td, f) for f in ("in.png", "out.json", "masks.json"))
+            with open(ip, "wb") as f:
+                f.write(png)
+            with open(mp, "w", encoding="utf-8") as f:
+                json.dump(masks, f)
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, "-m", "app.vectorize", ip, op, str(scale), mp,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+                cwd=str(Path(__file__).resolve().parents[1]),
+            )
+            try:
+                out, _ = await asyncio.wait_for(proc.communicate(), VECTOR_TIMEOUT)
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                raise ValueError(f"Vectorizarea paginii {n + 1} a durat peste {VECTOR_TIMEOUT:g} s")
+            try:
+                res = json.loads(out.decode("utf-8") or "{}")
+            except Exception:  # noqa: BLE001
+                res = {}
+            if not res.get("ok"):
+                raise ValueError(res.get("error") or f"Vectorizarea paginii {n + 1} a eșuat")
+            data = _read_json(Path(op), None)
+        if data is None:
+            raise ValueError("Vectorizare fără rezultat")
+        _cache_dir(doc_id, "vec")
+        _write_json(path, data)
+        return data
+
+
+def _inside(box, rects):
+    cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+    for r in rects:
+        x0, x1 = min(r[0], r[2]), max(r[0], r[2])
+        y0, y1 = min(r[1], r[3]), max(r[1], r[3])
+        if x0 <= cx <= x1 and y0 <= cy <= y1:
+            return True
+    return False
+
+
+def _overlaps(box, boxes):
+    for b in boxes:
+        ix = min(box[2], b[2]) - max(box[0], b[0])
+        iy = min(box[3], b[3]) - max(box[1], b[1])
+        if ix > 0 and iy > 0 and ix * iy > 0.3 * (box[2] - box[0]) * (box[3] - box[1]):
+            return True
+    return False
+
+
+async def _export_dxf(doc_id, prims, rem, sel, opts, color, base_name):
+    """DXF pentru paginile alese: un fișier, sau ZIP când sunt mai multe pagini ori imagini de fundal."""
+    import io
+    import zipfile
+
+    from . import dxfout, ocr as ocrmod
+
+    original = _original(doc_id)
+    meta = _read_json(_doc_dir(doc_id) / "meta.json", {})
+    n_pages = len(meta.get("pages", []))
+    idxs = sorted({i for i in (sel or range(n_pages)) if 0 <= i < n_pages})
+    if not idxs:
+        raise ValueError("nicio pagină aleasă")
+    scale = opts.get("scale", 1)
+    scale = float(scale) if _finite(scale) and 1e-4 < scale < 1e4 else 1.0
+    want = {k: bool(opts.get(k, d)) for k, d in (("geom", True), ("text", True), ("annots", True), ("ocr", True), ("vectorize", True), ("image", False))}
+    rem_sel = {k: v for k, v in rem.items() if k in idxs}
+    if any(rem_sel.values()):
+        base, reports = await run_in_threadpool(pdfcore.apply_removals, original, rem_sel)
+    else:
+        base, reports = original, {}
+    files = []
+    stats = {}
+    for i in idxs:
+        content = await run_in_threadpool(dxfout.page_content, base, i)
+        scan = dxfout.is_scan(content)
+        page_prims = prims.get(i, []) if want["annots"] else []
+        covers = [p["p"] for p in prims.get(i, []) if p.get("t") == "R" and (p.get("cover") or p.get("c") == "white")]
+        zones = [op["rect"] for op in rem.get(i, []) if op.get("mode") in ("text", "zone")]
+        lines = []
+        if want["ocr"]:
+            cached = _ocr_cached(doc_id, i)
+            if cached is None and scan and ocrmod.available():
+                cached = await _ocr_run(doc_id, i, meta["pages"][i])
+            native = [t for t in content["texts"]]
+            nboxes = []
+            for t in native:
+                # caseta aproximativă a textului PDF, pentru a nu-l dubla cu OCR
+                hh = t["h"]
+                nboxes.append([t["p"][0], t["p"][1] - hh, t["p"][0] + hh * 0.6 * len(t["txt"]), t["p"][1] + hh * 0.25])
+            for ln in (cached or {}).get("lines", []):
+                if _inside(ln["box"], covers + zones) or _overlaps(ln["box"], nboxes):
+                    continue
+                lines.append(ln)
+        vec = None
+        if scan and want["vectorize"]:
+            # doar textul citit sigur se scoate din imagine; restul rămâne și ca linii
+            masks = [ln["box"] for ln in lines
+                     if (ln.get("conf", 0) >= 60 and len(ln["text"].replace(" ", "")) >= 2) or ln.get("conf", 0) >= 85]
+            masks += [list(c) for c in covers]
+            vec = await _vectorize(doc_id, i, base, masks, "v1" + json.dumps(rem_sel.get(i, [])))
+        rot = dxfout.Rotation(vec["skew"], content["W"], content["H"]) if vec and vec.get("skew") else None
+        img = None
+        stem = f"{base_name}_p{i + 1}" if len(idxs) > 1 else base_name
+        if scan and want["image"]:
+            sc = min(200 / 72, (40e6 / (content["W"] * content["H"])) ** 0.5)
+            png = await run_in_threadpool(pdfcore.render_png, base, i, sc)
+            from PIL import Image
+
+            with Image.open(io.BytesIO(png)) as im:
+                img = (f"{stem}.png", png, im.size)
+
+        def build():
+            d = dxfout.DxfPage(content["W"], content["H"], scale)
+            d.frame()
+            if img:
+                d.add_image(img[0], img[2], rot)
+            if want["geom"]:
+                d.add_pdf(content, text=want["text"])
+            if vec:
+                d.add_vectors(vec)
+            if lines:
+                d.add_ocr(lines, rot)
+            if page_prims:
+                d.add_prims(page_prims, color)
+            return d.bytes(), d.counts
+
+        data, counts = await run_in_threadpool(build)
+        stats[i] = {**counts, "scan": scan, "skew": (vec or {}).get("skew", 0)}
+        files.append((f"{stem}.dxf", data))
+        if img:
+            files.append((img[0], img[1]))
+    if len(files) == 1:
+        return files[0][1], reports, "dxf", stats
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, data in files:
+            z.writestr(name, data)
+    return buf.getvalue(), reports, "zip", stats
+
+
 async def api_export(request: Request):
     doc_id = request.path_params["doc_id"]
     try:
@@ -523,9 +759,9 @@ async def api_export(request: Request):
         return _err("Cerere invalidă sau prea mare", 413)
     if not isinstance(body, dict):
         return _err("Cerere invalidă")
+    fmt = "dxf" if body.get("format") == "dxf" else "pdf"
     filename = re.sub(r"[\x00-\x1f\x7f\\/:*?\"<>|]", "_", os.path.basename(str(body.get("filename") or "export.pdf")))[:180]
-    if not filename.lower().endswith(".pdf"):
-        filename += ".pdf"
+    filename = re.sub(r"\.(pdf|dxf|zip)$", "", filename, flags=re.I) + "." + fmt
     try:
         prims = {int(k): _clean_prims(v) for k, v in (body.get("pages") or {}).items()}
         rem = {int(k): _clean_ops(v) for k, v in (body.get("removals") or {}).items()}
@@ -543,19 +779,35 @@ async def api_export(request: Request):
             return _err("Pagini invalide")
         sel = sel[:5000]
     split = bool(body.get("split"))
-    base = re.sub(r"\.pdf$", "", filename, flags=re.I)
+    base = re.sub(r"\.(pdf|dxf)$", "", filename, flags=re.I)
+    stats = None
+    if fmt == "pdf" and body.get("ocrLayer"):
+        # PDF căutabil: textul recunoscut, invizibil, peste imagine
+        for i in range(len(_read_json(d / "meta.json", {}).get("pages", []))):
+            if sel is not None and i not in sel:
+                continue
+            res = _ocr_cached(doc_id, i)
+            for ln in (res or {}).get("lines", []):
+                prims.setdefault(i, []).append({"t": "O", "p": ln["box"], "txt": ln["text"], "rot": ln.get("rot", 0),
+                                                **{k: ln[k] for k in ("cap", "base", "org", "ang", "len") if k in ln}})
 
     def work():
         return pdfcore.export_pages(_original(doc_id), prims, rem, color, state if embed else None, embed, ink, sel, split, base)
 
     try:
-        data, reports, kind = await run_in_threadpool(work)
+        if fmt == "dxf":
+            dopts = body.get("dxf") if isinstance(body.get("dxf"), dict) else {}
+            data, reports, kind, stats = await _export_dxf(doc_id, prims, rem, sel, dopts, color, base)
+        else:
+            data, reports, kind = await run_in_threadpool(work)
     except ValueError as e:
         return _err(str(e))
     except Exception as e:  # noqa: BLE001
         return _err(f"Export eșuat: {e}", 500)
     if kind == "zip":
         filename = f"{base}.zip"
+    elif kind == "dxf":
+        filename = f"{base}.dxf"
     filename = re.sub(r"[\x00-\x1f\x7f\\/]", "_", filename)[:180]
     ascii_name = re.sub(r"[^A-Za-z0-9._ ()+-]", "_", filename)
     headers = {
@@ -563,14 +815,19 @@ async def api_export(request: Request):
         "X-Removal-Report": json.dumps(reports),
         "X-Export-Kind": kind,
     }
+    if stats is not None:
+        headers["X-Dxf-Stats"] = json.dumps(stats, ensure_ascii=True)
     meta = _read_json(d / "meta.json", {})
     meta["updated"] = time.time()
     _write_json(d / "meta.json", meta)
-    return Response(data, media_type="application/zip" if kind == "zip" else "application/pdf", headers=headers)
+    media = {"zip": "application/zip", "dxf": "application/dxf"}.get(kind, "application/pdf")
+    return Response(data, media_type=media, headers=headers)
 
 
 async def api_health(request: Request):
-    return JSONResponse({"ok": True, "retentionDays": RETENTION_DAYS, "mode": MODE})
+    from . import ocr as ocrmod
+
+    return JSONResponse({"ok": True, "retentionDays": RETENTION_DAYS, "mode": MODE, "ocr": ocrmod.lang(), "dxf": True})
 
 
 async def api_workspace(request: Request):
@@ -608,6 +865,8 @@ routes = [
     Route("/api/doc/{doc_id}/page/{n:int}/preview", api_preview, methods=["POST"]),
     Route("/api/doc/{doc_id}/page/{n:int}/snap", api_snap),
     Route("/api/doc/{doc_id}/page/{n:int}/objects", api_objects, methods=["POST"]),
+    Route("/api/doc/{doc_id}/page/{n:int}/ocr", api_ocr, methods=["GET", "POST"]),
+    Route("/api/doc/{doc_id}/page/{n:int}/text", api_text),
     Route("/api/doc/{doc_id}/export", api_export, methods=["POST"]),
     Mount("/", app=StaticFiles(directory=str(FRONTEND_DIR), html=True), name="static"),
 ]

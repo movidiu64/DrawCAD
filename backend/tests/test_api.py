@@ -294,6 +294,99 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(len(pdfium.PdfDocument(p2)), 1)
         self.assertIsNotNone(pdfcore.extract_embedded(p2))
 
+    def test_dxf_export_vector(self):
+        import zipfile
+
+        import ezdxf
+
+        meta = self.open_sample()
+        prims = {"0": [{"t": "L", "p": [10 * MM, 10 * MM, 50 * MM, 10 * MM], "w": 0.5, "c": "add"},
+                       {"t": "R", "p": [20 * MM, 20 * MM, 40 * MM, 30 * MM], "c": "white", "cover": True},
+                       {"t": "T", "p": [60 * MM, 20 * MM], "txt": "Ø25 H7", "s": 10, "c": "add"}]}
+        body = {"format": "dxf", "filename": "arbore.pdf", "pages": prims, "pageSel": [0], "dxf": {"scale": 2}}
+        data, h = self.req("POST", f"/api/doc/{meta['id']}/export", body, raw=True)
+        self.assertEqual(h["X-Export-Kind"], "dxf")
+        self.assertIn("arbore.dxf", h["Content-Disposition"])
+        doc = ezdxf.read(io.StringIO(data.decode("utf-8")))
+        self.assertEqual(len(doc.audit().errors), 0)
+        msp = doc.modelspace()
+        # la scara 2 cercul Ø40 al vederii laterale are raza 40, centrul la (480, (210 − 95) × 2)
+        circ = [(round(e.dxf.center.x, 2), round(e.dxf.center.y, 2), round(e.dxf.radius, 3)) for e in msp.query("CIRCLE")]
+        self.assertIn((480.0, 230.0, 40.0), circ)
+        # placa: o polilinie închisă, cu racordările R5 ca arce adevărate (bulge = tan(90°/4))
+        plates = [e for e in msp.query("LWPOLYLINE") if e.closed and any(abs(abs(b) - 0.41421) < 1e-3 for *_xy, b in e.get_points("xyb"))]
+        self.assertTrue(plates)
+        texts = {t.dxf.text: t for t in msp.query("TEXT")}
+        self.assertIn("Arbore intermediar", texts)
+        self.assertEqual(texts["Arbore intermediar"].dxf.layer, "PDF-TEXT")
+        self.assertEqual(texts["Ø25 H7"].dxf.layer, "DRAWCAD-COTE")
+        lines = [e for e in msp.query("LINE") if e.dxf.layer == "DRAWCAD-COTE"]
+        self.assertTrue(any(abs(e.dxf.start.x - 20) < 1e-6 and abs(e.dxf.end.x - 100) < 1e-6 for e in lines))
+        self.assertEqual(len(msp.query("WIPEOUT")), 1)
+        self.assertEqual(doc.header["$INSUNITS"], 4)
+        # toate paginile → arhivă cu câte un DXF; pagina rotită păstrează orientarea de pe ecran
+        data, h = self.req("POST", f"/api/doc/{meta['id']}/export", {"format": "dxf", "filename": "arbore"}, raw=True)
+        self.assertEqual(h["X-Export-Kind"], "zip")
+        z = zipfile.ZipFile(io.BytesIO(data))
+        self.assertEqual(sorted(z.namelist()), ["arbore_p1.dxf", "arbore_p2.dxf"])
+        d2 = ezdxf.read(io.StringIO(z.read("arbore_p2.dxf").decode("utf-8")))
+        frame = [e for e in d2.modelspace().query("LWPOLYLINE") if e.dxf.layer == "PAGINA"][0]
+        xs = [p[0] for p in frame.get_points("xy")]
+        ys = [p[1] for p in frame.get_points("xy")]
+        w2, h2 = meta["pages"][1]["w"] / MM, meta["pages"][1]["h"] / MM
+        self.assertAlmostEqual(max(xs) - min(xs), w2, places=2)
+        self.assertAlmostEqual(max(ys) - min(ys), h2, places=2)
+
+    def test_native_text_search(self):
+        meta = self.open_sample()
+        items = self.req("GET", f"/api/doc/{meta['id']}/page/0/text")["items"]
+        self.assertTrue(any(it["text"].startswith("Material: 42CrMo4") for it in items))
+        got = self.req("GET", f"/api/doc/{meta['id']}/page/0/ocr")
+        self.assertIsNone(got["ocr"])
+
+    @unittest.skipUnless(__import__("shutil").which("tesseract"), "Tesseract lipsește")
+    def test_ocr_and_searchable_pdf(self):
+        import pypdfium2 as pdfium
+
+        meta = self.open_sample()
+        res = self.req("POST", f"/api/doc/{meta['id']}/page/0/ocr", {})["ocr"]
+        texts = [ln["text"] for ln in res["lines"]]
+        self.assertIn("Material: 42CrMo4", texts)
+        self.assertIn("118", texts)
+        line = next(ln for ln in res["lines"] if ln["text"] == "118")
+        self.assertAlmostEqual(line["cap"] / MM, 2.5, delta=0.3)
+        # rezultatul rămâne pe server și apare în metadatele documentului
+        self.assertEqual(self.req("GET", f"/api/doc/{meta['id']}")["ocrPages"], [0])
+        pdf, _h = self.req("POST", f"/api/doc/{meta['id']}/export", {"filename": "a.pdf", "pageSel": [0], "ocrLayer": True}, raw=True)
+        doc = pdfium.PdfDocument(pdf)
+        txt = doc[0].get_textpage().get_text_range()
+        self.assertGreaterEqual(txt.count("42CrMo4"), 2)  # textul original și stratul OCR invizibil
+
+    def test_vectorize_scan(self):
+        """Un scan înclinat al desenului: cercurile, racordările și înclinarea se regăsesc."""
+        import numpy as np
+        from PIL import Image
+
+        from app import vectorize
+
+        scale = 8 * 25.4 / 72
+        png = pdfcore.render_png(self.sample.read_bytes(), 0, scale)
+        im = Image.open(io.BytesIO(png)).convert("L").rotate(0.6, resample=Image.BICUBIC, fillcolor=255)
+        a = np.asarray(im).astype(np.int16) + np.random.default_rng(3).normal(0, 10, (im.height, im.width))
+        gray = np.clip(a, 0, 255).astype(np.uint8)
+        res = vectorize.vectorize(gray, scale)
+        self.assertAlmostEqual(res["skew"], -0.6, delta=0.1)
+        radii = sorted(round(c[2] / MM, 1) for c in res["circles"] if c[2] / MM > 2)
+        for r in (5.0, 15.0, 20.0):
+            self.assertTrue(any(abs(x - r) <= 0.15 for x in radii), (r, radii))
+        # placa (120…170 × 150…185 mm): un contur închis, cu cele două racordări R5 ca arce
+        plates = [pl for pl in res["polys"] if pl["closed"] and all(115 < x / MM < 175 and 145 < y / MM < 190 for x, y in pl["pts"])]
+        self.assertEqual(len(plates), 1)
+        plate = plates[0]
+        self.assertEqual(sum(1 for b in plate["bulges"] if abs(abs(b) - 0.4142) < 0.02), 2)
+        # colțul de la teșitură (170, 180) rămâne la 0,4 mm, după îndreptarea scanului
+        self.assertTrue(any(abs(x / MM - 170) < 0.4 and abs(y / MM - 180) < 0.4 for x, y in plate["pts"]))
+
     def test_image_open(self):
         from PIL import Image
         import io

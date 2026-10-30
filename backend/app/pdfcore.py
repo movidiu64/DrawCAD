@@ -1221,6 +1221,39 @@ def _overlay_pdf(page_specs, color_mode) -> bytes:
                 cx, cy = g.from_vis(*p["p"])
                 c.circle(cx, cy, float(p["r"]), stroke=0 if p.get("fill") and p.get("nostroke") else 1,
                          fill=1 if p.get("fill") else 0)
+            elif t == "O":
+                # text recunoscut (OCR), invizibil: face PDF-ul căutabil și permite copierea textului
+                txt = str(p.get("txt", ""))
+                x0, y0, x1, y1 = p["p"]
+                vert = p.get("rot") == 90
+                bw, bh = (y1 - y0, x1 - x0) if vert else (x1 - x0, y1 - y0)
+                if not txt or bw <= 0 or bh <= 0:
+                    continue
+                cap = float(p.get("cap") or bh * 0.75)
+                size = cap / 0.74  # corpul literei din înălțimea majusculelor (osifont)
+                if p.get("len"):
+                    bw = float(p["len"])
+                sw = pdfmetrics.stringWidth(txt, FONT_NAME, size) or 1
+                if p.get("org"):
+                    ox, oy = p["org"]
+                else:
+                    base = p.get("base")
+                    if base is None:
+                        base = (x1 - bh * 0.2) if vert else (y1 - bh * 0.2)
+                    ox, oy = (base, y1) if vert else (x0, base)
+                ang = float(p.get("ang", 90 if vert else 0))
+                x, y = g.from_vis(ox, oy)
+                c.saveState()
+                c.translate(x, y)
+                c.rotate(ang + g.rotation)
+                to = c.beginText()
+                to.setTextRenderMode(3)
+                to.setFont(FONT_NAME, size)
+                to.setHorizScale(max(10, min(400, 100 * bw / sw)))
+                to.setTextOrigin(0, 0)
+                to.textOut(txt)
+                c.drawText(to)
+                c.restoreState()
             elif t == "T":
                 txt = str(p.get("txt", ""))
                 if not txt:

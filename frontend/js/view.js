@@ -271,6 +271,17 @@ export class View {
         this.drawHandles(built, hv && hv.kind === "handle" ? hv.h : null);
       }
     }
+    if (app.showOcr && app.ocr) {
+      const o = app.ocr.get(app.page);
+      if (o && o.lines) this.drawOcr(o.lines);
+    }
+    if (app.hit && app.hit.page === app.page) {
+      const [x0, y0, x1, y1] = app.hit.box;
+      const m = 3 / z;
+      ctx.strokeStyle = "#f08c00";
+      ctx.lineWidth = 2.5 / z;
+      ctx.strokeRect(x0 - m, y0 - m, x1 - x0 + 2 * m, y1 - y0 + 2 * m);
+    }
     const ov = this.overlay;
     if (ov) {
       if (ov.prims) {
@@ -292,6 +303,35 @@ export class View {
     // eticheta de lângă cursor: ce face mânerul / caseta de sub cursor, sau valoarea în timpul tragerii
     if (app.dragTip) this.drawTip(app.dragTip.txt, app.dragTip.p[0], app.dragTip.p[1]);
     else if (hv && hv.label && app.hoverPt && !(ov && ov.snap)) this.drawTip(hv.label, app.hoverPt[0], app.hoverPt[1], true);
+  }
+
+  /** Textul recunoscut (OCR): casete verzi, cu textul citit deasupra când e destul de mare pe ecran. */
+  drawOcr(lines) {
+    const ctx = this.ctx;
+    const z = this.zoom;
+    ctx.save();
+    ctx.lineWidth = 1 / z;
+    for (const ln of lines) {
+      const [x0, y0, x1, y1] = ln.box;
+      const sure = ln.conf >= 75;
+      ctx.strokeStyle = sure ? "rgba(23,140,80,0.85)" : "rgba(214,120,0,0.85)";
+      ctx.fillStyle = sure ? "rgba(23,140,80,0.10)" : "rgba(214,120,0,0.10)";
+      ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+      const fs = Math.max(ln.cap || 3, 3) * 1.1;
+      if (fs * z >= 8) {
+        ctx.font = `${fs}px osifont, sans-serif`;
+        ctx.fillStyle = sure ? "rgba(23,120,70,0.95)" : "rgba(190,100,0,0.95)";
+        if (ln.rot === 90) {
+          ctx.save();
+          ctx.translate(x0 - fs * 0.25, y1);
+          ctx.rotate(-Math.PI / 2);
+          ctx.fillText(ln.text, 0, 0);
+          ctx.restore();
+        } else ctx.fillText(ln.text, x0, y0 - fs * 0.25);
+      }
+    }
+    ctx.restore();
   }
 
   drawHandles(built, hot) {

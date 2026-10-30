@@ -180,8 +180,13 @@ export function exportDialog(app, opts = {}) {
   const nAnn = app.annots.length;
   const nDel = app.annots.filter((a) => a.type === "redact").length;
   const nPages = app.doc.pages.length;
+  const nOcr = app.ocrPages ? app.ocrPages.size : 0;
+  const realScale = Number(app.settings.scale) || 1;
   const dlg = showModal(`
-    <h2>Exportă PDF</h2>
+    <h2>Exportă</h2>
+    <div class="seg" id="eFmt" style="margin-bottom:12px">
+      <button data-fmt="pdf" class="on">PDF</button>
+      <button data-fmt="dxf">DXF (AutoCAD, Allplan…)</button></div>
     <div class="field"><label for="eName">Nume fișier</label><input type="text" class="mono" id="eName" value="${esc(suggested)}.pdf"></div>
     <div class="cols">
       <div class="cards">
@@ -191,21 +196,53 @@ export function exportDialog(app, opts = {}) {
       </div>
       <div class="cards">
         <div class="lbl">Opțiuni</div>
+        <div id="eDxfOpts" class="dxfopts" hidden>
+          <div class="seg" id="eScale">
+            <button data-sc="paper" class="${realScale === 1 ? "on" : ""}">Mărimea hârtiei (1:1)</button>
+            <button data-sc="real" class="${realScale !== 1 ? "on" : ""}" ${realScale === 1 ? "disabled title=\"Calibrează întâi scara (K)\"" : ""}>Mărime reală${realScale !== 1 ? ` (×${fmtNum(realScale, ",", 4)})` : ""}</button></div>
+          <label class="chk"><input type="checkbox" id="xGeom" checked> Liniile, arcele și cercurile din PDF</label>
+          <label class="chk"><input type="checkbox" id="xText" checked> Textele din PDF</label>
+          <label class="chk"><input type="checkbox" id="xAnn" checked> Cotele și adnotările DrawCAD</label>
+          <label class="chk"><input type="checkbox" id="xOcr" checked> Textul recunoscut (OCR)${app.ocrLang ? "" : " — indisponibil pe server"}</label>
+          <label class="chk"><input type="checkbox" id="xVec" checked> Scanuri: vectorizează imaginea <span class="muted">(experimental)</span></label>
+          <label class="chk"><input type="checkbox" id="xImg"> Scanuri: imaginea ca fundal (arhivă ZIP cu DXF + PNG)</label>
+          <div class="note">Straturi separate: PDF-GEOMETRIE, PDF-TEXT, SCAN-VECTORI, OCR-TEXT, DRAWCAD-COTE… Arcele rămân arce, cercurile cercuri. Pe un scan, textul se recunoaște automat (OCR) dacă nu a fost deja; vectorizarea dă o bază de lucru, nu un desen curat — verifică cotele importante.</div>
+        </div>
+        <div id="ePdfOpts" class="dxfopts">
         <label class="chk" style="font-size:13px"><input type="checkbox" id="eEmbed" checked> Atașează stratul editabil (la redeschidere cotele rămân editabile)</label>
         <label class="chk" style="font-size:13px"><input type="checkbox" id="eInk" ${app.settings.ink && app.settings.ink.all ? "checked" : ""}> Liniile originale negre, pentru imprimantă (culorile deschise ies palid)</label>
+        <label class="chk" style="font-size:13px"><input type="checkbox" id="eOcr" ${nOcr ? "checked" : "disabled"}> Text recunoscut (OCR) invizibil, ca PDF-ul să fie căutabil${nOcr ? ` (${nOcr} ${nOcr === 1 ? "pagină" : "pagini"})` : " — rulează întâi OCR din „Text”"}</label>
+        </div>
         ${nPages > 1 ? `<div class="lbl">Pagini</div>
         <div class="seg" id="ePages">
           <button data-pg="all" class="on">Toate (${nPages})</button>
           <button data-pg="cur">Pagina ${app.page + 1}</button>
           <button data-pg="pick">Alege…</button></div>
         <div class="field" id="ePickRow" hidden><label for="ePick">Pagini (ex.: 1, 3-5)</label><input type="text" class="mono" id="ePick" value="${app.page + 1}"></div>
-        <label class="chk" style="font-size:13px"><input type="checkbox" id="eSplit"> Fiecare pagină într-un PDF separat (arhivă ZIP)</label>` : ""}
+        <label class="chk" style="font-size:13px" id="eSplitRow"><input type="checkbox" id="eSplit"> Fiecare pagină într-un PDF separat (arhivă ZIP)</label>` : ""}
         <div class="note">${nAnn} adnotări · ${nDel} ștergeri din original. Cotele se scriu vectorial în pagină, cu fontul ISO 3098 încorporat. Originalul de pe server nu se modifică.</div>
       </div>
     </div>
     <div class="foot"><span class="muted" id="eMsg"></span><button class="ghost" data-close>Anulează</button><button class="primary" id="eGo">Exportă</button></div>`);
   let color = "black";
   let pgMode = "all";
+  let fmt = "pdf";
+  let scaleMode = realScale !== 1 ? "real" : "paper";
+  dlg.querySelectorAll("[data-fmt]").forEach((b) => b.addEventListener("click", () => {
+    fmt = b.dataset.fmt;
+    dlg.querySelectorAll("[data-fmt]").forEach((x) => x.classList.toggle("on", x === b));
+    dlg.querySelector("#eDxfOpts").hidden = fmt !== "dxf";
+    dlg.querySelector("#ePdfOpts").hidden = fmt !== "pdf";
+    const sr = dlg.querySelector("#eSplitRow");
+    if (sr) sr.hidden = fmt !== "pdf";
+    const nm = dlg.querySelector("#eName");
+    nm.value = nm.value.replace(/\.(pdf|dxf|zip)$/i, "") + "." + fmt;
+  }));
+  dlg.querySelectorAll("[data-sc]").forEach((b) => b.addEventListener("click", () => {
+    if (b.disabled) return;
+    scaleMode = b.dataset.sc;
+    dlg.querySelectorAll("[data-sc]").forEach((x) => x.classList.toggle("on", x === b));
+  }));
   dlg.querySelectorAll("[data-pg]").forEach((b) => b.addEventListener("click", () => {
     pgMode = b.dataset.pg;
     dlg.querySelectorAll("[data-pg]").forEach((x) => x.classList.toggle("on", x === b));
@@ -239,17 +276,21 @@ export function exportDialog(app, opts = {}) {
   dlg.querySelector("#eGo").addEventListener("click", async () => {
     const btn = dlg.querySelector("#eGo");
     btn.disabled = true;
-    dlg.querySelector("#eMsg").textContent = "Se generează…";
+    const chk = (id) => !!(dlg.querySelector(id) && dlg.querySelector(id).checked);
+    dlg.querySelector("#eMsg").textContent = fmt === "dxf" && app.doc.kind === "image" ? "Se generează… (scan: OCR + vectorizare, poate dura un minut)" : "Se generează…";
     try {
-      const name = dlg.querySelector("#eName").value.trim() || "export.pdf";
+      const name = dlg.querySelector("#eName").value.trim() || `export.${fmt}`;
       const sel = nPages > 1 ? (pgMode === "cur" ? [app.page] : pgMode === "pick" ? parsePages(dlg.querySelector("#ePick").value) : null) : null;
-      const split = nPages > 1 && dlg.querySelector("#eSplit").checked;
-      const { blob, report, kind } = await app.exportPdf(name, color, dlg.querySelector("#eEmbed").checked, sel, split);
+      const split = fmt === "pdf" && nPages > 1 && chk("#eSplit");
+      const extra = fmt === "dxf"
+        ? { format: "dxf", dxf: { scale: scaleMode === "real" ? realScale : 1, geom: chk("#xGeom"), text: chk("#xText"), annots: chk("#xAnn"), ocr: chk("#xOcr"), vectorize: chk("#xVec"), image: chk("#xImg") } }
+        : { ocrLayer: chk("#eOcr") };
+      const { blob, report, kind, stats } = await app.exportPdf(name, color, chk("#eEmbed"), sel, split, extra);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      const pdfName = name.toLowerCase().endsWith(".pdf") ? name : `${name}.pdf`;
-      a.download = kind === "zip" ? pdfName.replace(/\.pdf$/i, ".zip") : pdfName;
+      const stem = name.replace(/\.(pdf|dxf|zip)$/i, "");
+      a.download = `${stem}.${kind === "zip" ? "zip" : kind === "dxf" ? "dxf" : "pdf"}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -261,13 +302,179 @@ export function exportDialog(app, opts = {}) {
       const cut = sum("cut");
       const left = sum("partial") + sum("locked");
       app.markExported();
-      toast(`Exportat ${a.download}${removed ? ` · ${removed} obiecte eliminate` : ""}${blackened ? ` · ${blackened} înnegrite` : ""}${cut ? ` · ${cut} linii tăiate la margine` : ""}${left ? ` · ${left} doar acoperite/rămase` : ""}`);
+      let dx = "";
+      if (stats) {
+        const tot = (k) => Object.values(stats).reduce((acc, r) => acc + (r[k] || 0), 0);
+        const ents = tot("linii") + tot("polilinii") + tot("arce") + tot("cercuri") + tot("curbe");
+        const skew = Object.values(stats).map((r) => r.skew).find((v) => v);
+        dx = ` · ${ents} entități, ${tot("texte")} texte${skew ? ` · scan îndreptat cu ${fmtNum(Math.abs(skew), ",", 2)}°` : ""}`;
+        for (const n of Object.keys(stats)) if (stats[n].scan) app.ocrPages.add(Number(n));
+      }
+      toast(`Exportat ${a.download}${dx}${removed ? ` · ${removed} obiecte eliminate` : ""}${blackened ? ` · ${blackened} înnegrite` : ""}${cut ? ` · ${cut} linii tăiate la margine` : ""}${left ? ` · ${left} doar acoperite/rămase` : ""}`, dx ? 5000 : 3200);
       if (opts.afterExport) opts.afterExport();
     } catch (e) {
       dlg.querySelector("#eMsg").textContent = e.message;
       btn.disabled = false;
     }
   });
+}
+
+// ------------------------------------------------------------------ text și OCR
+const norm = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[⌀ø]/g, "ø").replace(/\s+/g, "");
+
+export async function textDialog(app) {
+  const nPages = app.doc.pages.length;
+  const many = nPages > 40;
+  const dlg = showModal(`
+    <h2>Text și OCR</h2>
+    <div class="field"><label for="tQ">Caută în desen</label><input type="search" id="tQ" class="mono" placeholder="ex.: Ø25, H7, M8, 42CrMo4" autocomplete="off"></div>
+    <div id="tList" class="annlist tlist"><div class="muted" style="padding:6px 8px">Se citesc textele…</div></div>
+    <div class="ocrbar">
+      <span id="tStat" class="muted"></span>
+      <span style="flex:1"></span>
+      <button class="ghost" id="tRun" ${app.ocrLang ? "" : "disabled"}>Recunoaște pagina ${app.page + 1}</button>
+      ${nPages > 1 ? `<button class="ghost" id="tAll" ${app.ocrLang ? "" : "disabled"}>Toate paginile</button>` : ""}
+    </div>
+    <label class="chk" style="font-size:13px"><input type="checkbox" id="tShow" ${app.showOcr ? "checked" : ""}> Arată pe desen textul recunoscut (verde = sigur, portocaliu = de verificat)</label>
+    <div class="note">${app.ocrLang
+      ? `OCR (Tesseract, ${esc(app.ocrLang)}) citește textul din imagine: desene scanate sau texte desenate cu linii. Textul găsit se poate căuta, copia, pune invizibil în PDF (căutabil) și exporta ca text în DXF.`
+      : "OCR indisponibil: pe server lipsește Tesseract. Căutarea funcționează doar pe textele reale din PDF."}</div>
+    <div class="foot"><span class="muted" id="tMsg"></span><button class="ghost" id="tCopy">Copiază textul paginii</button><button class="primary" data-close>Închide</button></div>`);
+  const $q = dlg.querySelector("#tQ");
+  const $list = dlg.querySelector("#tList");
+  const $stat = dlg.querySelector("#tStat");
+  const $msg = dlg.querySelector("#tMsg");
+  const native = new Map();
+  const pagesToRead = many ? [app.page] : [...Array(nPages).keys()];
+  const items = () => {
+    const out = [];
+    for (const n of pagesToRead) {
+      for (const it of native.get(n) || []) out.push({ page: n, src: "PDF", text: it.text, box: it.box });
+      const o = app.ocr.get(n);
+      for (const ln of (o && o.lines) || []) out.push({ page: n, src: "OCR", text: ln.text, box: ln.box, conf: ln.conf });
+    }
+    return out;
+  };
+  const updStat = () => {
+    const o = app.ocr.get(app.page);
+    if (!app.ocrLang) $stat.textContent = "";
+    else if (o) $stat.textContent = `Pagina ${app.page + 1}: ${o.lines.length} texte recunoscute${o.ms ? ` în ${fmtNum(o.ms / 1000, ",", 1)} s` : ""}${o.skew ? ` · scan înclinat ${fmtNum(o.skew, ",", 2)}°` : ""}`;
+    else $stat.textContent = `Pagina ${app.page + 1}: OCR nerulat`;
+    const run = dlg.querySelector("#tRun");
+    if (run) run.textContent = o ? `Recunoaște din nou pagina ${app.page + 1}` : `Recunoaște pagina ${app.page + 1}`;
+  };
+  const render = () => {
+    const q = norm($q.value);
+    const all = items();
+    const hits = q ? all.filter((it) => norm(it.text).includes(q)) : all;
+    if (!all.length) {
+      $list.innerHTML = `<div class="muted" style="padding:6px 8px">Niciun text în ${many ? "pagina curentă" : "document"}${app.ocrLang ? " — pentru desene scanate rulează OCR" : ""}.</div>`;
+      return;
+    }
+    if (!hits.length) {
+      $list.innerHTML = `<div class="muted" style="padding:6px 8px">Nimic găsit pentru „${esc($q.value)}”.</div>`;
+      return;
+    }
+    const mark = (t) => {
+      if (!q) return esc(t);
+      // evidențierea potrivirii, ignorând spațiile și diacriticele
+      const chars = [...t];
+      const nn = chars.map((c) => norm(c));
+      const flat = nn.join("");
+      const at = flat.indexOf(q);
+      if (at < 0) return esc(t);
+      let pos = 0;
+      let html = "";
+      for (let i = 0; i < chars.length; i++) {
+        const inside = pos >= at && pos < at + q.length && nn[i];
+        html += inside ? `<mark>${esc(chars[i])}</mark>` : esc(chars[i]);
+        pos += nn[i].length;
+      }
+      return html.replace(/<\/mark><mark>/g, "");
+    };
+    $list.innerHTML = hits.slice(0, 300).map((it, i) => `<div class="it" data-i="${i}">
+      <span class="src ${it.src === "OCR" ? (it.conf >= 75 ? "ok" : "low") : ""}">${it.src}</span>
+      <span class="t">${mark(it.text)}</span>${nPages > 1 ? `<span class="v">p. ${it.page + 1}</span>` : ""}</div>`).join("")
+      + (hits.length > 300 ? `<div class="muted" style="padding:6px 8px">… încă ${hits.length - 300}</div>` : "");
+    $list.querySelectorAll("[data-i]").forEach((el) => el.addEventListener("click", () => {
+      const it = hits[Number(el.dataset.i)];
+      $list.querySelectorAll(".it").forEach((x) => x.classList.toggle("on", x === el));
+      app.gotoText(it.page, it.box);
+    }));
+  };
+  $q.addEventListener("input", render);
+  $q.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      const first = $list.querySelector("[data-i]");
+      if (first) first.click();
+    }
+  });
+  dlg.querySelector("#tShow").addEventListener("change", (e) => app.setShowOcr(e.target.checked));
+  const runPage = async (n, force) => {
+    await app.loadOcr(n, true, force);
+  };
+  const busy = (on) => dlg.querySelectorAll("#tRun, #tAll").forEach((b) => { b.disabled = on || !app.ocrLang; });
+  const runBtn = dlg.querySelector("#tRun");
+  if (runBtn) runBtn.addEventListener("click", async () => {
+    busy(true);
+    $msg.textContent = "Se recunoaște textul… (10–60 s pe pagină)";
+    try {
+      await runPage(app.page, app.ocr.get(app.page) != null);
+      $msg.textContent = "";
+      if (!app.showOcr) {
+        app.setShowOcr(true);
+        dlg.querySelector("#tShow").checked = true;
+      }
+    } catch (e) {
+      $msg.textContent = e.message;
+    }
+    busy(false);
+    updStat();
+    render();
+  });
+  const allBtn = dlg.querySelector("#tAll");
+  if (allBtn) allBtn.addEventListener("click", async () => {
+    busy(true);
+    try {
+      for (let n = 0; n < nPages; n++) {
+        if (app.ocr.get(n)) continue;
+        $msg.textContent = `Pagina ${n + 1} din ${nPages}…`;
+        await runPage(n, false);
+        if (!dlg.isConnected || modal().hidden) return;
+        render();
+      }
+      $msg.textContent = "Gata";
+    } catch (e) {
+      $msg.textContent = e.message;
+    }
+    busy(false);
+    updStat();
+    render();
+  });
+  dlg.querySelector("#tCopy").addEventListener("click", async () => {
+    const n = app.page;
+    const lines = [...(native.get(n) || []).map((x) => x.text), ...(((app.ocr.get(n) || {}).lines) || []).map((x) => x.text)];
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      $msg.textContent = `${lines.length} rânduri copiate`;
+    } catch (_) {
+      $msg.textContent = "Copierea nu e permisă de browser";
+    }
+  });
+  updStat();
+  // textele PDF și OCR-ul deja făcut, pentru paginile în care se caută
+  await Promise.all(pagesToRead.map(async (n) => {
+    try {
+      native.set(n, (await api.pageText(app.doc.id, n)).items);
+    } catch (_) { native.set(n, []); }
+    if (app.ocrPages.has(n) && !app.ocr.get(n)) {
+      try { await app.loadOcr(n); } catch (_) { /* fără OCR */ }
+    }
+  }));
+  if (modal().hidden) return;
+  updStat();
+  render();
+  $q.focus();
 }
 
 // ------------------------------------------------------------------ setări

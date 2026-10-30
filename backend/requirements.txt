@@ -5,3 +5,5 @@ pikepdf==10.16.0
 reportlab==5.0.1
 img2pdf==0.6.3
 pillow==12.3.0
+ezdxf==1.4.5
+numpy>=2.0

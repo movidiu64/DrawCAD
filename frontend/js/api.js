@@ -71,8 +71,25 @@ export async function exportPdf(id, payload) {
     throw new Error(msg);
   }
   const report = JSON.parse(r.headers.get("X-Removal-Report") || "{}");
-  return { blob: await r.blob(), report, kind: r.headers.get("X-Export-Kind") || "pdf" };
+  let stats = null;
+  try {
+    stats = JSON.parse(r.headers.get("X-Dxf-Stats") || "null");
+  } catch (_) { /* fără statistici */ }
+  return { blob: await r.blob(), report, kind: r.headers.get("X-Export-Kind") || "pdf", stats };
 }
+
+export const getOcr = (id, n) => fetch(`api/doc/${id}/page/${n}/ocr`).then(jsonOrThrow);
+
+export async function runOcr(id, n, force = false) {
+  const r = await fetch(`api/doc/${id}/page/${n}/ocr`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ force }),
+  });
+  return jsonOrThrow(r);
+}
+
+export const pageText = (id, n) => fetch(`api/doc/${id}/page/${n}/text`).then(jsonOrThrow);
 
 export const workspace = () => fetch("api/workspace").then(jsonOrThrow);
 

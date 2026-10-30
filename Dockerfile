@@ -6,7 +6,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DRAWCAD_FRONTEND=/app/frontend \
     DRAWCAD_FONT=/app/frontend/fonts/osifont.ttf \
     PUID=99 \
+    OMP_THREAD_LIMIT=1 \
     PGID=100
+
+# Tesseract pentru recunoașterea textului (OCR) pe desene scanate: română + engleză
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-ron tesseract-ocr-eng \
+ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app/backend
 COPY backend/requirements.txt ./

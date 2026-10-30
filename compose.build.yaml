@@ -29,6 +29,7 @@ services:
       DRAWCAD_MAX_IMAGE_MPX: ${DRAWCAD_MAX_IMAGE_MPX:-400}
       # parolă opțională (utilizator „drawcad”); goală = fără parolă, ca în rețeaua de acasă
       DRAWCAD_PASSWORD: ${DRAWCAD_PASSWORD:-}
+      DRAWCAD_OCR_LANG: ${DRAWCAD_OCR_LANG:-ron+eng}
     # întărire: fără privilegii în plus, sistem de fișiere doar-citire (se scrie doar în /data și /tmp),
     # număr limitat de procese; capabilitățile rămase servesc doar la pregătirea folderului /data
     security_opt:

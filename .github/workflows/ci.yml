@@ -23,6 +23,8 @@ jobs:
           node-version: "22"
       - name: Dependențe Python
         run: pip install -r backend/requirements.txt
+      - name: Tesseract (OCR)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-ron
       - name: Teste backend
         working-directory: backend
         run: python -m unittest discover -s tests -v

@@ -13,7 +13,9 @@ Aplicație web self-hosted (Docker) pentru a adăuga pe un PDF sau pe un scan:
 - **desen**: linie, polilinie, dreptunghi, cerc, arc, axe de cerc, hașură și linie de ruptură, cu tipurile de linie ISO 128 (continuă, întreruptă, linie-punct, linie-două puncte, punctată) și grosimile standard;
 - **ștergere** din original, cu acoperire albă sau eliminare reală a obiectelor PDF;
 - **înnegrirea originalului pentru tipărire**: desenele colorate (verde deschis, galben) ies negre, pe tot desenul sau doar pentru liniile alese; scanurile devin alb-negru;
-- **export PDF** vectorial, cu font ISO 3098 încorporat și strat editabil atașat.
+- **export PDF** vectorial, cu font ISO 3098 încorporat și strat editabil atașat;
+- **căutare și OCR**: caută orice text din desen (Ctrl+F); pe desenele scanate textul se recunoaște cu Tesseract și se poate pune invizibil în PDF (PDF căutabil);
+- **export DXF** pentru AutoCAD / Allplan: geometria PDF-ului ca linii, arce, cercuri și texte reale, cotele DrawCAD pe stratul lor, la scara hârtiei sau la mărimea reală; scanurile se vectorizează (experimental), cu textul recunoscut ca text.
 
 Originalul nu se modifică. Adnotările se păstrează separat și se aplică abia la export.
 
@@ -85,6 +87,9 @@ Aplicația s-a numit inițial „Cotare”: variabilele vechi `COTARE_*` sunt ac
 | `DRAWCAD_PASSWORD` | gol | parolă HTTP Basic (utilizator `drawcad`); gol = fără parolă |
 | `DRAWCAD_CACHE_MB` | `512` | memoria pentru cache-ul de randări |
 | `DRAWCAD_RETENTION_DAYS` | `30` | zile după care un document nefolosit se șterge de pe server; `0` = niciodată |
+| `DRAWCAD_OCR_LANG` | `ron+eng` | limbile pentru OCR (coduri Tesseract; imaginea are română și engleză) |
+| `DRAWCAD_OCR_TIMEOUT` | `150` | secunde maxime pentru OCR-ul unei pagini |
+| `DRAWCAD_VECTOR_TIMEOUT` | `240` | secunde maxime pentru vectorizarea unei pagini scanate |
 
 ## Utilizare
 
@@ -237,6 +242,50 @@ Modurile se aleg din săgeata de lângă „Snap”, în bara de jos. Taste: **F
 
 **Redeschidere:** un PDF exportat cu „strat editabil” se poate redeschide. Cotele revin editabile, iar originalul este recuperat din fișier, deci nimic nu se desenează de două ori.
 
+### Text, căutare și OCR
+
+Butonul **Text** din antet (sau **Ctrl+F**) caută în textele desenului: cele reale din PDF și cele recunoscute prin OCR. Căutarea ignoră spațiile și diacriticele, deci „ø25” găsește „Ø 25”. Click pe un rezultat duce la pagina lui, mărește zona și o încadrează portocaliu.
+
+**OCR (recunoașterea textului):** „Recunoaște pagina” citește textul din imaginea paginii cu Tesseract (română + engleză). E util la desenele scanate și la PDF-urile din AutoCAD cu fonturi SHX, unde textul e desenat din linii. O pagină durează de obicei 5–30 s. Rezultatul rămâne pe server, deci nu se reface la redeschidere.
+
+Pentru desene, OCR-ul face câțiva pași în plus:
+- îndreaptă întâi scanul înclinat;
+- șterge liniile lungi (chenare, linii de cotă) ca să nu se lipească de litere;
+- citește a doua oară pagina rotită, pentru cotele scrise pe verticală;
+- corectează Ø citit greșit ca „O”, „0” sau „@”.
+
+Bifa „Arată pe desen” desenează casetele textului găsit: verde pentru citiri sigure, portocaliu pentru cele de verificat. „Copiază textul paginii” pune tot textul în clipboard.
+
+**PDF căutabil:** la exportul PDF, bifa „Text recunoscut (OCR) invizibil” pune textul recunoscut peste imagine, invizibil. În PDF-ul rezultat textul se poate căuta și copia, ca într-un PDF vectorial.
+
+### Export DXF
+
+În dialogul de export alegi **DXF**. Fiecare pagină devine un fișier DXF (AutoCAD 2010, milimetri); mai multe pagini ies într-o arhivă ZIP.
+
+Ce conține:
+- **geometria PDF-ului** (strat PDF-GEOMETRIE): liniile și contururile ca polilinii, cu racordările ca arce adevărate (bulge); cercurile ca CIRCLE, curbele oarecare ca SPLINE; grosimile de linie, culorile și liniile întrerupte (tip de linie generat din modelul PDF-ului) se păstrează;
+- **umplerile** ca hașuri pline (PDF-UMPLERI);
+- **textele** ca TEXT (PDF-TEXT), cu stilul ISOCPEUR;
+- **cotele și adnotările DrawCAD** (DRAWCAD-COTE, DRAWCAD-REVIZIE); acoperirile albe devin WIPEOUT;
+- **chenarul paginii** (PAGINA).
+
+Obiectele șterse din original lipsesc și din DXF.
+
+**Scara:** „Mărimea hârtiei” dă desenul 1:1 cu foaia. „Mărime reală” folosește scara calibrată (K): un desen 1:2 iese de două ori mai mare, deci cotele măsurate în CAD sunt cele reale.
+
+**Scanuri (experimental):** pe o pagină scanată exportul face patru lucruri:
+- rulează OCR, dacă nu s-a făcut deja;
+- scoate din imagine textul citit sigur și îl pune ca TEXT (OCR-TEXT);
+- vectorizează restul (SCAN-VECTORI): subțiere la un pixel, urmărirea liniilor, cercuri și arce potrivite pe pixeli, racordări tangente la linii, scanul îndreptat și liniile aproape orizontale / verticale aliniate;
+- opțional, pune imaginea ca fundal (IMAGE + PNG în ZIP), pentru comparație.
+
+Rezultatul e o bază de lucru, nu un desen curat:
+- liniile întrerupte ies ca segmente scurte;
+- săgețile și hașurile ies simplificate;
+- textul citit nesigur rămâne desenat din linii.
+
+Verifică dimensiunile importante.
+
 ## Mod de lucru: personal sau pentru serviciu
 
 `DRAWCAD_MODE` alege cine vede ce documente:
@@ -287,6 +336,9 @@ backend/    Starlette
   app/main.py    API + servire frontend, antete de securitate, limite
   app/ingest.py  prima citire a fișierelor încărcate, în proces separat și limitat
   app/sanitize.py eliminarea conținutului activ din PDF (JavaScript, acțiuni, atașamente)
+  app/ocr.py     OCR cu Tesseract: îndreptare, ștergerea liniilor, text orizontal și vertical
+  app/dxfout.py  export DXF (ezdxf): geometrie, texte, adnotări, straturi
+  app/vectorize.py vectorizarea scanurilor, în proces separat (subțiere, graf, arce, cercuri)
 ```
 
 Frontend-ul calculează o singură dată geometria fiecărei cote și o trimite la export ca primitive. Ce vezi pe ecran e ce iese în PDF, cu același font și aceleași lățimi de text.
@@ -305,6 +357,9 @@ Frontend-ul calculează o singură dată geometria fiecărei cote și o trimite 
 | img2pdf | LGPL-3.0 |
 | Starlette, uvicorn | BSD |
 | osifont | LGPL-3 cu excepție pentru fonturi |
+| ezdxf | MIT |
+| NumPy | BSD |
+| Tesseract OCR | Apache-2.0 |
 
 ## Teste
 
@@ -324,3 +379,6 @@ python tools/e2e_smoke.py http://127.0.0.1:8080 out     # browser: flux complet 
 - **Textul exportat de AutoCAD cu fonturi SHX** apare în PDF ca linii, nu ca text. În dialogul de ștergere se vede ca „Linie / contur”.
 - **Adnotările se pot așeza doar orizontal sau vertical** (plus cotele aliniate). Nu există încă text rotit la unghi oarecare.
 - **Fără autentificare și fără editare simultană** a aceluiași document de către mai mulți utilizatori.
+- **OCR pe desene** e bun pe cartuș, note și cote clare, mai slab pe text mic, înghesuit sau lipit de linii. Tesseract nu cunoaște simbolurile GD&T, iar Ø, ± și ° sunt recunoscute doar parțial (Ø se corectează din context). Citirile nesigure apar portocaliu.
+- **Vectorizarea scanurilor** e experimentală. Liniile întrerupte, săgețile și hașurile ies simplificate. Pe scanuri de calitate slabă (sub 200 DPI, pete, linii șterse) rezultatul cere curățare în CAD.
+- **DXF:** blocurile din PDF (Form XObject) ies ca entități separate, nu ca blocuri. Textele folosesc stilul ISOCPEUR: dacă fontul lipsește, CAD-ul îl înlocuiește cu altul, cu altă lățime.

@@ -117,7 +117,7 @@ export class Panel {
       <b>G</b> GD&amp;T · <b>B</b> bază · <b>Q</b> rugozitate · <b>S</b> taie cota · <b>W</b> acoperă · <b>X</b> șterge · <b>K</b> calibrare<br>
       <b>I</b> linie · <b>P</b> polilinie · <b>J</b> dreptunghi · <b>Y</b> cerc · <b>Z</b> arc · <b>M</b> măsoară · <b>Enter</b> termină polilinia<br>
       <b>Shift</b> ortho · <b>Alt</b> fără snap · <b>Esc</b> renunță · <b>Del</b> șterge selecția<br>
-      <b>Ctrl+C / Ctrl+V</b> copiază / lipește la cursor · <b>Ctrl+D</b> duplică · <b>Ctrl+A</b> selectează tot<br>
+      <b>Ctrl+C / Ctrl+V</b> copiază / lipește la cursor · <b>Ctrl+D</b> duplică · <b>Ctrl+A</b> selectează tot · <b>Ctrl+F</b> caută text / OCR<br>
       <b>Shift+click</b> sau dreptunghi pe zonă goală = selecție multiplă · <b>săgeți</b> mută 0,5 mm<br>
       <b>Ctrl+Z / Ctrl+Y</b> anulează / refă · <b>F</b> potrivește · <b>Shift+F</b> zoom pe selecție · <b>dublu-click</b> editează · rotița = zoom · Space+tragere = mută</div></div>`;
   }

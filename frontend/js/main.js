@@ -269,6 +269,7 @@ class App {
       const h = await (await fetch("api/health")).json();
       this.retentionDays = h.retentionDays;
       this.mode = h.mode || "personal";
+      this.ocrLang = h.ocr || null;
     } catch (_) {
       this.retentionDays = 0;
     }
@@ -338,6 +339,7 @@ class App {
     // salvarea în așteptare nu se pierde la închiderea tab-ului
     window.addEventListener("pagehide", () => this.flushSaveBeacon());
     $("btnSettings").addEventListener("click", () => this.doc && dlg.settingsDialog(this));
+    $("btnText").addEventListener("click", () => this.doc && dlg.textDialog(this));
     $("btnUndo").addEventListener("click", () => this.doUndo());
     $("btnRedo").addEventListener("click", () => this.doRedo());
     $("btnZoomIn").addEventListener("click", () => this.view.zoomAt(1.25, this.view.cw / 2, this.view.ch / 2));
@@ -371,6 +373,7 @@ class App {
     $("btnExport").disabled = !has;
     $("btnClose").hidden = !has;
     $("btnSettings").disabled = !has;
+    $("btnText").disabled = !has;
     $("btnUndo").disabled = !this.undo.length;
     $("btnRedo").disabled = !this.redo.length;
     $("emptyState").hidden = has;
@@ -452,6 +455,9 @@ class App {
     localStorage.setItem("cotare.lastDoc", meta.id);
     this.annots = (state && state.annots) || [];
     this.settings = { ...dlg.storedDefaults(), ...((state && state.settings) || {}) };
+    this.ocr = new Map(); // pagină → rezultat OCR (null = nerecunoscută încă)
+    this.ocrPages = new Set(meta.ocrPages || []);
+    this.hit = null;
     this.undo = [];
     this.redo = [];
     this.cache.clear();
@@ -481,6 +487,39 @@ class App {
     api.snap(this.doc.id, n).then((s) => {
       if (this.page === n) this.snapper = new Snapper(s);
     }).catch(() => {});
+    if (this.showOcr && this.ocrPages.has(n)) this.loadOcr(n).catch(() => {});
+  }
+
+  // ------------------------------------------------------------ text și OCR
+  /** Textul recunoscut al paginii n (din cache, de pe server, sau — cu run — recunoscut acum). */
+  async loadOcr(n, run = false, force = false) {
+    if (!run && this.ocr.has(n)) return this.ocr.get(n);
+    const r = run ? await api.runOcr(this.doc.id, n, force) : await api.getOcr(this.doc.id, n);
+    const v = r.ocr || null;
+    this.ocr.set(n, v);
+    if (v) this.ocrPages.add(n);
+    this.view.redraw();
+    return v;
+  }
+
+  setShowOcr(on) {
+    this.showOcr = !!on;
+    if (on && this.ocrPages.has(this.page)) this.loadOcr(this.page).catch(() => {});
+    this.view.redraw();
+  }
+
+  /** Arată un text găsit: pagina lui, mărit pe el, cu un chenar care se stinge. */
+  gotoText(page, box) {
+    if (page !== this.page) this.setPage(page);
+    const pad = 30;
+    this.view.zoomToBox([box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad], 40);
+    this.hit = { page, box, t: Date.now() };
+    this.view.redraw();
+    clearTimeout(this._hitTimer);
+    this._hitTimer = setTimeout(() => {
+      this.hit = null;
+      this.view.redraw();
+    }, 2600);
   }
 
   renderTabs() {
@@ -1012,7 +1051,7 @@ class App {
     this.changed();
   }
 
-  async exportPdf(filename, colorMode, embed, pageSel = null, split = false) {
+  async exportPdf(filename, colorMode, embed, pageSel = null, split = false, extra = {}) {
     const pages = {};
     const removals = {};
     for (const a of this.annots) {
@@ -1027,7 +1066,7 @@ class App {
       }
     }
     const ink = this.settings.ink && this.settings.ink.all ? this.settings.ink : null;
-    return api.exportPdf(this.doc.id, { filename, colorMode, embed, pages, removals, ink, pageSel, split, state: this.stateJson() });
+    return api.exportPdf(this.doc.id, { filename, colorMode, embed, pages, removals, ink, pageSel, split, state: this.stateJson(), ...extra });
   }
 
   // ------------------------------------------------------------ mouse
@@ -1813,6 +1852,11 @@ class App {
       if ((e.ctrlKey || e.metaKey) && k === "s") {
         e.preventDefault();
         if (this.doc) dlg.exportDialog(this);
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && k === "f") {
+        e.preventDefault();
+        if (this.doc) dlg.textDialog(this);
         return;
       }
       if ((e.ctrlKey || e.metaKey) && k === "a") {
