@@ -71,5 +71,5 @@ export async function exportPdf(id, payload) {
     throw new Error(msg);
   }
   const report = JSON.parse(r.headers.get("X-Removal-Report") || "{}");
-  return { blob: await r.blob(), report };
+  return { blob: await r.blob(), report, kind: r.headers.get("X-Export-Kind") || "pdf" };
 }

@@ -173,6 +173,7 @@ export function exportDialog(app, opts = {}) {
   const suggested = /_rev\d+$/i.test(base) ? base.replace(/_rev\d+$/i, `_rev${rev}`) : `${base}_rev${rev}`;
   const nAnn = app.annots.length;
   const nDel = app.annots.filter((a) => a.type === "redact").length;
+  const nPages = app.doc.pages.length;
   const dlg = showModal(`
     <h2>Exportă PDF</h2>
     <div class="field"><label for="eName">Nume fișier</label><input type="text" class="mono" id="eName" value="${esc(suggested)}.pdf"></div>
@@ -186,11 +187,41 @@ export function exportDialog(app, opts = {}) {
         <div class="lbl">Opțiuni</div>
         <label class="chk" style="font-size:13px"><input type="checkbox" id="eEmbed" checked> Atașează stratul editabil (la redeschidere cotele rămân editabile)</label>
         <label class="chk" style="font-size:13px"><input type="checkbox" id="eInk" ${app.settings.ink && app.settings.ink.all ? "checked" : ""}> Liniile originale negre, pentru imprimantă (culorile deschise ies palid)</label>
+        ${nPages > 1 ? `<div class="lbl">Pagini</div>
+        <div class="seg" id="ePages">
+          <button data-pg="all" class="on">Toate (${nPages})</button>
+          <button data-pg="cur">Pagina ${app.page + 1}</button>
+          <button data-pg="pick">Alege…</button></div>
+        <div class="field" id="ePickRow" hidden><label for="ePick">Pagini (ex.: 1, 3-5)</label><input type="text" class="mono" id="ePick" value="${app.page + 1}"></div>
+        <label class="chk" style="font-size:13px"><input type="checkbox" id="eSplit"> Fiecare pagină într-un PDF separat (arhivă ZIP)</label>` : ""}
         <div class="note">${nAnn} adnotări · ${nDel} ștergeri din original. Cotele se scriu vectorial în pagină, cu fontul ISO 3098 încorporat. Originalul de pe server nu se modifică.</div>
       </div>
     </div>
     <div class="foot"><span class="muted" id="eMsg"></span><button class="ghost" data-close>Anulează</button><button class="primary" id="eGo">Exportă</button></div>`);
   let color = "black";
+  let pgMode = "all";
+  dlg.querySelectorAll("[data-pg]").forEach((b) => b.addEventListener("click", () => {
+    pgMode = b.dataset.pg;
+    dlg.querySelectorAll("[data-pg]").forEach((x) => x.classList.toggle("on", x === b));
+    dlg.querySelector("#ePickRow").hidden = pgMode !== "pick";
+    if (pgMode === "pick") dlg.querySelector("#ePick").focus();
+  }));
+  // „1, 3-5” → [0, 2, 3, 4]
+  const parsePages = (txt) => {
+    const out = new Set();
+    for (const part of String(txt).split(/[,; ]+/).filter(Boolean)) {
+      const m = /^(\d+)(?:\s*-\s*(\d+))?$/.exec(part);
+      if (!m) throw new Error(`Pagină invalidă: „${part}”`);
+      const a = Number(m[1]);
+      const b = m[2] ? Number(m[2]) : a;
+      for (let i = Math.min(a, b); i <= Math.max(a, b); i++) {
+        if (i < 1 || i > nPages) throw new Error(`Documentul are ${nPages} pagini`);
+        out.add(i - 1);
+      }
+    }
+    if (!out.size) throw new Error("Alege cel puțin o pagină");
+    return [...out].sort((x, y) => x - y);
+  };
   dlg.querySelector("#eInk").addEventListener("change", (e) => {
     const cur = app.settings.ink || {};
     app.setSettings({ ink: { fills: "black", ...cur, all: e.target.checked, images: app.doc.kind === "image" ? true : !!cur.images } });
@@ -205,11 +236,14 @@ export function exportDialog(app, opts = {}) {
     dlg.querySelector("#eMsg").textContent = "Se generează…";
     try {
       const name = dlg.querySelector("#eName").value.trim() || "export.pdf";
-      const { blob, report } = await app.exportPdf(name, color, dlg.querySelector("#eEmbed").checked);
+      const sel = nPages > 1 ? (pgMode === "cur" ? [app.page] : pgMode === "pick" ? parsePages(dlg.querySelector("#ePick").value) : null) : null;
+      const split = nPages > 1 && dlg.querySelector("#eSplit").checked;
+      const { blob, report, kind } = await app.exportPdf(name, color, dlg.querySelector("#eEmbed").checked, sel, split);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = name.toLowerCase().endsWith(".pdf") ? name : `${name}.pdf`;
+      const pdfName = name.toLowerCase().endsWith(".pdf") ? name : `${name}.pdf`;
+      a.download = kind === "zip" ? pdfName.replace(/\.pdf$/i, ".zip") : pdfName;
       document.body.appendChild(a);
       a.click();
       a.remove();

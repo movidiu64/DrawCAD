@@ -265,6 +265,34 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(rep[0]["removed"], 1)
         self.assertEqual(rep[0]["cut"], 1)
 
+    def test_export_selected_pages(self):
+        import pypdfium2 as pdfium
+        import zipfile
+
+        meta = self.open_sample()
+        doc = meta["id"]
+        state = {"v": 1, "annots": [{"id": "a", "type": "text", "page": 0}, {"id": "b", "type": "text", "page": 1}]}
+        prims = {"0": [{"t": "T", "p": [100, 100], "s": 12, "a": 0, "txt": "PAG1", "c": "add"}],
+                 "1": [{"t": "T", "p": [100, 100], "s": 12, "a": 0, "txt": "PAG2", "c": "add"}]}
+        pdf, h = self.req("POST", f"/api/doc/{doc}/export", {"filename": "x.pdf", "pages": prims, "removals": {}, "state": state, "pageSel": [1]}, raw=True)
+        d = pdfium.PdfDocument(pdf)
+        self.assertEqual(len(d), 1)
+        self.assertIn("PAG2", d[0].get_textpage().get_text_range())
+        # redeschis: o pagină, adnotarea paginii 2 devine pe pagina 1
+        m2 = self.req("POST", "/api/open", pdf, {"X-Filename": "x.pdf"})
+        self.assertEqual(len(m2["pages"]), 1)
+        self.assertEqual([a["id"] for a in m2["state"]["annots"]], ["b"])
+        self.assertEqual(m2["state"]["annots"][0]["page"], 0)
+        # fiecare pagină separat: arhivă cu câte un PDF editabil
+        z, h = self.req("POST", f"/api/doc/{doc}/export", {"filename": "x.pdf", "pages": prims, "removals": {}, "state": state, "split": True}, raw=True)
+        self.assertEqual(h["X-Export-Kind"], "zip")
+        self.assertIn("x.zip", h["Content-Disposition"])
+        zf = zipfile.ZipFile(io.BytesIO(z))
+        self.assertEqual(sorted(zf.namelist()), ["x_p1.pdf", "x_p2.pdf"])
+        p2 = zf.read("x_p2.pdf")
+        self.assertEqual(len(pdfium.PdfDocument(p2)), 1)
+        self.assertIsNotNone(pdfcore.extract_embedded(p2))
+
     def test_image_open(self):
         from PIL import Image
         import io

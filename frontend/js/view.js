@@ -110,6 +110,17 @@ export class View {
     this.afterZoom();
   }
 
+  /** Zoom pe un dreptunghi din pagină (o adnotare sau o selecție), cu margine. */
+  zoomToBox(b, margin = 60) {
+    if (!b || !this.cw) return;
+    const w = Math.max(b[2] - b[0], 20);
+    const h = Math.max(b[3] - b[1], 20);
+    this.zoom = Math.min(40, Math.max(0.05, Math.min((this.cw - 2 * margin) / w, (this.ch - 2 * margin) / h, 4)));
+    this.panX = this.cw / 2 - ((b[0] + b[2]) / 2) * this.zoom;
+    this.panY = this.ch / 2 - ((b[1] + b[3]) / 2) * this.zoom;
+    this.afterZoom();
+  }
+
   zoomAt(factor, sx, sy) {
     const nz = Math.min(40, Math.max(0.05, this.zoom * factor));
     const k = nz / this.zoom;

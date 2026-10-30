@@ -498,7 +498,7 @@ async def api_export(request: Request):
         return _err("Cerere invalidă sau prea mare", 413)
     if not isinstance(body, dict):
         return _err("Cerere invalidă")
-    filename = os.path.basename(body.get("filename") or "export.pdf")
+    filename = re.sub(r"[\x00-\x1f\x7f\\/:*?\"<>|]", "_", os.path.basename(str(body.get("filename") or "export.pdf")))[:180]
     if not filename.lower().endswith(".pdf"):
         filename += ".pdf"
     try:
@@ -507,28 +507,41 @@ async def api_export(request: Request):
     except (ValueError, TypeError, AttributeError) as e:
         return _err(f"Date de export invalide: {e}")
     state = body.get("state")
+    if state is not None and not isinstance(state, dict):
+        state = None
     embed = bool(body.get("embed", True))
     color = body.get("colorMode", "black")
-    ink = body.get("ink") or None
+    ink = body.get("ink") if isinstance(body.get("ink"), dict) else None
+    sel = body.get("pageSel")
+    if sel is not None:
+        if not isinstance(sel, list) or not all(isinstance(i, int) and not isinstance(i, bool) for i in sel):
+            return _err("Pagini invalide")
+        sel = sel[:5000]
+    split = bool(body.get("split"))
+    base = re.sub(r"\.pdf$", "", filename, flags=re.I)
 
     def work():
-        st = json.dumps(state, ensure_ascii=False).encode("utf-8") if (embed and state is not None) else None
-        return pdfcore.export_pdf(_original(doc_id), prims, rem, color, st, embed, ink)
+        return pdfcore.export_pages(_original(doc_id), prims, rem, color, state if embed else None, embed, ink, sel, split, base)
 
     try:
-        pdf, reports = await run_in_threadpool(work)
+        data, reports, kind = await run_in_threadpool(work)
+    except ValueError as e:
+        return _err(str(e))
     except Exception as e:  # noqa: BLE001
         return _err(f"Export eșuat: {e}", 500)
+    if kind == "zip":
+        filename = f"{base}.zip"
     filename = re.sub(r"[\x00-\x1f\x7f\\/]", "_", filename)[:180]
     ascii_name = re.sub(r"[^A-Za-z0-9._ ()+-]", "_", filename)
     headers = {
         "Content-Disposition": f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename)}",
         "X-Removal-Report": json.dumps(reports),
+        "X-Export-Kind": kind,
     }
     meta = _read_json(d / "meta.json", {})
     meta["updated"] = time.time()
     _write_json(d / "meta.json", meta)
-    return Response(pdf, media_type="application/pdf", headers=headers)
+    return Response(data, media_type="application/zip" if kind == "zip" else "application/pdf", headers=headers)
 
 
 async def api_health(request: Request):

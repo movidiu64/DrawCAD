@@ -41,6 +41,20 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .docname { display: flex; flex-direction: column; min-width: 0; }
 .docname #docName { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
 .docname .muted { font-size: 12px; }
+.docsub { display: flex; gap: 8px; align-items: center; font-size: 12px; white-space: nowrap; }
+.savestate { color: var(--muted); }
+.savestate.saved::before { content: "✓ "; color: var(--ok); }
+.savestate.error { color: var(--warn); }
+.annlist { display: flex; flex-direction: column; gap: 2px; max-height: 280px; overflow: auto; }
+.annlist .it { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 4px 0 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.annlist .it:hover { background: var(--raised); }
+.annlist .it.on { background: #2a2620; outline: 1px solid var(--accent); }
+.annlist .it i { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
+.annlist .it .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.annlist .it .v { color: var(--muted); font-family: var(--mono); font-size: 12px; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.annlist .it button.icon { width: 26px; height: 26px; opacity: 0.6; }
+.annlist .it button.icon:hover { opacity: 1; color: var(--bad); }
+.annlist .it button.icon svg { width: 15px; height: 15px; }
 .grow { flex: 1; }
 button.icon { width: 38px; height: 38px; border: 0; border-radius: 6px; background: transparent; display: grid; place-items: center; color: var(--text2); }
 button.icon:hover { background: var(--raised); }
@@ -233,7 +247,7 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
 /* telefon: antet compact, panoul ca foaie de jos, indicațiile peste desen */
 @media (max-width: 640px) {
   .top { gap: 6px; padding: 6px 8px; min-height: 48px; flex-wrap: nowrap; }
-  .brand span, .sep, #docMeta, .zoom span { display: none; }
+  .brand span, .sep, #docMeta, .zoom span, .savestate:not(.error) { display: none; }
   .docname #docName { max-width: 26vw; font-size: 13px; }
   .zoom { display: none; }
   button.ghost { height: 34px; padding: 0 9px; font-size: 13px; }

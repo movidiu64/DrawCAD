@@ -452,6 +452,7 @@ class App {
     this.selectedId = null;
     this.sel = new Set();
     this.unexported = false;
+    this.setSaveState(state ? "saved" : "");
     $("docName").textContent = meta.name;
     $("docMeta").textContent = `${meta.kind === "image" ? "imagine" : "PDF"} · ${meta.pages.length} ${meta.pages.length === 1 ? "pagină" : "pagini"}`;
     document.title = `${meta.name} — DrawCAD`;
@@ -548,10 +549,83 @@ class App {
     clearTimeout(this.saveTimer);
     const id = this.doc && this.doc.id;
     if (!id) return;
+    this.setSaveState("pending");
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
-      api.saveState(id, this.stateJson()).catch((e) => dlg.toast(`Salvare automată eșuată: ${e.message}`));
+      this.setSaveState("saving");
+      api.saveState(id, this.stateJson()).then(() => {
+        if (!this.saveTimer) this.setSaveState("saved");
+      }).catch((e) => {
+        // fără rețea / server oprit: se reîncearcă singur, fără să se piardă nimic din browser
+        this.setSaveState("error", e.message);
+        clearTimeout(this.retryTimer);
+        this.retryTimer = setTimeout(() => this.doc && this.doc.id === id && this.scheduleSave(), 5000);
+      });
     }, 700);
+  }
+
+  setSaveState(st, msg) {
+    const el = $("saveState");
+    if (!el) return;
+    const txt = { pending: "Modificat…", saving: "Se salvează…", saved: "Salvat pe server", error: "Nesalvat · reîncerc" }[st] || "";
+    el.textContent = txt;
+    el.className = `savestate ${st}`;
+    el.title = st === "error" ? `Salvarea automată a eșuat (${msg || "eroare"}); se reîncearcă la 5 s.` : st === "saved" ? "Cotele sunt salvate pe server; le regăsești și după închiderea browserului." : "";
+  }
+
+  /** Descriere scurtă pentru lista de adnotări. */
+  annotLabel(a) {
+    const b = this.builtOf(a);
+    const first = (t) => String(t || "").split("\n")[0].slice(0, 40);
+    switch (a.type) {
+      case "dim":
+      case "rad":
+      case "ang": {
+        const nom = a.nominal ?? (b && b.nominal);
+        const v = nom != null ? fmtNum(nom, this.settings.sep || ",", 3) : "?";
+        const tol = a.tol && a.tol.mode === "iso" ? ` ${a.tol.fit || ""}` : a.tol && a.tol.mode === "pm" ? " ±" : a.tol && a.tol.mode === "dev" ? " +/-" : "";
+        return a.textOverride ? first(a.textOverride) : `${a.type === "rad" ? a.prefix ?? "R" : a.prefix || ""}${v}${a.type === "ang" ? "°" : ""}${tol}`;
+      }
+      case "text":
+      case "lead":
+      case "note":
+        return first(a.type === "note" ? a.title || a.text : a.text);
+      case "gdt":
+        return `${a.dia ? "Ø" : ""}${a.val || ""} ${(a.datums || []).filter(Boolean).join("|")}`.trim();
+      case "datum":
+      case "section":
+      case "detail":
+        return a.letter || "";
+      case "balloon":
+        return `poz. ${a.num}`;
+      case "strike":
+        return a.newText ? `→ ${a.newText}` : "tăiată";
+      case "rough":
+        return a.val || "";
+      case "revtab":
+      case "bom":
+        return `${(a.rows || []).length} rânduri`;
+      default:
+        return "";
+    }
+  }
+
+  annotAt(raw) {
+    const tol = 5 / this.view.zoom;
+    const items = this.visibleBuilt();
+    for (let i = items.length - 1; i >= 0; i--) if (hit(items[i].built, items[i].a, raw, tol)) return items[i].a;
+    return null;
+  }
+
+  /** Selectează adnotarea și o aduce în centrul ecranului. */
+  focusAnnot(id) {
+    const a = this.annots.find((x) => x.id === id);
+    if (!a) return;
+    if (a.page !== this.page) this.setPage(a.page);
+    if (this.tool !== "select") this.setTool("select");
+    this.select(id);
+    const b = this.builtOf(a).bbox;
+    if (b) this.view.zoomToBox(b);
   }
 
   pushHistory(key) {
@@ -921,7 +995,7 @@ class App {
     this.changed();
   }
 
-  async exportPdf(filename, colorMode, embed) {
+  async exportPdf(filename, colorMode, embed, pageSel = null, split = false) {
     const pages = {};
     const removals = {};
     for (const a of this.annots) {
@@ -936,7 +1010,7 @@ class App {
       }
     }
     const ink = this.settings.ink && this.settings.ink.all ? this.settings.ink : null;
-    return api.exportPdf(this.doc.id, { filename, colorMode, embed, pages, removals, ink, state: this.stateJson() });
+    return api.exportPdf(this.doc.id, { filename, colorMode, embed, pages, removals, ink, pageSel, split, state: this.stateJson() });
   }
 
   // ------------------------------------------------------------ mouse
@@ -1310,7 +1384,8 @@ class App {
         this.showCoords(raw);
         if (t.kind === "select" && !d) {
           const edge = this.edgeAt(sx, sy, e.pointerType === "touch");
-          cv.style.cursor = edge ? this.edgeCursor(edge.code) : "default";
+          // peste o adnotare: cursor de mutare, ca să se vadă ce se poate apuca
+          cv.style.cursor = edge ? this.edgeCursor(edge.code) : this.annotAt(raw) ? "move" : "default";
         }
         return;
       }
@@ -1424,6 +1499,20 @@ class App {
     };
     cv.addEventListener("pointerup", up);
     cv.addEventListener("pointercancel", up);
+    // dublu-click pe o adnotare: cursorul ajunge direct în primul câmp de editat din panou
+    cv.addEventListener("dblclick", (e) => {
+      if (this.tool !== "select") return;
+      const [sx, sy] = pos(e);
+      const a = this.annotAt(this.view.toPage(sx, sy));
+      if (!a) return;
+      this.select(a.id);
+      if (this.compact()) this.setPanelOpen(true);
+      const f = $("panel").querySelector("textarea, input[type=text]:not(#dScale)");
+      if (f) {
+        f.focus();
+        if (f.select) f.select();
+      }
+    });
     // meniul contextual al browserului nu apare peste desen; nici când click-ul dreapta se
     // eliberează pe meniul radial (pe Windows evenimentul vine la ridicarea butonului)
     $("viewport").addEventListener("contextmenu", (e) => e.preventDefault());
@@ -1662,7 +1751,11 @@ class App {
         return;
       }
       if (k === "f") {
-        this.view.fit();
+        // Shift+F: zoom pe selecție; F: toată pagina
+        const boxes = e.shiftKey ? this.selectedAll().map((a) => this.builtOf(a).bbox).filter(Boolean) : [];
+        if (boxes.length) {
+          this.view.zoomToBox([Math.min(...boxes.map((q) => q[0])), Math.min(...boxes.map((q) => q[1])), Math.max(...boxes.map((q) => q[2])), Math.max(...boxes.map((q) => q[3]))]);
+        } else this.view.fit();
         return;
       }
       if (e.key === "+" || e.key === "=") {

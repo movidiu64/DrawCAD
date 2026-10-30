@@ -119,7 +119,7 @@ export class Panel {
       <b>Shift</b> ortho · <b>Alt</b> fără snap · <b>Esc</b> renunță · <b>Del</b> șterge selecția<br>
       <b>Ctrl+C / Ctrl+V</b> copiază / lipește la cursor · <b>Ctrl+D</b> duplică · <b>Ctrl+A</b> selectează tot<br>
       <b>Shift+click</b> sau dreptunghi pe zonă goală = selecție multiplă · <b>săgeți</b> mută 0,5 mm<br>
-      <b>Ctrl+Z / Ctrl+Y</b> anulează / refă · <b>F</b> potrivește · rotița = zoom · Space+tragere = mută</div></div>`;
+      <b>Ctrl+Z / Ctrl+Y</b> anulează / refă · <b>F</b> potrivește · <b>Shift+F</b> zoom pe selecție · <b>dublu-click</b> editează · rotița = zoom · Space+tragere = mută</div></div>`;
   }
 
   docHtml() {
@@ -158,7 +158,21 @@ export class Panel {
         ${app.hidden.size ? `<div class="sub">Ascunderea e doar pe ecran: exportul conține toate straturile.</div>` : ""}
       </div>
       ${this.inkHtml()}
+      ${this.annListHtml()}
       ${this.keysHtml()}`;
+  }
+
+  /** Lista adnotărilor de pe pagină: click = selectează și centrează, coș = șterge. */
+  annListHtml() {
+    const app = this.app;
+    const list = app.annots.filter((a) => a.page === app.page);
+    if (!list.length) return "";
+    const col = (a) => (["white", "redact", "ink"].includes(a.type) ? "#a3acb7" : a.layer === "rev" ? "#ff6b6b" : "#4c8dff");
+    return `<div class="sec"><div class="h">Adnotări pe pagina ${app.page + 1} · ${list.length}</div>
+      <div class="annlist">${list.map((a) => `<div class="it ${app.sel.has(a.id) ? "on" : ""}" data-ann="${esc(a.id)}" title="Click: selectează și centrează">
+        <i style="background:${col(a)}"></i><span class="t">${esc(typeName(a))}</span><span class="v">${esc(app.annotLabel(a))}</span>
+        <button class="icon" data-anndel="${esc(a.id)}" aria-label="Șterge ${esc(typeName(a))}" title="Șterge"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg></button></div>`).join("")}</div>
+      <div class="sub">Shift+F face zoom pe selecție, F revine la toată pagina.</div></div>`;
   }
 
   /** Înnegrirea originalului pentru tipărire (desene colorate care ies palid la imprimantă). */
@@ -614,6 +628,14 @@ export class Panel {
       app.updateSel((a) => { a.color = cv.value.toLowerCase(); });
       this.render();
     });
+    el.querySelectorAll("[data-ann]").forEach((it) => it.addEventListener("click", (e) => {
+      if (e.target.closest("[data-anndel]")) return;
+      app.focusAnnot(it.dataset.ann);
+    }));
+    el.querySelectorAll("[data-anndel]").forEach((b) => b.addEventListener("click", () => {
+      app.selectMany([b.dataset.anndel]);
+      app.deleteSelected();
+    }));
     const inkAll = el.querySelector("#inkAll");
     if (inkAll) {
       inkAll.addEventListener("change", () => {

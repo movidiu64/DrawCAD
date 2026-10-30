@@ -1272,3 +1272,75 @@ def export_pdf(
     pk.save(out, compress_streams=True)
     pk.close()
     return out.getvalue(), reports
+
+
+# ---------------------------------------------------------------- export pe pagini
+
+
+def subset_pdf(pdf_bytes: bytes, idxs: list[int]) -> bytes:
+    """Doar paginile date, în ordinea dată (fluxurile de conținut nu se ating)."""
+    src = pikepdf.open(io.BytesIO(pdf_bytes))
+    keep = set(idxs)
+    for i in range(len(src.pages) - 1, -1, -1):
+        if i not in keep:
+            del src.pages[i]
+    out = io.BytesIO()
+    src.save(out, compress_streams=True)
+    src.close()
+    return out.getvalue()
+
+
+def _remap_state(state: dict | None, idxs: list[int]) -> dict | None:
+    """Starea editabilă pentru un export parțial: doar adnotările paginilor alese, renumerotate."""
+    if not isinstance(state, dict):
+        return None
+    pos = {p: k for k, p in enumerate(idxs)}
+    annots = []
+    for a in state.get("annots") or []:
+        if isinstance(a, dict) and a.get("page", 0) in pos:
+            annots.append({**a, "page": pos[a.get("page", 0)]})
+    return {**state, "annots": annots}
+
+
+def _attach(pdf_bytes: bytes, state: dict | None, original: bytes | None) -> bytes:
+    import json as _json
+
+    if state is None:
+        return pdf_bytes
+    pk = pikepdf.open(io.BytesIO(pdf_bytes))
+    pk.attachments[ATTACH_JSON] = pikepdf.AttachedFileSpec(pk, _json.dumps(state, ensure_ascii=False).encode("utf-8"), mime_type="application/json")
+    if original is not None:
+        pk.attachments[ATTACH_ORIGINAL] = pikepdf.AttachedFileSpec(pk, original, mime_type="application/pdf")
+    out = io.BytesIO()
+    pk.save(out, compress_streams=True)
+    pk.close()
+    return out.getvalue()
+
+
+def export_pages(original, primitives, removals, color_mode, state, embed, ink, sel, split, basename="export"):
+    """Export pentru paginile `sel` (None = toate): un PDF, sau câte un PDF pe pagină într-un ZIP.
+    Fiecare fișier poartă stratul editabil pentru paginile lui, ca să se poată redeschide."""
+    import zipfile
+
+    n_pages = len(pikepdf.open(io.BytesIO(original)).pages)
+    idxs = sorted({i for i in (sel or range(n_pages)) if 0 <= i < n_pages})
+    if not idxs:
+        raise ValueError("nicio pagină aleasă")
+    prims = {k: v for k, v in primitives.items() if k in idxs}
+    rem = {k: v for k, v in removals.items() if k in idxs}
+    full, reports = export_pdf(original, prims, rem, color_mode, None, embed, ink)
+    whole = len(idxs) == n_pages
+    if not split:
+        pdf = full if whole else subset_pdf(full, idxs)
+        if state is not None:
+            orig = original if whole else subset_pdf(original, idxs)
+            pdf = _attach(pdf, state if whole else _remap_state(state, idxs), orig if embed else None)
+        return pdf, reports, "pdf"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for i in idxs:
+            one = subset_pdf(full, [i])
+            if state is not None:
+                one = _attach(one, _remap_state(state, [i]), subset_pdf(original, [i]) if embed else None)
+            z.writestr(f"{basename}_p{i + 1}.pdf", one)
+    return buf.getvalue(), reports, "zip"

@@ -211,6 +211,10 @@ Modurile se aleg din săgeata de lângă „Snap”, în bara de jos. Taste: **F
 - **Doar textul:** elimină valorile, iar liniile de cotă rămân.
 - **Tot din zonă:** elimină ce e în zonă și taie liniile care trec prin ea exact la marginea zonei (conturul rămâne, cu o întrerupere; arcele și cercurile se taie la fel). Ce nu se poate tăia (suprafețe pline, imagini, obiecte din blocuri) poate fi acoperit cu alb: opțiunea „Acoperă zona cu alb” e bifată automat când e cazul.
 
+**Export pe pagini:** la un document cu mai multe pagini, dialogul de export oferă toate paginile (implicit), doar pagina curentă sau o listă („1, 3-5”). Bifa „Fiecare pagină într-un PDF separat” descarcă o arhivă ZIP cu câte un PDF pe pagină (`nume_p1.pdf`…). Fiecare fișier poartă stratul editabil doar pentru paginile lui, deci se redeschide corect.
+
+**Lista adnotărilor:** în panoul documentului (fără selecție) apar adnotările paginii, cu valoarea lor. Click = selectează și centrează, coșul = șterge. **Shift+F** face zoom pe selecție, **dublu-click** pe o adnotare duce cursorul direct în câmpul de editat. În antet, lângă numele documentului, se vede dacă modificările sunt salvate pe server. La o eroare de rețea salvarea se reîncearcă singură.
+
 **Închidere și păstrare pe server:**
 - **Butonul ✕** de lângă numele documentului îl închide și te întoarce la pagina de start.
 - **Fără modificări neexportate**, documentul se închide direct. Altfel te întreabă:
