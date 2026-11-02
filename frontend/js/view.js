@@ -1,5 +1,6 @@
 // Afișarea paginii și a adnotărilor pe <canvas>, cu zoom și deplasare.
 import * as api from "./api.js";
+import { tr } from "./i18n.js";
 
 export const COLORS = {
   add: "#2f6fd6",
@@ -13,6 +14,9 @@ export const COLORS = {
 };
 
 const colorOf = (c) => COLORS[c] || (typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c) ? c : "#111");
+
+const BASE_MAX_PX = 20e6; // pagina întreagă
+const DETAIL_MAX_PX = 22e6; // zona de detaliu (serverul acceptă până la 24 MP)
 
 export function drawPrims(ctx, prims, zoom, color = colorOf, minPx = 0.8, opts = {}) {
   for (const p of prims) {
@@ -90,6 +94,8 @@ export class View {
     this.pageH = h;
     this.img = null;
     this.imgScale = 0;
+    this.detail = null;
+    this.detailKey = null;
     if (!keepView) this.fit();
     this.loadImage(true);
   }
@@ -145,6 +151,7 @@ export class View {
     this.panX += dx;
     this.panY += dy;
     this.redraw();
+    if (this.detailNeeded) this.scheduleDetail();
   }
 
   toPage(sx, sy) {
@@ -159,7 +166,11 @@ export class View {
     if (!this.docId || !this.pageW) return;
     const want = this.zoom * this.dpr;
     const q = Math.pow(2, Math.ceil(Math.log2(want) * 2) / 2); // trepte de √2
-    const scale = Math.min(Math.max(q, 0.25), 16);
+    // pagina întreagă cel mult ~20 MP; peste, la zoom mare, se randează doar zona vizibilă
+    const maxBase = Math.sqrt(BASE_MAX_PX / (this.pageW * this.pageH));
+    const scale = Math.min(Math.max(q, 0.25), 16, Math.max(0.25, Math.pow(2, Math.floor(Math.log2(maxBase) * 2) / 2)));
+    this.detailNeeded = want > scale * 1.05;
+    if (this.detailNeeded) this.scheduleDetail();
     const q2 = this.app.renderQuery ? this.app.renderQuery(this.pageN) : "";
     if (!force && this.img && q2 === this.imgQuery && scale <= this.imgScale * 1.01 && scale >= this.imgScale / 2.9) return;
     const extra = this.app.renderQuery ? this.app.renderQuery(this.pageN) : "";
@@ -202,6 +213,72 @@ export class View {
     im.src = api.renderUrl(this.docId, this.pageN, scale, extra);
   }
 
+  /** Detaliul vizibil la zoom mare: doar zona de pe ecran (plus o margine), la rezoluția cerută. */
+  scheduleDetail() {
+    clearTimeout(this.detailTimer);
+    this.detailTimer = setTimeout(() => this.loadDetail(), 140);
+  }
+
+  loadDetail() {
+    if (!this.docId || !this.pageW || !this.detailNeeded) return;
+    const want = this.zoom * this.dpr;
+    const scale = Math.min(64, Math.pow(2, Math.ceil(Math.log2(want) * 2) / 2));
+    const vx0 = -this.panX / this.zoom;
+    const vy0 = -this.panY / this.zoom;
+    const vx1 = (this.cw - this.panX) / this.zoom;
+    const vy1 = (this.ch - this.panY) / this.zoom;
+    let mx = (vx1 - vx0) * 0.25;
+    let my = (vy1 - vy0) * 0.25;
+    if ((vx1 - vx0 + 2 * mx) * (vy1 - vy0 + 2 * my) * scale * scale > DETAIL_MAX_PX) mx = my = 0;
+    const g = 256 / scale; // grilă în puncte: zone refolosibile din cache la deplasări mici
+    const x0 = Math.max(0, Math.floor((vx0 - mx) / g) * g);
+    const y0 = Math.max(0, Math.floor((vy0 - my) / g) * g);
+    const x1 = Math.min(this.pageW, Math.ceil((vx1 + mx) / g) * g);
+    const y1 = Math.min(this.pageH, Math.ceil((vy1 + my) / g) * g);
+    if (x1 - x0 < 1 || y1 - y0 < 1) return;
+    const d = this.detail;
+    const q2 = this.app.renderQuery ? this.app.renderQuery(this.pageN) : "";
+    // detaliul de acum acoperă deja ecranul la rezoluția cerută
+    if (d && d.page === this.pageN && d.doc === this.docId && d.query === q2 && d.scale >= scale / 1.01
+      && d.rect[0] <= Math.max(0, vx0) && d.rect[1] <= Math.max(0, vy0) && d.rect[2] >= Math.min(this.pageW, vx1) && d.rect[3] >= Math.min(this.pageH, vy1)) return;
+    const rect = [x0, y0, x1, y1].map((v) => Math.round(v * 100) / 100);
+    const clip = rect.join(",");
+    const key = `${this.docId}/${this.pageN}/${scale}/${clip}${q2}`;
+    if (this.detailKey === key) return;
+    this.detailKey = key;
+    const im = new Image();
+    let blobUrl = null;
+    const page = this.pageN;
+    const doc = this.docId;
+    im.onload = () => {
+      if (this.detailKey !== key) {
+        if (blobUrl) URL.revokeObjectURL(blobUrl);
+        return;
+      }
+      if (this.detail && this.detail.blob) URL.revokeObjectURL(this.detail.blob);
+      this.detail = { img: im, rect, scale, page, doc, query: q2, blob: blobUrl };
+      this.detailKey = null;
+      this.redraw();
+    };
+    im.onerror = () => {
+      if (this.detailKey === key) this.detailKey = null;
+    };
+    const ops = this.app.removalOps ? this.app.removalOps(this.pageN) : [];
+    if (ops.length) {
+      const ink = this.app.settings.ink && this.app.settings.ink.all ? this.app.settings.ink : null;
+      const bk = ink ? [] : this.app.annots.filter((a) => a.type === "ink" && a.page === this.pageN).flatMap((a) => a.ids || []);
+      const all = bk.length ? [{ mode: "black", ids: bk }, ...ops] : ops;
+      api.previewRemoval(this.docId, this.pageN, all, scale, ink, clip).then((url) => {
+        blobUrl = url;
+        im.src = url;
+      }).catch(() => {
+        if (this.detailKey === key) this.detailKey = null;
+      });
+      return;
+    }
+    im.src = api.renderUrl(this.docId, this.pageN, scale, `${q2}&clip=${clip}`);
+  }
+
   redraw() {
     if (this.pending) return;
     this.pending = true;
@@ -231,6 +308,12 @@ export class View {
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
       ctx.drawImage(this.img, 0, 0, this.pageW, this.pageH);
+      const dt = this.detail;
+      const q2 = this.app.renderQuery ? this.app.renderQuery(this.pageN) : "";
+      if (this.detailNeeded && dt && dt.page === this.pageN && dt.doc === this.docId && dt.query === q2) {
+        const [x0, y0, x1, y1] = dt.rect;
+        ctx.drawImage(dt.img, x0, y0, x1 - x0, y1 - y0);
+      }
     }
     const app = this.app;
     const single = app.sel.size === 1;
@@ -477,6 +560,7 @@ export class View {
 
   /** Eticheta de lângă cursor, în pixeli de ecran (ca tooltip-ul de snap din AutoCAD). */
   drawTip(txt, x, y, subtle = false) {
+    txt = tr(txt);
     const ctx = this.ctx;
     const d = this.dpr;
     const sx = Math.min(x * this.zoom + this.panX + 16, this.cw - 8 - txt.length * 6.5);

@@ -310,3 +310,22 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
 .keytab input.k { width: 44px !important; text-align: center; text-transform: uppercase; }
 .keytab input.al { text-transform: uppercase; }
 .keytab input.bad { border-color: var(--bad) !important; background: #3a1c1c !important; }
+
+/* operații pe pagini */
+.pgops { display: inline-flex; gap: 3px; margin-left: 8px; }
+.pgops .mini, .pgcard .mini { width: 26px; height: 26px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line2); border-radius: 5px; background: var(--raised); color: var(--text2); }
+.pgops .mini:hover, .pgcard .mini:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
+.pgops svg, .pgcard .mini svg, .row .ghost svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: -3px; }
+.pggrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(178px, 1fr)); gap: 10px; max-height: 60vh; overflow: auto; padding: 2px; }
+.pggrid.busy { opacity: .55; pointer-events: none; }
+.pgcard { border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 6px; background: var(--bg); }
+.pgcard.on { border-color: var(--accent); }
+.pgcard .thumb { height: 164px; display: grid; place-items: center; background: #3a3f48; border: 0; border-radius: 5px; cursor: pointer; padding: 2px; }
+.pgcard .thumb img { max-width: 160px; max-height: 160px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+.pgcard .pgl { display: flex; gap: 8px; align-items: baseline; font-size: 12px; }
+.pgcard .pgb { display: flex; gap: 4px; }
+.pgcard .mini:disabled { opacity: .35; cursor: default; }
+.pgcard .mini.del.armed { width: auto; padding: 0 6px; color: #fff; background: var(--bad); border-color: var(--bad); font-size: 11px; }
+.langsw { display: flex; gap: 4px; justify-content: center; margin-top: 14px; }
+.langsw button { border: 1px solid var(--line2); background: transparent; color: var(--text2); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+.langsw button.on { color: var(--text); border-color: var(--accent); }

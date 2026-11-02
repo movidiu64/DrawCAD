@@ -16,6 +16,7 @@ export const DEFAULT_SETTINGS = {
   isoDisplay: "codeDev",
   codeSpace: false, // „Ø25k6” (ISO 286) sau „Ø25 k6”
   arrow: "closed",
+  dlang: "ro", // limba textelor din desen: antetul tabelelor, notele implicite
   scale: 1, // mm reali pe mm de hârtie (1 = scara 1:1)
   revNo: "1",
   extGap: 0.5,
@@ -268,12 +269,15 @@ function buildDim(a, S, measure) {
   const Ld = len(AB);
   const dir = Ld > 1e-6 ? mul(AB, 1 / Ld) : u;
   const inside = Ld >= 2.4 * S.aw + S.h;
+  // la diametru, săgeți pline ca la linia de indicație, oricare ar fi capetele alese pentru cote
+  // (liniuța oblică și punctul nu se folosesc la diametre)
+  const SA = (a.prefix || "").startsWith("Ø") ? { ...S, arrow: "closed" } : S;
   if (inside) {
     prims.push(lineP(A, B, S, c));
-    prims.push(...arrowP(A, mul(dir, -1), S, c), ...arrowP(B, dir, S, c));
+    prims.push(...arrowP(A, mul(dir, -1), SA, c), ...arrowP(B, dir, SA, c));
   } else {
     prims.push(lineP(sub(A, mul(dir, S.aw * 2.2)), add(B, mul(dir, S.aw * 2.2)), S, c));
-    prims.push(...arrowP(A, dir, S, c), ...arrowP(B, mul(dir, -1), S, c));
+    prims.push(...arrowP(A, dir, SA, c), ...arrowP(B, mul(dir, -1), SA, c));
   }
 
   const nominal = a.nominal != null ? a.nominal : round(measured, 2);
@@ -552,20 +556,23 @@ function buildNote(a, S, measure) {
 
 // ------------------------------------------------------------------ tabel de revizii
 export const REVTAB_COLS = [
-  { key: "rev", title: "Rev.", minMm: 10 },
-  { key: "desc", title: "Modificare", minMm: 40 },
-  { key: "date", title: "Data", minMm: 22 },
-  { key: "name", title: "Nume", minMm: 14 },
+  { key: "rev", title: "Rev.", en: "Rev.", minMm: 10 },
+  { key: "desc", title: "Modificare", en: "Description", minMm: 40 },
+  { key: "date", title: "Data", en: "Date", minMm: 22 },
+  { key: "name", title: "Nume", en: "Name", minMm: 14 },
 ];
 
 // Lista de componente (ISO 7573): deasupra cartușului, antetul jos, poziția 1 lângă antet.
 export const BOM_COLS = [
-  { key: "poz", title: "Poz.", minMm: 10 },
-  { key: "name", title: "Denumire", minMm: 45, left: true },
-  { key: "qty", title: "Buc.", minMm: 10 },
-  { key: "mat", title: "Material", minMm: 28, left: true },
-  { key: "obs", title: "Observații", minMm: 24, left: true },
+  { key: "poz", title: "Poz.", en: "Item", minMm: 10 },
+  { key: "name", title: "Denumire", en: "Description", minMm: 45, left: true },
+  { key: "qty", title: "Buc.", en: "Qty", minMm: 10 },
+  { key: "mat", title: "Material", en: "Material", minMm: 28, left: true },
+  { key: "obs", title: "Observații", en: "Remarks", minMm: 24, left: true },
 ];
+
+// antetul tabelelor e în limba desenului (setarea documentului), nu neapărat în cea a interfeței
+const colTitle = (col, S) => (S.dlang === "en" && col.en ? col.en : col.title);
 
 function buildRevtab(a, S, measure) {
   return buildTable(a, S, measure, REVTAB_COLS.map((c) => (c.key === "desc" ? { ...c, left: true } : c)));
@@ -584,7 +591,7 @@ function buildTable(a, S, measure, COLS) {
   const rows = a.rows || [];
   const widths = COLS.map((col) => {
     let w = col.minMm * K * (a.scale || 1);
-    w = Math.max(w, measure(col.title, F) + 2 * pad);
+    w = Math.max(w, measure(colTitle(col, S), F) + 2 * pad);
     for (const r of rows) w = Math.max(w, measure(String(r[col.key] || ""), F) + 2 * pad);
     return w;
   });
@@ -603,7 +610,7 @@ function buildTable(a, S, measure, COLS) {
     if (i > 0) prims.push(lineP([x0, top], [x0 + W, top], { ...S, lw: item.header || order[i - 1].header ? S.lw * 1.4 : S.lw }, c));
     let x = x0;
     COLS.forEach((col, j) => {
-      const txt = item.header ? col.title : String(item.r[col.key] || "");
+      const txt = item.header ? colTitle(col, S) : String(item.r[col.key] || "");
       if (txt) {
         const tw = measure(txt, F);
         const tx = col.left && !item.header ? x + pad : x + (widths[j] - tw) / 2;

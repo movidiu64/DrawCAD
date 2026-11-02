@@ -101,7 +101,9 @@ export const TOOLS = [
 
   { id: "note", label: "Note", key: "N", group: "Documentare", icon: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5", kind: "clicks", n: 1,
     hint: "Click pe colțul stânga-sus al blocului de note · textul (pe mai multe rânduri) se scrie în panou",
-    make: (pts) => ({ type: "note", p: pts[0], title: "NOTE", text: "Muchiile nespecificate se teșesc 0,5×45°\nToleranțe generale ISO 2768-mK", numbered: true, frame: false, size: 1 }),
+    make: (pts, app) => (app && app.settings && app.settings.dlang === "en"
+      ? { type: "note", p: pts[0], title: "NOTES", text: "Break all sharp edges 0.5×45°\nGeneral tolerances ISO 2768-mK", numbered: true, frame: false, size: 1 }
+      : { type: "note", p: pts[0], title: "NOTE", text: "Muchiile nespecificate se teșesc 0,5×45°\nToleranțe generale ISO 2768-mK", numbered: true, frame: false, size: 1 }),
   },
   { id: "revtab", label: "Tabel rev.", key: "E", group: "Documentare", icon: "M3 6h18v12H3zM3 10h18M3 14h18M8 6v12M17 6v12", kind: "clicks", n: 1,
     hint: "Click pe colțul dreapta-sus al cartușului: tabelul se așază deasupra, aliniat la dreapta",

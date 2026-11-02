@@ -8,6 +8,7 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -386,6 +387,49 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(sum(1 for b in plate["bulges"] if abs(abs(b) - 0.4142) < 0.02), 2)
         # colțul de la teșitură (170, 180) rămâne la 0,4 mm, după îndreptarea scanului
         self.assertTrue(any(abs(x / MM - 170) < 0.4 and abs(y / MM - 180) < 0.4 for x, y in plate["pts"]))
+
+    def test_page_rotate_delete_move(self):
+        """Rotirea, ștergerea și mutarea paginilor se văd peste tot și rămân la export."""
+        import pikepdf
+        import pypdfium2 as pdfium
+
+        meta = self.open_sample()
+        doc = meta["id"]
+        w0, h0 = meta["pages"][0]["w"], meta["pages"][0]["h"]
+        snap0 = self.req("GET", f"/api/doc/{doc}/page/0/snap")
+        corner = next(p for p in snap0["pts"] if abs(p[0] - 90 * MM) < 0.05 and abs(p[1] - 75 * MM) < 0.05)
+        state = {"v": 1, "annots": [{"id": "a1", "type": "text", "page": 0, "p": [10, 20], "txt": "x"}]}
+        r = self.req("POST", f"/api/doc/{doc}/pages", {"op": "rotate", "pages": [0], "delta": 90, "state": state})
+        self.assertEqual(r["lv"], 1)
+        self.assertAlmostEqual(r["pages"][0]["w"], h0, places=2)
+        self.assertAlmostEqual(r["pages"][0]["h"], w0, places=2)
+        # colțul (90, 75) mm ajunge, după rotirea la dreapta, la (H − 75, 90)
+        snap = self.req("GET", f"/api/doc/{doc}/page/0/snap?v=1")
+        want = (h0 - corner[1], corner[0])
+        self.assertTrue(any(abs(p[0] - want[0]) < 0.05 and abs(p[1] - want[1]) < 0.05 for p in snap["pts"]))
+        self.assertEqual(self.req("GET", f"/api/doc/{doc}")["state"]["annots"][0]["id"], "a1")
+        pdf, _h = self.req("POST", f"/api/doc/{doc}/export", {"filename": "r.pdf", "pageSel": [0]}, raw=True)
+        with pikepdf.open(io.BytesIO(pdf)) as pk:
+            self.assertEqual(int(pk.pages[0].obj.get("/Rotate", 0)), 90)
+        # mutare: pagina 2 (rotită deja în fișier) vine prima; ștergerea o lasă singură
+        r = self.req("POST", f"/api/doc/{doc}/pages", {"op": "move", "page": 1, "to": 0})
+        self.assertEqual(r["pages"][0]["rot"], 90)
+        r = self.req("POST", f"/api/doc/{doc}/pages", {"op": "delete", "pages": [1]})
+        self.assertEqual(len(r["pages"]), 1)
+        pdf, _h = self.req("POST", f"/api/doc/{doc}/export", {"filename": "r.pdf"}, raw=True)
+        self.assertEqual(len(pdfium.PdfDocument(pdf)), 1)
+        # nu se pot șterge toate paginile
+        with self.assertRaises(urllib.error.HTTPError):
+            self.req("POST", f"/api/doc/{doc}/pages", {"op": "delete", "pages": [0]})
+
+    def test_render_clip(self):
+        """Zoom mare: doar zona vizibilă, la rezoluție mare."""
+        from PIL import Image
+
+        meta = self.open_sample()
+        png, _h = self.req("GET", f"/api/doc/{meta['id']}/page/0/render?scale=20&clip=100,100,140,130", raw=True)
+        im = Image.open(io.BytesIO(png))
+        self.assertEqual(im.size, (800, 600))
 
     def test_image_open(self):
         from PIL import Image

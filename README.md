@@ -143,7 +143,7 @@ Modurile se aleg din săgeata de lângă „Snap”, în bara de jos. Taste: **F
 
 **Taste și comenzi:** sunt două moduri. Se aleg din **Setări → Taste și comenzi** sau scriind comanda `ALIASEDIT`.
 - **Taste directe** (implicit): o tastă pornește unealta (tabelul de mai jos). **Enter** deschide linia de comandă din bara de jos: scrii `DLI`, `C`, `PL`… și dai Spațiu sau Enter.
-- **Ca în AutoCAD:** scrii comanda oriunde pe desen. Ea apare în linia de comandă, cu sugestii, iar **Spațiu** sau **Enter** o pornește. Spațiu sau Enter fără nimic scris repetă ultima comandă, iar la polilinie o termină. Spațiu ținut + tragere mută foaia.
+- **Comenzi AutoCAD:** scrii comanda oriunde pe desen. Ea apare în linia de comandă, cu sugestii, iar **Spațiu** sau **Enter** o pornește. Spațiu sau Enter fără nimic scris repetă ultima comandă, iar la polilinie o termină. Spațiu ținut + tragere mută foaia.
 
 Prescurtările implicite urmează AutoCAD: `L` linie, `PL` polilinie, `REC` dreptunghi, `C` cerc, `A` arc, `H` hașură, `CM` axe cerc, `DLI` / `DAL` / `DDI` / `DRA` / `DAN` cote, `LE` indicație, `T` / `MT` text, `TOL` GD&T, `E` șterge (cu selecție: șterge selecția), `DI` măsoară, `P` mută, `U` anulează, `Z` potrivește pagina, `OS` / `OR` snap / ortho, `OP` setări. Comenzile fără echivalent în AutoCAD au nume scurte: `RUG` rugozitate, `NOTE`, `REV` tabel de revizii, `BOM`, `SEC` secțiune, `DET` detaliu, `BAL` reper, `STR` taie cota, `WO` acoperire, `CALIB` calibrare. Merge și numele uneltei („cerc”, „rază”).
 
@@ -194,6 +194,8 @@ Tastele directe implicite:
 - Esc: renunță la operația curentă
 - rotița mouse-ului: zoom
 - Space + tragere, sau butonul din mijloc: mută foaia
+
+**Cota de diametru** are întotdeauna săgeți pline, ca linia de indicație, chiar dacă pentru celelalte cote ai ales capete deschise, oblice sau punct.
 
 **Editare:** la o adnotare selectată, pătrățelele mută punctele, iar cercul alb mută textul cotei de-a lungul liniei. Tragerea de corp mută toată adnotarea.
 
@@ -280,6 +282,28 @@ Tastele directe implicite:
 - **PDF-urile exportate pe calculator** nu sunt afectate de această curățare.
 
 **Redeschidere:** un PDF exportat cu „strat editabil” se poate redeschide. Cotele revin editabile, iar originalul este recuperat din fișier, deci nimic nu se desenează de două ori.
+
+### Pagini: rotire, ordine, ștergere
+
+Lângă filele paginilor sunt două butoane, ⟲ și ⟳, care rotesc pagina curentă cu 90° (comenzile `ROTL` / `ROTR`). Al treilea buton (sau comanda `PAGES`) deschide dialogul **Pagini**. Acolo vezi miniaturile și ai, pentru fiecare pagină:
+- rotire la stânga / dreapta;
+- mutare înainte / după;
+- ștergere (cere confirmare dacă pagina are adnotări).
+
+Tot de acolo se rotesc toate paginile odată (90° sau 180°).
+
+- **Exportul păstrează rotirea și ordinea** (PDF și DXF). Fișierul încărcat rămâne neschimbat pe server; ordinea și rotirea stau separat și se aplică la randare și la export.
+- **Cotele și celelalte adnotări se rotesc odată cu pagina.** O cotă orizontală devine verticală și măsoară la fel, textele se rotesc, iar tabelele (revizii, componente) rămân orizontale, mutate în locul corespunzător.
+- **Ctrl+Z nu anulează operația pe pagină.** Pentru asta rotești sau muți înapoi. Istoricul adnotărilor se transformă și el, deci anularea modificărilor de dinainte merge corect.
+- **OCR-ul** se ține minte pentru fiecare orientare a paginii.
+
+### Zoom
+
+Zoom-ul merge până la 3000%. Peste rezoluția randării întregii pagini (~20 MP), serverul randează doar zona vizibilă, la rezoluția ecranului. Liniile rămân clare la orice mărire, iar zona se reîncarcă singură la deplasare.
+
+### Limbă
+
+Interfața e în română sau engleză: se alege în **Setări** sau pe pagina de start; implicit urmează limba browserului. Separat, pentru fiecare document, **Setări → Limba textelor din desen** alege limba antetelor de tabel (Rev. / Modificare / Data / Nume sau Rev. / Description / Date / Name, Poz. / Denumire / Buc. sau Item / Description / Qty) și a notelor implicite. Documentele noi pornesc cu limba interfeței (în engleză și cu punct zecimal).
 
 ### Text, căutare și OCR
 

@@ -4,7 +4,7 @@ export const MM_POSITIONS = ["Dreapta", "Dreapta-sus", "Sus", "Stânga-sus", "St
 export const MM_DEFAULT = ["dimRad", "dimDia", "last", "measure", "undo", "lead", "seldel", "text"];
 export const MM_SPECIAL = [
   ["last", "Ultima comandă folosită"],
-  ["undo", "Anulează"],
+  ["undo", "Anulează acțiunea"],
   ["redo", "Refă"],
   ["seldel", "Linie, sau Șterge selecția când ai ceva selectat"],
   ["del", "Șterge selecția"],

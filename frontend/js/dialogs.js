@@ -3,6 +3,7 @@ import * as api from "./api.js";
 import { K, fmtNum, parseNum, DEFAULT_SETTINGS } from "./annots.js";
 import { MM_POSITIONS, MM_DEFAULT, MM_SPECIAL, markingConfig } from "./mmenu.js";
 import { TOOLS } from "./tools.js";
+import { lang as uiLang, setLang, LANGS } from "./i18n.js";
 import { commandList, conflicts, defaultKeyConfig, keyConfig, saveKeyConfig, labelOf, RESERVED_KEYS, DEFAULT_ALIASES, ACTIONS } from "./commands.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -78,7 +79,7 @@ export function recentHtml(docs, retentionDays, mode = "personal") {
     <div class="item">
       <button class="open" data-doc="${d.id}">
         <span class="badge ${d.kind === "image" ? "img" : "pdf"}">${d.kind === "image" ? "IMG" : "PDF"}</span>
-        <span style="flex:1;display:flex;flex-direction:column;gap:2px;min-width:0"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}</span>
+        <span style="flex:1;display:flex;flex-direction:column;gap:2px;min-width:0"><span translate="no" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}</span>
         <span class="muted" style="font-size:12px">${(d.pages || []).length} pagini · ${ago(d.updated)}${daysLeft(d.expires)}</span></span>
       </button>
       <button class="icon del" data-del="${d.id}" data-name="${esc(d.name)}" title="Șterge de pe server" aria-label="Șterge ${esc(d.name)} de pe server"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></button>
@@ -320,6 +321,84 @@ export function exportDialog(app, opts = {}) {
   });
 }
 
+// ------------------------------------------------------------------ pagini
+export function pagesDialog(app) {
+  const ico = (d) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
+  const RL = ico("M4 4v6h6M4.6 15a8 8 0 1 0 1.9-8.3L4 10");
+  const RR = ico("M20 4v6h-6M19.4 15a8 8 0 1 1-1.9-8.3L20 10");
+  const dlg = showModal(`
+    <h2>Pagini</h2>
+    <div class="row" style="margin-bottom:10px;align-items:center">
+      <span class="muted" style="flex:1">Rotirea și ordinea rămân la export; fișierul încărcat nu se modifică. Cotele se rotesc odată cu pagina.</span>
+      <button class="ghost" data-all="-90">${RL} Toate la stânga</button><button class="ghost" data-all="90">${RR} Toate la dreapta</button><button class="ghost" data-all="180">180°</button>
+    </div>
+    <div class="pggrid" id="pgGrid"></div>
+    <div class="foot"><span class="muted" id="pgMsg" style="flex:1"></span><button class="primary" data-close>Gata</button></div>`);
+  const grid = dlg.querySelector("#pgGrid");
+  const msg = dlg.querySelector("#pgMsg");
+  let armed = -1;
+  const render = () => {
+    const pages = app.doc.pages;
+    const v = app.doc.lv || 0;
+    grid.innerHTML = pages.map((p, i) => {
+      const s = Math.min(160 / p.w, 160 / p.h);
+      const nAnn = app.annots.filter((a) => (a.page || 0) === i).length;
+      return `<div class="pgcard${i === app.page ? " on" : ""}" data-i="${i}">
+        <button class="thumb" data-go="${i}" title="Deschide pagina ${i + 1}"><img alt="Pagina ${i + 1}" loading="lazy" src="${api.renderUrl(app.doc.id, i, Math.round(s * 1000) / 1000, `&v=${v}`)}"></button>
+        <div class="pgl"><b>${i + 1}</b><span class="muted">${Math.round(p.w / K)}×${Math.round(p.h / K)} mm${nAnn ? ` · ${nAnn} adn.` : ""}</span></div>
+        <div class="pgb">
+          <button class="mini" data-op="rl" title="Rotește la stânga">${RL}</button>
+          <button class="mini" data-op="rr" title="Rotește la dreapta">${RR}</button>
+          <button class="mini" data-op="up" title="Mută înainte" ${i === 0 ? "disabled" : ""}>${ico("M15 6l-6 6 6 6")}</button>
+          <button class="mini" data-op="dn" title="Mută după" ${i === pages.length - 1 ? "disabled" : ""}>${ico("M9 6l6 6-6 6")}</button>
+          <button class="mini del${armed === i ? " armed" : ""}" data-op="del" title="${armed === i ? "Apasă încă o dată ca să ștergi" : "Șterge pagina"}" ${pages.length === 1 ? "disabled" : ""}>${armed === i ? "Sigur?" : ico("M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13")}</button>
+        </div></div>`;
+    }).join("");
+  };
+  const run = async (op, text) => {
+    msg.textContent = "…";
+    grid.classList.add("busy");
+    try {
+      await app.pageOp(op);
+      msg.textContent = text || "";
+    } catch (e) {
+      msg.textContent = e.message;
+    }
+    grid.classList.remove("busy");
+    armed = -1;
+    render();
+    // butonul apăsat a dispărut odată cu grila: focalizarea rămâne în dialog, ca Esc să-l închidă
+    dlg.querySelector(".foot .primary").focus();
+  };
+  grid.addEventListener("click", (e) => {
+    const go = e.target.closest("[data-go]");
+    if (go) {
+      app.setPage(Number(go.dataset.go));
+      closeModal();
+      return;
+    }
+    const b = e.target.closest("[data-op]");
+    if (!b || b.disabled) return;
+    const i = Number(b.closest("[data-i]").dataset.i);
+    const op = b.dataset.op;
+    if (op === "rl" || op === "rr") run({ op: "rotate", pages: [i], delta: op === "rr" ? 90 : -90 }, `Pagina ${i + 1} rotită`);
+    else if (op === "up") run({ op: "move", page: i, to: i - 1 }, `Pagina ${i + 1} mutată înainte`);
+    else if (op === "dn") run({ op: "move", page: i, to: i + 1 }, `Pagina ${i + 1} mutată după`);
+    else if (op === "del") {
+      const nAnn = app.annots.filter((a) => (a.page || 0) === i).length;
+      if (armed !== i) {
+        armed = i;
+        msg.textContent = nAnn ? `Pagina ${i + 1} are ${nAnn} adnotări: se șterg și ele.` : "";
+        render();
+        return;
+      }
+      run({ op: "delete", pages: [i] }, `Pagina ${i + 1} ștearsă`);
+    }
+  });
+  dlg.querySelectorAll("[data-all]").forEach((b) => b.addEventListener("click", () => run({ op: "rotate", pages: null, delta: Number(b.dataset.all) }, "Toate paginile rotite")));
+  render();
+}
+
 // ------------------------------------------------------------------ salvare fișier
 /** Salvează un fișier generat. În aplicația desktop deschide dialogul „Salvează ca” al sistemului;
  *  în browser îl descarcă. Întoarce numele salvat sau null dacă utilizatorul a renunțat. */
@@ -425,7 +504,7 @@ export async function textDialog(app) {
     };
     $list.innerHTML = hits.slice(0, 300).map((it, i) => `<div class="it" data-i="${i}">
       <span class="src ${it.src === "OCR" ? (it.conf >= 75 ? "ok" : "low") : ""}">${it.src}</span>
-      <span class="t">${mark(it.text)}</span>${nPages > 1 ? `<span class="v">p. ${it.page + 1}</span>` : ""}</div>`).join("")
+      <span class="t" translate="no">${mark(it.text)}</span>${nPages > 1 ? `<span class="v">p. ${it.page + 1}</span>` : ""}</div>`).join("")
       + (hits.length > 300 ? `<div class="muted" style="padding:6px 8px">… încă ${hits.length - 300}</div>` : "");
     $list.querySelectorAll("[data-i]").forEach((el) => el.addEventListener("click", () => {
       const it = hits[Number(el.dataset.i)];
@@ -496,7 +575,7 @@ export async function textDialog(app) {
   // textele PDF și OCR-ul deja făcut, pentru paginile în care se caută
   await Promise.all(pagesToRead.map(async (n) => {
     try {
-      native.set(n, (await api.pageText(app.doc.id, n)).items);
+      native.set(n, (await api.pageText(app.doc.id, n, app.doc.lv || 0)).items);
     } catch (_) { native.set(n, []); }
     if (app.ocrPages.has(n) && !app.ocr.get(n)) {
       try { await app.loadOcr(n); } catch (_) { /* fără OCR */ }
@@ -565,9 +644,19 @@ export function settingsDialog(app) {
       <div class="mmgrid" id="sMm">${mmGridHtml(markingConfig())}</div>
       <div class="row"><button class="ghost" id="sMmReset">Revino la implicit</button><span class="sub">Alegi trăgând spre comandă și eliberând butonul; pe ecran tactil, apăsare lungă.</span></div>
     </div>
+    <div class="cols">
+      <div class="sec">
+        <div class="lbl">Limba interfeței · Language</div>
+        <div class="seg">${LANGS.map(([v, l]) => `<button data-uilang="${v}" class="${uiLang() === v ? "on" : ""}" translate="no">${l}</button>`).join("")}</div>
+      </div>
+      <div class="sec">
+        <div class="lbl">Limba textelor din desen (antete de tabel, note) · documentul curent</div>
+        <div class="seg">${opt("dlang", S.dlang || "ro", [["ro", "Română"], ["en", "English"]])}</div>
+      </div>
+    </div>
     <div class="sec">
       <div class="lbl">Taste și comenzi · pentru toate documentele</div>
-      <div class="row"><button class="ghost" id="sKeys">Taste și comenzi…</button><span class="sub">Acum: ${keyConfig().mode === "autocad" ? "comenzi scrise ca în AutoCAD (L, C, DLI… + Spațiu)" : "taste directe (o tastă = o unealtă); Enter deschide linia de comandă"}.</span></div>
+      <div class="row"><button class="ghost" id="sKeys">Taste și comenzi…</button><span class="sub">Acum: ${keyConfig().mode === "autocad" ? "comenzi AutoCAD (L, C, DLI… + Spațiu)" : "taste directe (o tastă = o unealtă); Enter deschide linia de comandă"}.</span></div>
     </div>
     <div class="foot"><label class="chk" style="flex:1"><input type="checkbox" id="sDef"> Folosește ca implicit pentru documente noi</label>
       <button class="ghost" data-close>Închide</button><button class="primary" id="sSave">Aplică</button></div>`);
@@ -604,6 +693,11 @@ export function settingsDialog(app) {
     });
   }
   dlg.querySelector("#sKeys").addEventListener("click", () => keysDialog(app));
+  dlg.querySelectorAll("[data-uilang]").forEach((b) => b.addEventListener("click", () => {
+    if (b.dataset.uilang === uiLang()) return;
+    setLang(b.dataset.uilang);
+    location.reload();
+  }));
   dlg.querySelector("#sMmReset").addEventListener("click", () => {
     dlg.querySelector("#sMm").innerHTML = mmGridHtml(MM_DEFAULT);
   });
@@ -651,14 +745,14 @@ export function keysDialog(app) {
     <h2>Taste și comenzi</h2>
     <div class="seg" id="kMode" style="margin-bottom:8px">
       <button data-mode="direct" class="${cfg.mode === "direct" ? "on" : ""}">Taste directe</button>
-      <button data-mode="autocad" class="${cfg.mode === "autocad" ? "on" : ""}">Ca în AutoCAD</button></div>
+      <button data-mode="autocad" class="${cfg.mode === "autocad" ? "on" : ""}">Comenzi AutoCAD</button></div>
     <div class="note" id="kHelp"></div>
     <div class="field" style="margin-top:8px"><label for="kQ">Caută</label><input type="search" id="kQ" placeholder="ex.: cerc, DLI, rază"></div>
     <div class="keytab"><table><thead><tr><th>Comandă</th><th>Tastă</th><th>Prescurtări (despărțite prin virgulă)</th></tr></thead><tbody id="kRows">${rowsHtml()}</tbody></table></div>
     <div class="foot"><span class="muted" id="kMsg" style="flex:1"></span><button class="ghost" id="kReset">Revino la implicit</button><button class="ghost" data-close>Anulează</button><button class="primary" id="kSave">Aplică</button></div>`);
   const help = () => {
     dlg.querySelector("#kHelp").innerHTML = cfg.mode === "autocad"
-      ? "<b>Ca în AutoCAD:</b> scrii comanda oriunde pe desen (apare jos, în linia de comandă, cu sugestii) și o pornești cu <b>Spațiu</b> sau <b>Enter</b>. Spațiu sau Enter fără nimic scris <b>repetă ultima comandă</b>; la polilinie o termină. Spațiu ținut + tragere mută desenul, Esc renunță. Tastele directe nu se folosesc în acest mod."
+      ? "<b>Comenzi AutoCAD:</b> scrii comanda oriunde pe desen (apare jos, în linia de comandă, cu sugestii) și o pornești cu <b>Spațiu</b> sau <b>Enter</b>. Spațiu sau Enter fără nimic scris <b>repetă ultima comandă</b>; la polilinie o termină. Spațiu ținut + tragere mută desenul, Esc renunță. Tastele directe nu se folosesc în acest mod."
       : "<b>Taste directe:</b> o tastă pornește unealta (coloana Tastă). Comenzile din coloana a treia merg și aici: <b>Enter</b> deschide linia de comandă de jos, scrii de exemplu <b class=\"mono\">DLI</b> și dai Spațiu sau Enter.";
   };
   help();
@@ -727,16 +821,18 @@ export function keysDialog(app) {
     saveKeyConfig(cfg);
     app.applyKeyCfg(cfg);
     closeModal();
-    toast(cfg.mode === "autocad" ? "Comenzi ca în AutoCAD: scrie comanda + Spațiu" : "Taste directe; Enter deschide linia de comandă");
+    toast(cfg.mode === "autocad" ? "Comenzi AutoCAD: scrie comanda + Spațiu" : "Taste directe; Enter deschide linia de comandă");
   });
   check();
 }
 
 export function storedDefaults() {
+  // documentele noi: textele din desen și separatorul zecimal după limba interfeței
+  const byLang = uiLang() === "en" ? { dlang: "en", sep: "." } : { dlang: "ro" };
   try {
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem("cotare.defaults") || "{}") };
+    return { ...DEFAULT_SETTINGS, ...byLang, ...JSON.parse(localStorage.getItem("cotare.defaults") || "{}") };
   } catch (_) {
-    return { ...DEFAULT_SETTINGS };
+    return { ...DEFAULT_SETTINGS, ...byLang };
   }
 }
 

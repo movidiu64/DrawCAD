@@ -9,6 +9,8 @@ import * as dlg from "./dialogs.js";
 import { VIEW_LETTERS } from "./symbols.js";
 import { markingConfig, MM_ICONS } from "./mmenu.js";
 import { keyConfig, directKeyMap, resolveCommand, suggest, commandList } from "./commands.js";
+import { applyPageOp } from "./pages.js";
+import { startI18n, lang as uiLang, tr } from "./i18n.js";
 
 const $ = (id) => document.getElementById(id);
 /** Hash scurt (FNV-1a) pentru cheile de randare. */
@@ -117,7 +119,7 @@ class App {
         return last ? tool(last.id) : tool("dimLin");
       }
       case "undo":
-        return { id, label: "Anulează", icon: MM_ICONS.undo, run: () => this.doUndo() };
+        return { id, label: "Anulează acțiunea", icon: MM_ICONS.undo, run: () => this.doUndo() };
       case "redo":
         return { id, label: "Refă", icon: MM_ICONS.redo, run: () => this.doRedo() };
       case "del":
@@ -265,6 +267,7 @@ class App {
   }
 
   async init() {
+    startI18n(); // în engleză, textele apar traduse pe măsură ce se construiește interfața
     await document.fonts.load("16px osifont").catch(() => {});
     try {
       const h = await (await fetch("api/health")).json();
@@ -351,6 +354,16 @@ class App {
     window.addEventListener("pagehide", () => this.flushSaveBeacon());
     $("btnSettings").addEventListener("click", () => this.doc && dlg.settingsDialog(this));
     $("btnText").addEventListener("click", () => this.doc && dlg.textDialog(this));
+    document.querySelectorAll(".langsw [data-uilang]").forEach((b) => {
+      b.classList.toggle("on", b.dataset.uilang === uiLang());
+      b.addEventListener("click", () => {
+        if (b.dataset.uilang === uiLang()) return;
+        try {
+          localStorage.setItem("drawcad.lang", b.dataset.uilang);
+        } catch (_) { /* stocare indisponibilă */ }
+        location.reload();
+      });
+    });
     $("btnUndo").addEventListener("click", () => this.doUndo());
     $("btnRedo").addEventListener("click", () => this.doRedo());
     $("btnZoomIn").addEventListener("click", () => this.view.zoomAt(1.25, this.view.cw / 2, this.view.ch / 2));
@@ -498,7 +511,7 @@ class App {
     this.panel.render();
     this.snapper = new Snapper();
     this.clearAcq();
-    api.snap(this.doc.id, n).then((s) => {
+    api.snap(this.doc.id, n, this.doc.lv || 0).then((s) => {
       if (this.page === n) this.snapper = new Snapper(s);
     }).catch(() => {});
     if (this.showOcr && this.ocrPages.has(n)) this.loadOcr(n).catch(() => {});
@@ -538,8 +551,59 @@ class App {
 
   renderTabs() {
     const tabs = this.doc.pages.map((p, i) => `<button class="${i === this.page ? "on" : ""}" data-pg="${i}">Pagina ${i + 1}</button>`).join("");
-    $("pageTabs").innerHTML = `${tabs}<span class="legend">Original: negru · Adăugat: albastru · Revizie: roșu</span>`;
+    const ico = (d) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
+    const ops = `<span class="pgops">
+      <button class="mini" data-pgop="rl" title="Rotește pagina la stânga (ROTL)" aria-label="Rotește pagina la stânga">${ico("M4 4v6h6M4.6 15a8 8 0 1 0 1.9-8.3L4 10")}</button>
+      <button class="mini" data-pgop="rr" title="Rotește pagina la dreapta (ROTR)" aria-label="Rotește pagina la dreapta">${ico("M20 4v6h-6M19.4 15a8 8 0 1 1-1.9-8.3L20 10")}</button>
+      <button class="mini" data-pgop="dlg" title="Pagini: rotire, ordine, ștergere (PAGES)" aria-label="Pagini">${ico("M5 3h9l5 5v13H5zM14 3v5h5")}</button></span>`;
+    $("pageTabs").innerHTML = `${tabs}${ops}<span class="legend">Original: negru · Adăugat: albastru · Revizie: roșu</span>`;
     $("pageTabs").querySelectorAll("[data-pg]").forEach((b) => b.addEventListener("click", () => this.setPage(Number(b.dataset.pg))));
+    $("pageTabs").querySelectorAll("[data-pgop]").forEach((b) => b.addEventListener("click", () => {
+      const k = b.dataset.pgop;
+      if (k === "dlg") dlg.pagesDialog(this);
+      else this.pageOp({ op: "rotate", pages: [this.page], delta: k === "rr" ? 90 : -90 }).catch((e) => dlg.toast(e.message));
+    }));
+  }
+
+  /** Rotire / ștergere / mutare de pagini: adnotările (și istoricul de anulare) se transformă odată
+   *  cu pagina, iar serverul primește starea nouă împreună cu operația. */
+  async pageOp(op) {
+    if (!this.doc || this._pageBusy) return;
+    const n = this.doc.pages.length;
+    const full = { ...op, count: n, sizes: this.doc.pages.map((p) => [p.w, p.h]) };
+    const S = this.S();
+    const tr = (list) => applyPageOp(list, full, S, this.measure);
+    const annots = tr(this.annots);
+    this._pageBusy = true;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    try {
+      const res = await api.pageOp(this.doc.id, { ...op, state: { ...this.stateJson(), annots } });
+      this.annots = annots;
+      this.undo = this.undo.map((st) => JSON.stringify(tr(JSON.parse(st))));
+      this.redo = this.redo.map((st) => JSON.stringify(tr(JSON.parse(st))));
+      this.cache.clear();
+      this.doc.pages = res.pages;
+      this.doc.lv = res.lv;
+      this.ocrPages = new Set(res.ocrPages || []);
+      this.ocr = new Map();
+      let pg = this.page;
+      if (op.op === "delete") pg = Math.min(pg - op.pages.filter((d) => d < pg).length, res.pages.length - 1);
+      if (op.op === "move") {
+        const order = [...Array(n).keys()];
+        order.splice(op.to, 0, order.splice(op.page, 1)[0]);
+        pg = order.indexOf(this.page);
+      }
+      this.selectedId = null;
+      this.sel = new Set();
+      this.unexported = true;
+      this.setSaveState("saved");
+      $("docMeta").textContent = `${this.doc.kind === "image" ? "imagine" : "PDF"} · ${res.pages.length} ${res.pages.length === 1 ? "pagină" : "pagini"}`;
+      this.setPage(Math.max(0, pg));
+      this.updateButtons();
+    } finally {
+      this._pageBusy = false;
+    }
   }
 
   // ------------------------------------------------------------ stare și istoric
@@ -764,7 +828,8 @@ class App {
 
   renderQueryBase(n) {
     const ink = this.settings.ink;
-    let q = "";
+    // versiunea paginilor (rotire, ordine): randările vechi din cache-ul browserului nu se mai folosesc
+    let q = this.doc && this.doc.lv ? `&v=${this.doc.lv}` : "";
     if (ink && ink.all) q += `&ink=1&fills=${ink.fills || "black"}${ink.images ? "&img=1" : ""}`;
     else {
       const ids = this.annots.filter((a) => a.type === "ink" && a.page === n).flatMap((a) => a.ids || []);
@@ -992,7 +1057,8 @@ class App {
     for (const rev of keys) {
       if (have.has(rev)) continue;
       const vals = by.get(rev);
-      rows.push({ rev, desc: vals.length ? `Cote modificate: ${vals.join(", ")}` : "Cote modificate", date: today, name: this.settings.author || "" });
+      const word = this.settings.dlang === "en" ? "Modified dimensions" : "Cote modificate";
+      rows.push({ rev, desc: vals.length ? `${word}: ${vals.join(", ")}` : word, date: today, name: this.settings.author || "" });
     }
     if (ensureOne && !rows.length && !existing.length) {
       rows.push({ rev: this.settings.revNo || "1", desc: "", date: today, name: this.settings.author || "" });
@@ -1842,7 +1908,7 @@ class App {
       const c = byId[b.dataset.tool];
       if (!c) return;
       const bits = [c.key, c.aliases[0]].filter(Boolean);
-      b.title = `${c.label}${bits.length ? ` (${[...new Set(bits)].join(" · ")})` : ""}`;
+      b.title = `${tr(c.label)}${bits.length ? ` (${[...new Set(bits)].join(" · ")})` : ""}`;
     });
     const inp = $("cmdIn");
     if (inp) inp.placeholder = cfg.mode === "autocad" ? "Comandă (L, C, PL, DLI…)" : "Enter → comandă (L, C, DLI…)";
@@ -1984,6 +2050,9 @@ class App {
       selAll: () => this.doc && this.selectMany(this.visibleBuilt().map(({ a }) => a.id)),
       nextPage: () => this.doc && this.page < this.doc.pages.length - 1 && this.setPage(this.page + 1),
       prevPage: () => this.doc && this.page > 0 && this.setPage(this.page - 1),
+      rotR: () => needDoc() && this.pageOp({ op: "rotate", pages: [this.page], delta: 90 }).catch((e) => dlg.toast(e.message)),
+      rotL: () => needDoc() && this.pageOp({ op: "rotate", pages: [this.page], delta: -90 }).catch((e) => dlg.toast(e.message)),
+      pages: () => needDoc() && dlg.pagesDialog(this),
     }[id];
     if (!act) return;
     act();

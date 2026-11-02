@@ -147,8 +147,45 @@ def _doc_dir(doc_id: str) -> Path:
     return d
 
 
+_LAYOUTS: dict = {}  # doc_id → ordinea / rotirea paginilor (None = ca în fișier)
+
+
+def _layout(doc_id: str):
+    if doc_id not in _LAYOUTS:
+        lay = (_read_json(_doc_dir(doc_id) / "meta.json", {}) or {}).get("layout")
+        _LAYOUTS[doc_id] = lay if isinstance(lay, list) and lay else None
+    return _LAYOUTS[doc_id]
+
+
 def _original(doc_id: str) -> bytes:
-    return _bytes_cache.get_or(doc_id, lambda: (_doc_dir(doc_id) / "original.pdf").read_bytes())
+    """PDF-ul de lucru: fișierul încărcat, cu paginile rotite / reordonate / șterse din editor.
+    Tot restul (randare, snap, ștergeri, OCR, export) lucrează pe el, deci rotirea rămâne și la export."""
+    raw = lambda: (_doc_dir(doc_id) / "original.pdf").read_bytes()  # noqa: E731
+    lay = _layout(doc_id)
+    if not lay:
+        return _bytes_cache.get_or(doc_id, raw)
+    return _bytes_cache.get_or((doc_id, "L"), lambda: pdfcore.apply_layout(raw(), lay))
+
+
+def _purge(doc_id: str):
+    """Uită tot ce s-a calculat pentru document (după ștergere sau după rotirea paginilor)."""
+    _bytes_cache.pop(doc_id, None)
+    _bytes_cache.pop((doc_id, "L"), None)
+    _LAYOUTS.pop(doc_id, None)
+    for c in (_render_cache, _ink_cache, _snap_cache, _text_cache):
+        for k in [k for k in c if isinstance(k, tuple) and (k[0] == doc_id or (len(k) > 1 and k[1] == doc_id))]:
+            c.pop(k, None)
+
+
+def _pkey(doc_id: str, n: int) -> str:
+    """Numele fișierelor de cache (OCR, vectorizare) ale paginii: legat de pagina din fișierul
+    încărcat și de rotirea ei, nu de poziția curentă (care se schimbă la reordonare)."""
+    lay = _layout(doc_id)
+    if not lay or n >= len(lay):
+        return f"p{n}"
+    it = lay[n]
+    rot = int(it.get("rot", 0)) % 360
+    return f"p{int(it['src'])}" + (f"r{rot}" if rot else "")
 
 
 def _read_json(path: Path, default=None):
@@ -398,15 +435,12 @@ async def api_doc(request: Request):
     meta = _read_json(d / "meta.json", {})
     if request.method == "DELETE":
         shutil.rmtree(d, ignore_errors=True)
-        _bytes_cache.pop(doc_id, None)
-        for c in (_render_cache, _ink_cache, _snap_cache, _text_cache):
-            for k in [k for k in c if k[0] == doc_id or (len(k) > 1 and k[1] == doc_id)]:
-                c.pop(k, None)
+        _purge(doc_id)
         return JSONResponse({"ok": True})
     meta["accessed"] = time.time()
     _write_json(d / "meta.json", meta)
     pub = {k: v for k, v in meta.items() if k != "owner"}
-    ocr_pages = sorted(int(f.stem[1:]) for f in (d / "ocr").glob("p*.json") if f.stem[1:].isdigit()) if (d / "ocr").is_dir() else []
+    ocr_pages = _ocr_pages(doc_id, meta)
     return JSONResponse({**pub, "expires": _expires(meta), "state": _read_json(d / "state.json"), "ocrPages": ocr_pages})
 
 
@@ -452,13 +486,37 @@ async def api_render(request: Request):
         ink = {"all": True, "fills": request.query_params.get("fills", "black"), "images": request.query_params.get("img") == "1"}
     bk = [x for x in request.query_params.get("bk", "").split(",") if _OID_RE.match(x)][:5000]
     ops = [{"mode": "black", "ids": bk}] if bk else None
-    key = (doc_id, n, scale, json.dumps(ink, sort_keys=True), ",".join(bk))
+    clip = _clip(request.query_params.get("clip"), p)
+    if clip:
+        scale = round(max(0.1, min(float(request.query_params.get("scale", "1")), 64)), 3)
+        if (clip[2] - clip[0]) * (clip[3] - clip[1]) * scale * scale > CLIP_MAX_PX:
+            return _err("Zonă prea mare")
+    key = (doc_id, n, scale, json.dumps(ink, sort_keys=True), ",".join(bk), clip)
 
     def work():
-        return _render_cache.get_or(key, lambda: pdfcore.render_png(_source(doc_id, n, ink), n, scale, ops))
+        return _render_cache.get_or(key, lambda: pdfcore.render_png(_source(doc_id, n, ink), n, scale, ops, clip=clip))
 
     png = await run_in_threadpool(work)
     return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=3600", "X-Scale": str(scale)})
+
+
+CLIP_MAX_PX = 24e6  # o zonă de detaliu: cât un ecran 4K de câteva ori
+
+
+def _clip(raw, page):
+    """Zona de randat „x0,y0,x1,y1” în puncte vizuale (detaliu la zoom mare) sau None."""
+    if not raw or not page:
+        return None
+    try:
+        v = [float(x) for x in str(raw).split(",")]
+    except ValueError:
+        return None
+    if len(v) != 4 or not all(abs(x) < 1e6 for x in v):
+        return None
+    x0, y0, x1, y1 = max(0.0, v[0]), max(0.0, v[1]), min(page["w"], v[2]), min(page["h"], v[3])
+    if x1 - x0 < 1 or y1 - y0 < 1:
+        return None
+    return (round(x0, 2), round(y0, 2), round(x1, 2), round(y1, 2))
 
 
 def _meta_page(doc_id, n):
@@ -484,24 +542,94 @@ async def api_preview(request: Request):
     ops = body.get("ops", [])
     p = _meta_page(doc_id, n)
     try:
-        scale = min(float(body.get("scale", 2)), 16)
+        scale = min(float(body.get("scale", 2)), 64)
     except (TypeError, ValueError):
         return _err("Scară invalidă")
     try:
         ops = _clean_ops(ops)
     except ValueError as e:
         return _err(str(e))
-    if p and max(p["w"], p["h"]) * scale > MAX_RENDER_PX:
+    clip = _clip(body.get("clip"), p) if isinstance(body.get("clip"), str) else None
+    if clip:
+        scale = round(max(0.1, min(float(body.get("scale", 2)), 64)), 3)
+        if (clip[2] - clip[0]) * (clip[3] - clip[1]) * scale * scale > CLIP_MAX_PX:
+            return _err("Zonă prea mare")
+    elif p and max(p["w"], p["h"]) * scale > MAX_RENDER_PX:
         scale = MAX_RENDER_PX / max(p["w"], p["h"])
     scale = round(max(0.1, scale), 3)
     ink = body.get("ink") or None
-    key = ("pv", doc_id, n, scale, json.dumps(ops, sort_keys=True), json.dumps(ink, sort_keys=True))
+    key = ("pv", doc_id, n, scale, json.dumps(ops, sort_keys=True), json.dumps(ink, sort_keys=True), clip)
 
     def work():
-        return _render_cache.get_or(key, lambda: pdfcore.render_png(_source(doc_id, n, ink if isinstance(ink, dict) else None), n, scale, ops))
+        return _render_cache.get_or(key, lambda: pdfcore.render_png(_source(doc_id, n, ink if isinstance(ink, dict) else None), n, scale, ops, clip=clip))
 
     png = await run_in_threadpool(work)
     return Response(png, media_type="image/png")
+
+
+async def api_pages(request: Request):
+    """Operații pe pagini: rotire (90° stânga / dreapta, 180°), ștergere, mutare. Fișierul încărcat
+    rămâne neschimbat; ordinea și rotirea stau în metadate și se aplică la randare și la export.
+    Odată cu operația vine și starea adnotărilor, deja transformată în pagina nouă."""
+    doc_id = request.path_params["doc_id"]
+    try:
+        d = _doc_dir(doc_id)
+        body = await _json_body(request)
+    except (ValueError, FileNotFoundError):
+        return _err("Document inexistent", 404)
+    except OverflowError:
+        return _err("Cerere prea mare", 413)
+    if not isinstance(body, dict):
+        return _err("Cerere invalidă")
+    meta = _read_json(d / "meta.json", {})
+    n = len(meta.get("pages", []))
+    pages0 = meta.get("pages0") or meta.get("pages", [])
+    lay = meta.get("layout") if isinstance(meta.get("layout"), list) and meta.get("layout") else [{"src": i, "rot": 0} for i in range(n)]
+    lay = [dict(it) for it in lay]
+    op = body.get("op")
+    sel = body.get("pages")
+    if sel is None:
+        sel = list(range(n))
+    if not isinstance(sel, list) or not all(isinstance(i, int) and not isinstance(i, bool) and 0 <= i < n for i in sel):
+        return _err("Pagini invalide")
+    if op == "rotate":
+        delta = body.get("delta")
+        if delta not in (90, -90, 180, 270):
+            return _err("Unghi invalid")
+        for i in set(sel):
+            lay[i]["rot"] = (int(lay[i].get("rot", 0)) + delta) % 360
+    elif op == "delete":
+        drop = set(sel)
+        if len(drop) >= n:
+            return _err("Documentul trebuie să păstreze cel puțin o pagină")
+        lay = [it for i, it in enumerate(lay) if i not in drop]
+    elif op == "move":
+        a, b = body.get("page"), body.get("to")
+        if not all(isinstance(x, int) and not isinstance(x, bool) and 0 <= x < n for x in (a, b)):
+            return _err("Pagini invalide")
+        lay.insert(b, lay.pop(a))
+    else:
+        return _err("Operație necunoscută")
+    identity = len(lay) == len(pages0) and all(it["src"] == i and it.get("rot", 0) % 360 == 0 for i, it in enumerate(lay))
+    meta["pages0"] = pages0
+    if identity:
+        meta.pop("layout", None)
+    else:
+        meta["layout"] = lay
+    meta["lv"] = int(meta.get("lv", 0)) + 1
+    _write_json(d / "meta.json", meta)
+    _purge(doc_id)
+    try:
+        info = await run_in_threadpool(lambda: pdfcore.open_info(_original(doc_id)))
+    except Exception as e:  # noqa: BLE001
+        return _err(f"Operația pe pagini a eșuat: {e}", 500)
+    meta["pages"] = info["pages"]
+    meta["updated"] = time.time()
+    _write_json(d / "meta.json", meta)
+    state = body.get("state")
+    if isinstance(state, dict) and isinstance(state.get("annots"), list):
+        _write_json(d / "state.json", state)
+    return JSONResponse({"pages": meta["pages"], "lv": meta["lv"], "ocrPages": _ocr_pages(doc_id, meta)})
 
 
 async def api_snap(request: Request):
@@ -553,7 +681,14 @@ def _cache_dir(doc_id, sub):
 
 
 def _ocr_cached(doc_id, n):
-    return _read_json(_doc_dir(doc_id) / "ocr" / f"p{n}.json", None)
+    return _read_json(_doc_dir(doc_id) / "ocr" / f"{_pkey(doc_id, n)}.json", None)
+
+
+def _ocr_pages(doc_id, meta):
+    d = _doc_dir(doc_id) / "ocr"
+    if not d.is_dir():
+        return []
+    return [n for n in range(len(meta.get("pages", []))) if (d / f"{_pkey(doc_id, n)}.json").exists()]
 
 
 async def _ocr_run(doc_id, n, meta_page):
@@ -565,7 +700,7 @@ async def _ocr_run(doc_id, n, meta_page):
             return cached
         scan = True if meta_page.get("paths", 1) == 0 else None  # fără linii vectoriale = imagine
         res = await run_in_threadpool(lambda: ocrmod.ocr_page(_original(doc_id), n, (meta_page["w"], meta_page["h"]), scan=scan))
-        _write_json(_cache_dir(doc_id, "ocr") / f"p{n}.json", res)
+        _write_json(_cache_dir(doc_id, "ocr") / f"{_pkey(doc_id, n)}.json", res)
         return res
 
 
@@ -588,7 +723,7 @@ async def api_ocr(request: Request):
         body = {}
     if isinstance(body, dict) and body.get("force"):
         with contextlib.suppress(FileNotFoundError):
-            (_doc_dir(doc_id) / "ocr" / f"p{n}.json").unlink()
+            (_doc_dir(doc_id) / "ocr" / f"{_pkey(doc_id, n)}.json").unlink()
     try:
         res = await _ocr_run(doc_id, n, meta["pages"][n])
     except subprocess.TimeoutExpired:
@@ -617,7 +752,7 @@ async def _vectorize(doc_id, n, pdf_bytes, masks, key):
     import tempfile
 
     h = hashlib.sha1((key + json.dumps(masks)).encode()).hexdigest()[:16]
-    path = _doc_dir(doc_id) / "vec" / f"p{n}_{h}.json"
+    path = _doc_dir(doc_id) / "vec" / f"{_pkey(doc_id, n)}_{h}.json"
     cached = _read_json(path, None)
     if cached is not None:
         return cached
@@ -893,6 +1028,7 @@ routes = [
     Route("/api/doc/{doc_id}/page/{n:int}/objects", api_objects, methods=["POST"]),
     Route("/api/doc/{doc_id}/page/{n:int}/ocr", api_ocr, methods=["GET", "POST"]),
     Route("/api/doc/{doc_id}/page/{n:int}/text", api_text),
+    Route("/api/doc/{doc_id}/pages", api_pages, methods=["POST"]),
     Route("/api/doc/{doc_id}/export", api_export, methods=["POST"]),
     Mount("/", app=StaticFiles(directory=str(FRONTEND_DIR), html=True), name="static"),
 ]

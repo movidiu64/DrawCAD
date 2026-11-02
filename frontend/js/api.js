@@ -32,7 +32,7 @@ export async function saveState(id, state) {
   return jsonOrThrow(r);
 }
 
-export const snap = (id, n) => fetch(`api/doc/${id}/page/${n}/snap`).then(jsonOrThrow);
+export const snap = (id, n, v = 0) => fetch(`api/doc/${id}/page/${n}/snap?v=${v}`).then(jsonOrThrow);
 
 export function renderUrl(id, n, scale, extra = "") {
   return `api/doc/${id}/page/${n}/render?scale=${scale}${extra}`;
@@ -47,11 +47,11 @@ export async function objectsInRect(id, n, rect) {
   return jsonOrThrow(r);
 }
 
-export async function previewRemoval(id, n, ops, scale, ink = null) {
+export async function previewRemoval(id, n, ops, scale, ink = null, clip = null) {
   const r = await fetch(`api/doc/${id}/page/${n}/preview`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ops, scale, ink }),
+    body: JSON.stringify({ ops, scale, ink, clip }),
   });
   if (!r.ok) throw new Error("Previzualizare eșuată");
   return URL.createObjectURL(await r.blob());
@@ -89,7 +89,16 @@ export async function runOcr(id, n, force = false) {
   return jsonOrThrow(r);
 }
 
-export const pageText = (id, n) => fetch(`api/doc/${id}/page/${n}/text`).then(jsonOrThrow);
+export const pageText = (id, n, v = 0) => fetch(`api/doc/${id}/page/${n}/text?v=${v}`).then(jsonOrThrow);
+
+export async function pageOp(id, body) {
+  const r = await fetch(`api/doc/${id}/pages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return jsonOrThrow(r);
+}
 
 export const workspace = () => fetch("api/workspace").then(jsonOrThrow);
 

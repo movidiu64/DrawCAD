@@ -280,6 +280,52 @@ def image_to_pdf(data: bytes, dpi: float | None) -> tuple[bytes, float]:
     return img2pdf.convert(frames, layout_fun=layout), use_dpi
 
 
+# ---------------------------------------------------------------- pagini: ordine, rotire, ștergere
+
+
+def _push_inherited(po):
+    """Atributele moștenite din arborele de pagini (resurse, cutii, rotire) se copiază pe pagină,
+    ca să rămână corecte după ce pagina e mutată direct sub rădăcină."""
+    for key in ("/Resources", "/MediaBox", "/CropBox", "/Rotate"):
+        if key in po:
+            continue
+        node = po.get("/Parent")
+        guard = 0
+        while node is not None and guard < 64:
+            guard += 1
+            if key in node:
+                po[key] = node[key]
+                break
+            node = node.get("/Parent")
+
+
+def apply_layout(pdf_bytes: bytes, layout: list[dict]) -> bytes:
+    """PDF-ul cu paginile în ordinea dată, rotite suplimentar (`rot`, grade în sens orar) și fără
+    cele lipsă. Conținutul paginilor nu se atinge, deci id-urile obiectelor rămân aceleași."""
+    pk = pikepdf.open(io.BytesIO(pdf_bytes))
+    objs = [p.obj for p in pk.pages]
+    for po in objs:
+        _push_inherited(po)
+    new = []
+    for it in layout:
+        po = objs[int(it["src"])]
+        try:
+            base = int(po.get("/Rotate", 0))
+        except (TypeError, ValueError):
+            base = 0
+        po.Rotate = (base + int(it.get("rot", 0))) % 360
+        new.append(po)
+    root = pk.Root.Pages
+    for po in new:
+        po.Parent = root
+    root.Kids = pikepdf.Array(new)
+    root.Count = len(new)
+    out = io.BytesIO()
+    pk.save(out)
+    pk.close()
+    return out.getvalue()
+
+
 # ---------------------------------------------------------------- randare
 
 
@@ -297,7 +343,9 @@ def _to_png(img, out):
     img.save(out, format="PNG", compress_level=1)
 
 
-def render_png(pdf_bytes: bytes, page_index: int, scale: float, removals=None, ink=None) -> bytes:
+def render_png(pdf_bytes: bytes, page_index: int, scale: float, removals=None, ink=None, clip=None) -> bytes:
+    """Pagina ca PNG. `clip` = (x0, y0, x1, y1) în coordonate vizuale (puncte): doar zona aceea,
+    pentru zoom mare (detaliul vizibil la rezoluție mare, fără toată pagina)."""
     if ink and ink.get("all"):
         pdf_bytes = ink_pdf(pdf_bytes, {page_index}, ink.get("fills", "black"), bool(ink.get("images")))
     with PDFIUM_LOCK:
@@ -306,7 +354,15 @@ def render_png(pdf_bytes: bytes, page_index: int, scale: float, removals=None, i
             page = doc[page_index]
             if removals:
                 _apply_removals_page(page, removals)
-            bmp = page.render(scale=scale, rotation=0, may_draw_forms=True, draw_annots=True)
+            crop = (0, 0, 0, 0)
+            if clip:
+                W, H = PageGeo.of(page).visual_size
+                x0, y0, x1, y1 = clip
+                x0, x1 = max(0.0, min(x0, x1)), min(W, max(x0, x1))
+                y0, y1 = max(0.0, min(y0, y1)), min(H, max(y0, y1))
+                # tăietura PDFium e în orientarea afișată: stânga, jos, dreapta, sus
+                crop = (x0, H - y1, W - x1, y0)
+            bmp = page.render(scale=scale, rotation=0, crop=crop, may_draw_forms=True, draw_annots=True)
             img = bmp.to_pil()
             out = io.BytesIO()
             _to_png(img, out)

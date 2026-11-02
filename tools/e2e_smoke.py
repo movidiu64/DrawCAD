@@ -31,6 +31,8 @@ def main(url, out):
         page.on("pageerror", lambda e: errors.append(str(e)))
         page.goto(url)
         page.evaluate("localStorage.clear()")
+        # interfața în română (implicit ar urma limba browserului, care în CI e engleza)
+        page.evaluate("localStorage.setItem('drawcad.lang', 'ro')")
         page.goto(url)
         page.set_input_files("#fileInput", str(sample))
         page.wait_for_function("document.getElementById('docName').textContent.includes('arbore')")
@@ -294,6 +296,13 @@ def main(url, out):
         page.wait_for_selector("#cClose")
         page.click("#cClose")
         page.wait_for_function("window.cotare.doc === null")
+
+        # interfața în engleză
+        page.evaluate("localStorage.setItem('drawcad.lang', 'en')")
+        page.goto(url)
+        page.wait_for_function("document.querySelector('[data-tool=dimLin] span') && document.querySelector('[data-tool=dimLin] span').textContent === 'Linear'")
+        assert page.inner_text("#btnOpen").strip() == "Open", page.inner_text("#btnOpen")
+        page.evaluate("localStorage.setItem('drawcad.lang', 'ro')")
         b.close()
 
     import pypdfium2 as pdfium

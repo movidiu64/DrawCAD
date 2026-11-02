@@ -45,7 +45,7 @@ export const DEFAULT_ALIASES = {
 
 /** Comenzi care nu sunt unelte. */
 export const ACTIONS = [
-  { id: "undo", label: "Anulează", aliases: ["U", "UNDO"] },
+  { id: "undo", label: "Anulează acțiunea", aliases: ["U", "UNDO"] },
   { id: "redo", label: "Refă", aliases: ["REDO", "MREDO"] },
   { id: "fit", label: "Zoom pe toată pagina", aliases: ["Z", "ZE", "ZOOM"] },
   { id: "zoomSel", label: "Zoom pe selecție", aliases: ["ZS"] },
@@ -61,6 +61,9 @@ export const ACTIONS = [
   { id: "selAll", label: "Selectează tot", aliases: ["ALL"] },
   { id: "nextPage", label: "Pagina următoare", aliases: ["PN"] },
   { id: "prevPage", label: "Pagina anterioară", aliases: ["PP"] },
+  { id: "rotR", label: "Rotește pagina la dreapta", aliases: ["ROTR"] },
+  { id: "rotL", label: "Rotește pagina la stânga", aliases: ["ROTL"] },
+  { id: "pages", label: "Pagini (rotire, ordine, ștergere)", aliases: ["PAGES", "PAGINI"] },
 ];
 
 // tastele cu rol fix, care nu se pot da uneltelor

@@ -6,6 +6,7 @@ import { GDT_SYMBOLS, GDT_BY_ID, MODIFIERS, symbolPrims } from "./gdt.js";
 import { drawPrims } from "./view.js";
 import { TOOL_BY_ID, DRAW_TOOLS } from "./tools.js";
 import { commandList, keyConfig } from "./commands.js";
+import { tr } from "./i18n.js";
 
 const ORIG_EDIT = new Set(["white", "redact", "ink"]); // modificări ale originalului, fără strat
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -116,8 +117,8 @@ export class Panel {
     const cfg = (this.app && this.app.keyCfg) || keyConfig();
     const ac = cfg.mode === "autocad";
     const items = commandList(cfg).filter((c) => c.kind === "tool" && (ac ? c.aliases.length : c.key));
-    const list = items.map((c) => `<b>${ac ? c.aliases[0] : c.key}</b> ${c.label.toLowerCase()}`).join(" · ");
-    return `<div class="sec"><div class="h">Taste${ac ? " · comenzi ca în AutoCAD" : ""}</div><div class="keys">
+    const list = items.map((c) => `<b>${ac ? c.aliases[0] : c.key}</b> ${tr(c.label).toLowerCase()}`).join(" · ");
+    return `<div class="sec"><div class="h">Taste${ac ? " · comenzi AutoCAD" : ""}</div><div class="keys">
       ${list}<br>
       ${ac ? "comanda + <b>Spațiu</b> / <b>Enter</b> · Spațiu sau Enter singur <b>repetă</b> · <b>U</b> anulează · <b>Z</b> potrivește · <b>E</b> cu selecție șterge" : "<b>Enter</b> linie de comandă (L, C, DLI…) · <b>Enter</b> termină polilinia"} · <b>ALIASEDIT</b> sau Setări → Taste și comenzi<br>
       <b>Shift</b> ortho · <b>Alt</b> fără snap · <b>Esc</b> renunță · <b>Del</b> șterge selecția<br>
@@ -174,7 +175,7 @@ export class Panel {
     const col = (a) => (["white", "redact", "ink"].includes(a.type) ? "#a3acb7" : a.layer === "rev" ? "#ff6b6b" : "#4c8dff");
     return `<div class="sec"><div class="h">Adnotări pe pagina ${app.page + 1} · ${list.length}</div>
       <div class="annlist">${list.map((a) => `<div class="it ${app.sel.has(a.id) ? "on" : ""}" data-ann="${esc(a.id)}" title="Click: selectează și centrează">
-        <i style="background:${col(a)}"></i><span class="t">${esc(typeName(a))}</span><span class="v">${esc(app.annotLabel(a))}</span>
+        <i style="background:${col(a)}"></i><span class="t">${esc(typeName(a))}</span><span class="v" translate="no">${esc(app.annotLabel(a))}</span>
         <button class="icon" data-anndel="${esc(a.id)}" aria-label="Șterge ${esc(typeName(a))}" title="Șterge"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg></button></div>`).join("")}</div>
       <div class="sub">Shift+F face zoom pe selecție, F revine la toată pagina.</div></div>`;
   }
