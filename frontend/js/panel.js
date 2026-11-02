@@ -7,6 +7,7 @@ import { drawPrims } from "./view.js";
 import { TOOL_BY_ID, DRAW_TOOLS } from "./tools.js";
 import { commandList, keyConfig } from "./commands.js";
 import { tr } from "./i18n.js";
+import { pagesDialog as dlgPages } from "./dialogs.js";
 
 const ORIG_EDIT = new Set(["white", "redact", "ink"]); // modificări ale originalului, fără strat
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -143,6 +144,8 @@ export class Panel {
         <div class="title" style="word-break:break-all">${esc(d.name)}</div>
         <div class="sub">${d.kind === "image" ? `imagine · ${Math.round(d.dpi || 0)} DPI` : "PDF"} · ${d.pages.length} pagini · pagina ${app.page + 1}: ${fmtNum(pg.w / K, ",", 1)} × ${fmtNum(pg.h / K, ",", 1)} mm${pg.rot ? ` · rotită ${pg.rot}°` : ""}</div>
         ${d.kind === "pdf" && pg.paths === 0 ? `<div class="note warn">Pagina nu are geometrie vectorială (probabil scan). Snap-ul pe desen nu e disponibil; ștergerea se face doar prin acoperire.</div>` : ""}
+        ${Math.max(pg.w, pg.h) / K > 900 && (d.kind === "image" || pg.paths === 0) ? `<div class="note warn">Foaia are ${fmtNum(pg.w / K, ",", 0)} × ${fmtNum(pg.h / K, ",", 0)} mm (imaginea are probabil DPI greșit), așa că cotele și textele par mici. Alege mărimea reală a foii (A3, A4…).
+          <div style="margin-top:6px"><button class="ghost" data-act="pages">Mărimea foii…</button></div></div>` : ""}
         ${d.fromExport ? `<div class="note">Deschis dintr-un export anterior: cotele sunt editabile, originalul a fost recuperat din fișier.</div>` : ""}
       </div>
       <div class="sec"><div class="h">Unealta activă</div><div class="title" style="font-size:14px">${esc(tool ? tool.label : "")}</div><div class="note">${esc(tool ? tool.hint : "")}</div></div>
@@ -305,9 +308,16 @@ export class Panel {
 
   html_rad(a) {
     const b = this.app.builtOf(a);
+    const style = a.style || (a.dia ? "shoulder" : "aligned");
     return `<div class="sec"><div class="h">Valoare</div>
+      <div class="row"><div class="seg" style="flex:1">
+        <button data-act="radkind" data-v="r" class="${a.dia ? "" : "on"}">Rază</button>
+        <button data-act="radkind" data-v="d" class="${a.dia ? "on" : ""}">Diametru</button></div>
+      <div class="seg" style="flex:1.4">
+        <button data-act="radstyle" data-v="shoulder" class="${style === "shoulder" ? "on" : ""}" title="Textul orizontal, pe o linie scurtă la capătul liniei de indicație">Text pe umăr</button>
+        <button data-act="radstyle" data-v="aligned" class="${style === "aligned" ? "on" : ""}" title="Textul de-a lungul liniei">Aliniat cu linia</button></div></div>
       <div class="row"><div class="field" style="flex:0 0 76px"><label for="dPre">Prefix</label><select id="dPre" data-f="prefix">
-        ${["R", "SR", "Ø", ""].map((p) => `<option value="${p}" ${p === (a.prefix ?? "R") ? "selected" : ""}>${p || "—"}</option>`).join("")}</select></div>
+        ${["R", "SR", "Ø", "SØ", ""].map((p) => `<option value="${p}" ${p === (a.prefix ?? (a.dia ? "Ø" : "R")) ? "selected" : ""}>${p || "—"}</option>`).join("")}</select></div>
       <div class="field"><label for="dNom">Nominal (mm)</label><input type="text" class="mono" id="dNom" data-f="nominal" value="${a.nominal != null ? fmtNum(a.nominal, ",", 4) : ""}" placeholder="${b ? fmtNum(b.nominal, ",", 2) : ""}"></div></div>
       <div class="field"><label for="dOver">Text înlocuitor (opțional)</label><input type="text" id="dOver" data-f="textOverride" value="${esc(a.textOverride || "")}"></div></div>
       ${this.tolHtml(a, b)}`;
@@ -826,6 +836,19 @@ export class Panel {
       case "orient":
         upd((a) => { a.orient = v; });
         break;
+      case "pages":
+        dlgPages(this.app);
+        break;
+      case "radkind":
+        upd((a) => {
+          a.dia = v === "d";
+          if (a.dia && (a.prefix ?? "R") === "R") a.prefix = "Ø";
+          if (!a.dia && a.prefix === "Ø") a.prefix = "R";
+        });
+        break;
+      case "radstyle":
+        upd((a) => { a.style = v; });
+        break;
       case "settext":
         upd((a) => { a.text = v; });
         break;
@@ -923,7 +946,7 @@ export class Panel {
         ...a, type: "dim", kind: "lin", orient: "h", p1: [0, 0], p2: [100, 0], p3: [0, -10], textShift: 0,
         nominal: a.nominal ?? (own ? own.nominal : null),
       };
-      if (a.type === "rad") tmp.prefix = a.prefix ?? "R";
+      if (a.type === "rad") tmp.prefix = a.prefix ?? (a.dia ? "Ø" : "R");
       if (a.type === "ang") {
         tmp.deg = true;
         tmp.prefix = "";

@@ -578,8 +578,15 @@ class App {
     clearTimeout(this.saveTimer);
     this.saveTimer = null;
     try {
-      const res = await api.pageOp(this.doc.id, { ...op, state: { ...this.stateJson(), annots } });
+      // foaia mărită de k ori: aceeași cotă reală înseamnă de k ori mai mulți mm de hârtie
+      let settings = this.settings;
+      if (op.op === "scale" && (op.pages == null || n === 1)) settings = { ...settings, scale: (Number(settings.scale) || 1) / op.factor };
+      const res = await api.pageOp(this.doc.id, { ...op, state: { ...this.stateJson(), settings, annots } });
       this.annots = annots;
+      if (settings !== this.settings) {
+        this.settings = settings;
+        this._S = null;
+      }
       this.undo = this.undo.map((st) => JSON.stringify(tr(JSON.parse(st))));
       this.redo = this.redo.map((st) => JSON.stringify(tr(JSON.parse(st))));
       this.cache.clear();
@@ -707,7 +714,7 @@ class App {
         const nom = a.nominal ?? (b && b.nominal);
         const v = nom != null ? fmtNum(nom, this.settings.sep || ",", 3) : "?";
         const tol = a.tol && a.tol.mode === "iso" ? ` ${a.tol.fit || ""}` : a.tol && a.tol.mode === "pm" ? " ±" : a.tol && a.tol.mode === "dev" ? " +/-" : "";
-        return a.textOverride ? first(a.textOverride) : `${a.type === "rad" ? a.prefix ?? "R" : a.prefix || ""}${v}${a.type === "ang" ? "°" : ""}${tol}`;
+        return a.textOverride ? first(a.textOverride) : `${a.type === "rad" ? a.prefix ?? (a.dia ? "Ø" : "R") : a.prefix || ""}${v}${a.type === "ang" ? "°" : ""}${tol}`;
       }
       case "text":
       case "lead":

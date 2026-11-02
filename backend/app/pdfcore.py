@@ -267,6 +267,13 @@ def image_to_pdf(data: bytes, dpi: float | None) -> tuple[bytes, float]:
         except Exception:
             file_dpi = None
     use_dpi = dpi or (file_dpi if file_dpi and file_dpi > 30 else 300.0)
+    if not dpi:
+        # 72 / 96 DPI sunt de obicei valori implicite (poze, capturi), nu rezoluția scanării: foaia ar
+        # ieși uriașă (un desen A3 de 3300 px la 72 DPI = 1,16 m), iar cotele ar părea minuscule.
+        # Peste A1, cu DPI mic, foaia se aduce la A3 (420 mm pe latura lungă).
+        long_px = max(im.size)
+        if use_dpi <= 96 and long_px / use_dpi * 25.4 > 841:
+            use_dpi = long_px / (420 / 25.4)
     frames = []
     n_frames = getattr(im, "n_frames", 1)
     for i in range(n_frames):
@@ -314,6 +321,19 @@ def apply_layout(pdf_bytes: bytes, layout: list[dict]) -> bytes:
         except (TypeError, ValueError):
             base = 0
         po.Rotate = (base + int(it.get("rot", 0))) % 360
+        k = float(it.get("scale", 1) or 1)
+        if abs(k - 1) > 1e-9:
+            # mărimea foii: cutiile paginii și conținutul (o transformare la început) cu factorul k;
+            # obiectele paginii rămân aceleași, deci și id-urile lor
+            for box in ("/MediaBox", "/CropBox", "/BleedBox", "/TrimBox", "/ArtBox"):
+                if box in po:
+                    po[box] = pikepdf.Array([float(v) * k for v in po[box]])
+            for an in po.get("/Annots", []) or []:
+                if isinstance(an, pikepdf.Dictionary) and "/Rect" in an:
+                    an.Rect = pikepdf.Array([float(v) * k for v in an.Rect])
+            page = pikepdf.Page(po)
+            page.contents_add(pikepdf.Stream(pk, f"q {k:.6f} 0 0 {k:.6f} 0 0 cm\n".encode()), prepend=True)
+            page.contents_add(pikepdf.Stream(pk, b"\nQ\n"))
         new.append(po)
     root = pk.Root.Pages
     for po in new:

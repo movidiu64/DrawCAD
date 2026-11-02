@@ -56,6 +56,13 @@ export const TOOLS = [
     hint: "Punct 1 → punct 2 → poziția liniei, paralelă cu segmentul", ...dimTool("ali", "") },
   { id: "dimDia", label: "Diametru", key: "O", group: "Cote", icon: "M4 12a8 8 0 1 0 16 0a8 8 0 1 0 -16 0M5 19L19 5",
     hint: "Generatoarea de sus → cea de jos → poziția liniei (prefix Ø)", ...dimTool("lin", "Ø") },
+  { id: "dimDiaC", label: "Diametru cerc", group: "Cote", icon: "M3 14a6.5 6.5 0 1 0 13 0a6.5 6.5 0 1 0 -13 0M14.1 9.4L19 4.5h3.5M14.1 9.4l0.5-3M14.1 9.4l3-0.5",
+    kind: "clicks", n: 3, hint: "Centrul (snap ○) → un punct pe cerc → poziția textului: săgeata pe contur, linia spre centru, textul pe umăr",
+    make: (pts, app) => ({ type: "rad", dia: true, style: "shoulder", c: pts[0], p: pts[1], p3: pts[2], prefix: "Ø", nominal: null, tol: app.defaultTol("Ø") }),
+    preview(pts, cur, app) {
+      if (pts.length === 1) return { line: [pts[0], cur] };
+      return this.make([pts[0], pts[1], cur], app);
+    } },
   { id: "dimRad", label: "Rază", key: "R", group: "Cote", icon: "M4 20a16 16 0 0 1 16-16M4 20l11-11M15 9l-3.5 0.6M15 9l-0.6 3.5",
     kind: "clicks", n: 3, hint: "Centrul (snap ○) → un punct pe arc → capătul liniei de cotă",
     make: (pts, app) => ({ type: "rad", c: pts[0], p: pts[1], p3: pts[2], prefix: "R", nominal: null, tol: app.defaultTol("R") }),

@@ -185,7 +185,8 @@ def _pkey(doc_id: str, n: int) -> str:
         return f"p{n}"
     it = lay[n]
     rot = int(it.get("rot", 0)) % 360
-    return f"p{int(it['src'])}" + (f"r{rot}" if rot else "")
+    k = float(it.get("scale", 1) or 1)
+    return f"p{int(it['src'])}" + (f"r{rot}" if rot else "") + (f"s{k:g}" if abs(k - 1) > 1e-9 else "")
 
 
 def _read_json(path: Path, default=None):
@@ -603,6 +604,15 @@ async def api_pages(request: Request):
         if len(drop) >= n:
             return _err("Documentul trebuie să păstreze cel puțin o pagină")
         lay = [it for i, it in enumerate(lay) if i not in drop]
+    elif op == "scale":
+        k = body.get("factor")
+        if not _finite(k) or not (0.02 <= k <= 50):
+            return _err("Factor invalid")
+        for i in set(sel):
+            v = float(lay[i].get("scale", 1) or 1) * float(k)
+            if not (0.01 <= v <= 100):
+                return _err("Foaie prea mică sau prea mare")
+            lay[i]["scale"] = round(v, 6)
     elif op == "move":
         a, b = body.get("page"), body.get("to")
         if not all(isinstance(x, int) and not isinstance(x, bool) and 0 <= x < n for x in (a, b)):
@@ -610,7 +620,9 @@ async def api_pages(request: Request):
         lay.insert(b, lay.pop(a))
     else:
         return _err("Operație necunoscută")
-    identity = len(lay) == len(pages0) and all(it["src"] == i and it.get("rot", 0) % 360 == 0 for i, it in enumerate(lay))
+    identity = len(lay) == len(pages0) and all(
+        it["src"] == i and it.get("rot", 0) % 360 == 0 and abs(float(it.get("scale", 1) or 1) - 1) < 1e-9 for i, it in enumerate(lay)
+    )
     meta["pages0"] = pages0
     if identity:
         meta.pop("layout", None)

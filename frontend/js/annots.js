@@ -46,6 +46,7 @@ export const TYPE_NAMES = {
 };
 
 export function typeName(a) {
+  if (a.type === "rad" && a.dia) return "Cotă diametru";
   return (a.type === "shape" && SHAPE_NAMES[a.kind]) || TYPE_NAMES[a.type] || a.type;
 }
 
@@ -316,42 +317,60 @@ function buildDim(a, S, measure) {
 }
 
 function buildRad(a, S, measure) {
+  // rază (R) sau diametru pe cerc (Ø): săgeata pe contur, linia spre centru. Cu „umăr”, textul stă
+  // orizontal deasupra unei linii scurte de la capătul liniei de indicație (ca în desenele de atelier).
   const c = a.layer || "add";
   const R = len(sub(a.p, a.c));
+  const dia = !!a.dia;
   const d = norm(sub(a.p3, a.c)) || norm(sub(a.p, a.c)) || [1, 0];
   const q = add(a.c, mul(d, R));
   const far = len(sub(a.p3, a.c)) > R;
+  // la diametru săgeți pline, ca la linia de indicație (ISO 129: fără liniuță oblică)
+  const SA = dia ? { ...S, arrow: "closed" } : S;
+  const shoulder = far && (a.style || (dia ? "shoulder" : "aligned")) === "shoulder";
+  const measured = (((dia ? 2 : 1) * R) / K) * S.scale;
+  const nominal = a.nominal != null ? a.nominal : round(measured, 2);
+  const lab = labelRuns(a, S, measure, nominal, a.prefix ?? (dia ? "Ø" : "R"));
   const prims = [];
+  const lift = Math.max(0.6 * K, 0.3 * S.h);
+  const handles = [
+    { k: "c", p: a.c },
+    { k: "p", p: a.p },
+    { k: "p3", p: a.p3 },
+  ];
+  if (shoulder) {
+    prims.push(lineP(q, a.p3, S, c), ...arrowP(q, mul(d, -1), SA, c));
+    // umărul pleacă spre exteriorul cercului
+    const side = a.p3[0] >= a.c[0] ? 1 : -1;
+    const pad = S.h * 0.3;
+    const P2 = [a.p3[0] + side * (lab.w + 2 * pad), a.p3[1]];
+    prims.push(lineP(a.p3, P2, S, c));
+    const { tu, ang, up } = textAngle([1, 0]);
+    const origin = add([Math.min(a.p3[0], P2[0]) + pad, a.p3[1]], mul(up, lift));
+    prims.push(...placeRuns(lab, origin, tu, up, ang, c));
+    return { prims, measured, nominal, iso: lab.iso, handles };
+  }
   let s0;
   let s1;
   if (far) {
     s0 = q;
     s1 = a.p3;
-    prims.push(lineP(q, a.p3, S, c), ...arrowP(q, mul(d, -1), S, c));
+    prims.push(lineP(q, a.p3, S, c), ...arrowP(q, mul(d, -1), SA, c));
+  } else if (dia) {
+    // în interior: linia trece prin centru, cu săgeți la ambele capete ale diametrului
+    s0 = sub(a.c, mul(d, R));
+    s1 = q;
+    prims.push(lineP(s0, q, S, c), ...arrowP(q, d, SA, c), ...arrowP(s0, mul(d, -1), SA, c));
   } else {
     s0 = a.c;
     s1 = q;
     prims.push(lineP(a.c, q, S, c), ...arrowP(q, d, S, c));
   }
-  const measured = (R / K) * S.scale;
-  const nominal = a.nominal != null ? a.nominal : round(measured, 2);
-  const lab = labelRuns(a, S, measure, nominal, a.prefix ?? "R");
   const { tu, ang, up } = textAngle(norm(sub(s1, s0)) || d);
   const mid = mul(add(s0, s1), 0.5);
-  const lift = Math.max(0.6 * K, 0.3 * S.h);
   const origin = add(sub(mid, mul(tu, lab.w / 2)), mul(up, lift));
   prims.push(...placeRuns(lab, origin, tu, up, ang, c));
-  return {
-    prims,
-    measured,
-    nominal,
-    iso: lab.iso,
-    handles: [
-      { k: "c", p: a.c },
-      { k: "p", p: a.p },
-      { k: "p3", p: a.p3 },
-    ],
-  };
+  return { prims, measured, nominal, iso: lab.iso, handles };
 }
 
 // unghi „pe ecran” (sens trigonometric, y în jos) al unui vector

@@ -197,6 +197,14 @@ Tastele directe implicite:
 
 **Cota de diametru** are întotdeauna săgeți pline, ca linia de indicație, chiar dacă pentru celelalte cote ai ales capete deschise, oblice sau punct.
 
+**Diametru cerc** (comanda `DDI`, ca DIMDIAMETER) se dă în trei click-uri: centrul (cu snap ○), un punct pe cerc, apoi poziția textului.
+- Săgeata stă pe contur și arată spre centru, iar linia de indicație e radială.
+- Textul `Ø…` stă orizontal, pe un umăr scurt (ca în desenele de atelier).
+- Dacă poziția e în interiorul cercului, cota trece prin centru, cu săgeți la ambele capete.
+- Din panou se comută între „Text pe umăr” și „Aliniat cu linia”, sau între rază și diametru. Același stil („Text pe umăr”) merge și la cotele de rază.
+
+Cota de diametru între generatoare rămâne unealta **Diametru** (`DDL`).
+
 **Editare:** la o adnotare selectată, pătrățelele mută punctele, iar cercul alb mută textul cotei de-a lungul liniei. Tragerea de corp mută toată adnotarea.
 
 **Selecție multiplă:**
@@ -296,6 +304,13 @@ Tot de acolo se rotesc toate paginile odată (90° sau 180°).
 - **Cotele și celelalte adnotări se rotesc odată cu pagina.** O cotă orizontală devine verticală și măsoară la fel, textele se rotesc, iar tabelele (revizii, componente) rămân orizontale, mutate în locul corespunzător.
 - **Ctrl+Z nu anulează operația pe pagină.** Pentru asta rotești sau muți înapoi. Istoricul adnotărilor se transformă și el, deci anularea modificărilor de dinainte merge corect.
 - **OCR-ul** se ține minte pentru fiecare orientare a paginii.
+
+### Mărimea foii (scanuri și poze)
+
+Cotele și textele au mărimea lor în mm față de foaie (text 3,5 mm, săgeți 3 mm). La o imagine, mărimea foii vine din DPI. Pozele și capturile au adesea 72 sau 96 DPI implicit. Așa, un desen A3 fotografiat cu 3300 px ar ieși pe o foaie de 1,16 m, iar cotele ar părea minuscule.
+
+- **La deschidere:** dacă imaginea are DPI mic (≤ 96) și foaia ar ieși mai mare decât A1, ea se aduce la A3. Un DPI dat explicit în dialogul de deschidere are întâietate.
+- **Pentru un document deja deschis:** în **Pagini** alegi „Foaie: A4 / A3 / A2 / A1 / A0” (sau 50% / 200%). Panoul documentului te avertizează când foaia unei imagini e neobișnuit de mare. Cotele existente rămân pe desen, iar scara calibrată se ajustează, deci valorile măsurate nu se schimbă. Exportul păstrează mărimea nouă.
 
 ### Zoom
 

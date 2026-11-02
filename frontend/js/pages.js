@@ -59,6 +59,19 @@ export function rotateAnnot(a, deg, W, H, S = null, measure = null) {
   return a;
 }
 
+/** Mărimea foii schimbată cu factorul k: punctele se înmulțesc (textele și săgețile rămân în mm). */
+export function scaleAnnot(a, k) {
+  const M = (p) => (Array.isArray(p) && p.length >= 2 ? [p[0] * k, p[1] * k] : p);
+  for (const key of POINT_KEYS) if (a[key]) a[key] = M(a[key]);
+  if (Array.isArray(a.pts)) a.pts = a.pts.map(M);
+  if (Array.isArray(a.r) && a.r.length === 4) a.r = a.r.map((v) => v * k);
+  if (typeof a.textShift === "number") a.textShift *= k;
+  return a;
+}
+
+/** Formatele de foaie ISO (latura lungă, mm). */
+export const SHEETS = [["A4", 297], ["A3", 420], ["A2", 594], ["A1", 841], ["A0", 1189]];
+
 /**
  * Aplică o operație pe pagini unei liste de adnotări (o copie nouă).
  *  - {op:"rotate", pages:[n…], delta, sizes:[[W,H]…]} — sizes = dimensiunile vizuale înainte
@@ -76,6 +89,11 @@ export function applyPageOp(annots, op, S = null, measure = null) {
       const [W, H] = op.sizes[n];
       rotateAnnot(a, deg, W, H, S, measure);
     }
+    return out;
+  }
+  if (op.op === "scale") {
+    const set = new Set(op.pages ?? [...Array(op.count).keys()]);
+    for (const a of out) if (set.has(a.page || 0)) scaleAnnot(a, op.factor);
     return out;
   }
   if (op.op === "delete") {

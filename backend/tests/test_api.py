@@ -422,6 +422,26 @@ class ApiTest(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError):
             self.req("POST", f"/api/doc/{doc}/pages", {"op": "delete", "pages": [0]})
 
+    def test_page_scale_and_low_dpi_image(self):
+        """Mărimea foii: pagina și conținutul cresc împreună, obiectele rămân aceleași."""
+        from PIL import Image
+
+        meta = self.open_sample()
+        w0 = meta["pages"][0]["w"]
+        objs0 = self.req("POST", f"/api/doc/{meta['id']}/page/0/objects", {"rect": [0, 0, 5000, 5000]})["objects"]
+        r = self.req("POST", f"/api/doc/{meta['id']}/pages", {"op": "scale", "pages": [0], "factor": 2})
+        self.assertAlmostEqual(r["pages"][0]["w"], 2 * w0, places=2)
+        objs = self.req("POST", f"/api/doc/{meta['id']}/page/0/objects", {"rect": [0, 0, 5000, 5000]})["objects"]
+        self.assertEqual([o["id"] for o in objs], [o["id"] for o in objs0])
+        a, b = objs0[0]["bbox"], objs[0]["bbox"]
+        self.assertTrue(all(abs(2 * x - y) < 0.2 for x, y in zip(a, b)), (a, b))
+        # imagine de 3300 px la 72 DPI: foaia ar avea 1,16 m; se aduce la A3
+        im = Image.new("L", (3300, 2300), 255)
+        buf = io.BytesIO()
+        im.save(buf, format="PNG", dpi=(72, 72))
+        m2 = self.req("POST", "/api/open", buf.getvalue(), {"X-Filename": "poza.png"})
+        self.assertAlmostEqual(max(m2["pages"][0]["w"], m2["pages"][0]["h"]) / MM, 420, delta=1)
+
     def test_render_clip(self):
         """Zoom mare: doar zona vizibilă, la rezoluție mare."""
         from PIL import Image

@@ -17,8 +17,8 @@ test("implicit: fără dubluri de taste sau de comenzi, fiecare unealtă are cel
 });
 
 test("comenzile AutoCAD: L, C, PL, REC, A, H, DLI, DDI, DRA, DAN, DAL, LE, TOL, E, U, Z", () => {
-  const want = { L: "line", C: "circle", PL: "poly", REC: "rect", A: "arc", H: "hatch", DLI: "dimLin", DDI: "dimDia",
-    DRA: "dimRad", DAN: "dimAng", DAL: "dimAli", LE: "lead", TOL: "gdt", E: "redact", U: "undo", Z: "fit", P: "pan", T: "text" };
+  const want = { L: "line", C: "circle", PL: "poly", REC: "rect", A: "arc", H: "hatch", DLI: "dimLin", DDI: "dimDiaC",
+    DRA: "dimRad", DAN: "dimAng", DAL: "dimAli", LE: "lead", DDL: "dimDia", TOL: "gdt", E: "redact", U: "undo", Z: "fit", P: "pan", T: "text" };
   for (const [a, id] of Object.entries(want)) assert.equal(resolveCommand(a, D).id, id, a);
   assert.equal(resolveCommand("dli", D).id, "dimLin"); // litere mici
   assert.equal(resolveCommand("Cerc", D).id, "circle"); // după nume

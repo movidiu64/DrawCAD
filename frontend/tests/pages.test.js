@@ -63,3 +63,22 @@ test("diametrul are săgeți pline ca linia de indicație, chiar cu capete oblic
   assert.equal(filled(build(dia, S2, measure)), 2);
   assert.equal(filled(build(lin, S2, measure)), 0);
 });
+
+test("diametru pe cerc: săgeata pe contur spre centru, text orizontal pe umăr, valoarea 2R", () => {
+  const K = 72 / 25.4;
+  const a = { type: "rad", dia: true, style: "shoulder", c: [100, 100], p: [150, 100], p3: [140 + 30, 140], prefix: "Ø", nominal: null, tol: { mode: "none" } };
+  const b = build(a, S, measure);
+  assert.ok(Math.abs(b.measured - (100 / K)) < 1e-9);
+  const t = b.prims.filter((q) => q.t === "T");
+  assert.equal(t.map((q) => q.txt).join(""), `Ø${String(Math.round((100 / K) * 100) / 100).replace(".", ",")}`);
+  assert.ok(t.every((q) => q.a === 0));
+  // vârful săgeții e pe cerc, în direcția poziției
+  const tri = b.prims.find((q) => q.t === "P" && q.fill);
+  const tip = [tri.p[0], tri.p[1]];
+  assert.ok(Math.abs(Math.hypot(tip[0] - 100, tip[1] - 100) - 50) < 1e-6);
+  // umărul: o linie orizontală care pornește din capătul liniei de indicație
+  const sh = b.prims.find((q) => q.t === "L" && Math.abs(q.p[1] - 140) < 1e-9 && Math.abs(q.p[3] - 140) < 1e-9);
+  assert.ok(sh && sh.p[0] === 170 && sh.p[2] > 170);
+  // textul stă deasupra umărului
+  assert.ok(t[0].p[1] < 140);
+});

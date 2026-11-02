@@ -329,3 +329,4 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
 .langsw { display: flex; gap: 4px; justify-content: center; margin-top: 14px; }
 .langsw button { border: 1px solid var(--line2); background: transparent; color: var(--text2); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
 .langsw button.on { color: var(--text); border-color: var(--accent); }
+.pgcard select.sheet { height: 26px; font-size: 12px; padding: 0 4px; border: 1px solid var(--line2); border-radius: 5px; background: var(--raised); color: var(--text2); width: 100%; }

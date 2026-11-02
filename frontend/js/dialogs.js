@@ -4,6 +4,7 @@ import { K, fmtNum, parseNum, DEFAULT_SETTINGS } from "./annots.js";
 import { MM_POSITIONS, MM_DEFAULT, MM_SPECIAL, markingConfig } from "./mmenu.js";
 import { TOOLS } from "./tools.js";
 import { lang as uiLang, setLang, LANGS } from "./i18n.js";
+import { SHEETS } from "./pages.js";
 import { commandList, conflicts, defaultKeyConfig, keyConfig, saveKeyConfig, labelOf, RESERVED_KEYS, DEFAULT_ALIASES, ACTIONS } from "./commands.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -322,6 +323,12 @@ export function exportDialog(app, opts = {}) {
 }
 
 // ------------------------------------------------------------------ pagini
+function sheetName(p) {
+  const long = Math.max(p.w, p.h) / K;
+  const hit = SHEETS.find(([, mm]) => Math.abs(long - mm) < 3);
+  return hit ? hit[0] : `${Math.round(p.w / K)}×${Math.round(p.h / K)}`;
+}
+
 export function pagesDialog(app) {
   const ico = (d) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
   const RL = ico("M4 4v6h6M4.6 15a8 8 0 1 0 1.9-8.3L4 10");
@@ -333,6 +340,8 @@ export function pagesDialog(app) {
       <button class="ghost" data-all="-90">${RL} Toate la stânga</button><button class="ghost" data-all="90">${RR} Toate la dreapta</button><button class="ghost" data-all="180">180°</button>
     </div>
     <div class="pggrid" id="pgGrid"></div>
+    ${app.doc.pages.length > 1 ? '<label class="chk" style="font-size:13px;margin-top:8px"><input type="checkbox" id="pgSheetAll" checked> Mărimea foii se schimbă la toate paginile</label>' : ""}
+    <div class="note" style="margin-top:8px">Mărimea foii contează la scanuri și poze: cotele și textele au mărimea lor în mm față de foaie. Dacă imaginea a venit cu DPI greșit (ex. 72), foaia iese uriașă și cotele par minuscule — alege formatul real (A3, A4…). Cotele existente rămân pe desen, iar scara calibrată se păstrează.</div>
     <div class="foot"><span class="muted" id="pgMsg" style="flex:1"></span><button class="primary" data-close>Gata</button></div>`);
   const grid = dlg.querySelector("#pgGrid");
   const msg = dlg.querySelector("#pgMsg");
@@ -346,6 +355,10 @@ export function pagesDialog(app) {
       return `<div class="pgcard${i === app.page ? " on" : ""}" data-i="${i}">
         <button class="thumb" data-go="${i}" title="Deschide pagina ${i + 1}"><img alt="Pagina ${i + 1}" loading="lazy" src="${api.renderUrl(app.doc.id, i, Math.round(s * 1000) / 1000, `&v=${v}`)}"></button>
         <div class="pgl"><b>${i + 1}</b><span class="muted">${Math.round(p.w / K)}×${Math.round(p.h / K)} mm${nAnn ? ` · ${nAnn} adn.` : ""}</span></div>
+        <select class="mini sheet" data-sheet="${i}" aria-label="Mărimea foii pentru pagina ${i + 1}" title="Mărimea foii: cotele și textele noi au mărimea lor în mm față de foaie">
+          <option value="">Foaie: ${sheetName(p)}</option>
+          ${SHEETS.map(([nm, mm]) => `<option value="${mm}">${nm} (${mm} mm)</option>`).join("")}
+          <option value="x0.5">50%</option><option value="x2">200%</option></select>
         <div class="pgb">
           <button class="mini" data-op="rl" title="Rotește la stânga">${RL}</button>
           <button class="mini" data-op="rr" title="Rotește la dreapta">${RR}</button>
@@ -370,6 +383,15 @@ export function pagesDialog(app) {
     // butonul apăsat a dispărut odată cu grila: focalizarea rămâne în dialog, ca Esc să-l închidă
     dlg.querySelector(".foot .primary").focus();
   };
+  grid.addEventListener("change", (e) => {
+    const sel = e.target.closest("[data-sheet]");
+    if (!sel || !sel.value) return;
+    const i = Number(sel.dataset.sheet);
+    const p = app.doc.pages[i];
+    const factor = sel.value.startsWith("x") ? Number(sel.value.slice(1)) : (Number(sel.value) * K) / Math.max(p.w, p.h);
+    const all = app.doc.pages.length > 1 && dlg.querySelector("#pgSheetAll").checked;
+    run({ op: "scale", pages: all ? null : [i], factor }, `Foaie nouă: ${Math.round((p.w * factor) / K)} × ${Math.round((p.h * factor) / K)} mm`);
+  });
   grid.addEventListener("click", (e) => {
     const go = e.target.closest("[data-go]");
     if (go) {
