@@ -5,6 +5,7 @@ import { fmtDev } from "./iso286.js";
 import { GDT_SYMBOLS, GDT_BY_ID, MODIFIERS, symbolPrims } from "./gdt.js";
 import { drawPrims } from "./view.js";
 import { TOOL_BY_ID, DRAW_TOOLS } from "./tools.js";
+import { commandList, keyConfig } from "./commands.js";
 
 const ORIG_EDIT = new Set(["white", "redact", "ink"]); // modificări ale originalului, fără strat
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -112,10 +113,13 @@ export class Panel {
   }
 
   keysHtml() {
-    return `<div class="sec"><div class="h">Taste</div><div class="keys">
-      <b>V</b> selecție · <b>H</b> mută · <b>D</b> liniară · <b>A</b> aliniată · <b>O</b> diametru · <b>R</b> rază · <b>U</b> unghi · <b>C</b> teșitură · <b>L</b> indicație · <b>T</b> text<br>
-      <b>G</b> GD&amp;T · <b>B</b> bază · <b>Q</b> rugozitate · <b>S</b> taie cota · <b>W</b> acoperă · <b>X</b> șterge · <b>K</b> calibrare<br>
-      <b>I</b> linie · <b>P</b> polilinie · <b>J</b> dreptunghi · <b>Y</b> cerc · <b>Z</b> arc · <b>M</b> măsoară · <b>Enter</b> termină polilinia<br>
+    const cfg = (this.app && this.app.keyCfg) || keyConfig();
+    const ac = cfg.mode === "autocad";
+    const items = commandList(cfg).filter((c) => c.kind === "tool" && (ac ? c.aliases.length : c.key));
+    const list = items.map((c) => `<b>${ac ? c.aliases[0] : c.key}</b> ${c.label.toLowerCase()}`).join(" · ");
+    return `<div class="sec"><div class="h">Taste${ac ? " · comenzi ca în AutoCAD" : ""}</div><div class="keys">
+      ${list}<br>
+      ${ac ? "comanda + <b>Spațiu</b> / <b>Enter</b> · Spațiu sau Enter singur <b>repetă</b> · <b>U</b> anulează · <b>Z</b> potrivește · <b>E</b> cu selecție șterge" : "<b>Enter</b> linie de comandă (L, C, DLI…) · <b>Enter</b> termină polilinia"} · <b>ALIASEDIT</b> sau Setări → Taste și comenzi<br>
       <b>Shift</b> ortho · <b>Alt</b> fără snap · <b>Esc</b> renunță · <b>Del</b> șterge selecția<br>
       <b>Ctrl+C / Ctrl+V</b> copiază / lipește la cursor · <b>Ctrl+D</b> duplică · <b>Ctrl+A</b> selectează tot · <b>Ctrl+F</b> caută text / OCR<br>
       <b>Shift+click</b> sau dreptunghi pe zonă goală = selecție multiplă · <b>săgeți</b> mută 0,5 mm<br>

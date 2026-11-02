@@ -3,6 +3,7 @@ import * as api from "./api.js";
 import { K, fmtNum, parseNum, DEFAULT_SETTINGS } from "./annots.js";
 import { MM_POSITIONS, MM_DEFAULT, MM_SPECIAL, markingConfig } from "./mmenu.js";
 import { TOOLS } from "./tools.js";
+import { commandList, conflicts, defaultKeyConfig, keyConfig, saveKeyConfig, labelOf, RESERVED_KEYS, DEFAULT_ALIASES, ACTIONS } from "./commands.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
@@ -564,6 +565,10 @@ export function settingsDialog(app) {
       <div class="mmgrid" id="sMm">${mmGridHtml(markingConfig())}</div>
       <div class="row"><button class="ghost" id="sMmReset">Revino la implicit</button><span class="sub">Alegi trăgând spre comandă și eliberând butonul; pe ecran tactil, apăsare lungă.</span></div>
     </div>
+    <div class="sec">
+      <div class="lbl">Taste și comenzi · pentru toate documentele</div>
+      <div class="row"><button class="ghost" id="sKeys">Taste și comenzi…</button><span class="sub">Acum: ${keyConfig().mode === "autocad" ? "comenzi scrise ca în AutoCAD (L, C, DLI… + Spațiu)" : "taste directe (o tastă = o unealtă); Enter deschide linia de comandă"}.</span></div>
+    </div>
     <div class="foot"><label class="chk" style="flex:1"><input type="checkbox" id="sDef"> Folosește ca implicit pentru documente noi</label>
       <button class="ghost" data-close>Închide</button><button class="primary" id="sSave">Aplică</button></div>`);
   const pending = {};
@@ -598,6 +603,7 @@ export function settingsDialog(app) {
       }
     });
   }
+  dlg.querySelector("#sKeys").addEventListener("click", () => keysDialog(app));
   dlg.querySelector("#sMmReset").addEventListener("click", () => {
     dlg.querySelector("#sMm").innerHTML = mmGridHtml(MM_DEFAULT);
   });
@@ -621,6 +627,109 @@ export function settingsDialog(app) {
     }
     closeModal();
   });
+}
+
+// ------------------------------------------------------------------ taste și comenzi
+export function keysDialog(app) {
+  let cfg = JSON.parse(JSON.stringify(keyConfig()));
+  const rowsHtml = () => {
+    let html = "";
+    let group = "";
+    for (const c of commandList(cfg)) {
+      if (c.group !== group) {
+        group = c.group;
+        html += `<tr><td class="g" colspan="3">${esc(group)}</td></tr>`;
+      }
+      html += `<tr data-id="${c.id}" data-q="${esc(`${c.label} ${c.aliases.join(" ")} ${c.key}`.toLowerCase())}">
+        <td>${esc(c.label)}</td>
+        <td>${c.kind === "tool" ? `<input type="text" class="mono k" maxlength="1" value="${esc(c.key)}" aria-label="Tasta pentru ${esc(c.label)}">` : `<span class="muted">—</span>`}</td>
+        <td><input type="text" class="mono al" value="${esc(c.aliases.join(", "))}" aria-label="Comenzile pentru ${esc(c.label)}"></td></tr>`;
+    }
+    return html;
+  };
+  const dlg = showModal(`
+    <h2>Taste și comenzi</h2>
+    <div class="seg" id="kMode" style="margin-bottom:8px">
+      <button data-mode="direct" class="${cfg.mode === "direct" ? "on" : ""}">Taste directe</button>
+      <button data-mode="autocad" class="${cfg.mode === "autocad" ? "on" : ""}">Ca în AutoCAD</button></div>
+    <div class="note" id="kHelp"></div>
+    <div class="field" style="margin-top:8px"><label for="kQ">Caută</label><input type="search" id="kQ" placeholder="ex.: cerc, DLI, rază"></div>
+    <div class="keytab"><table><thead><tr><th>Comandă</th><th>Tastă</th><th>Prescurtări (despărțite prin virgulă)</th></tr></thead><tbody id="kRows">${rowsHtml()}</tbody></table></div>
+    <div class="foot"><span class="muted" id="kMsg" style="flex:1"></span><button class="ghost" id="kReset">Revino la implicit</button><button class="ghost" data-close>Anulează</button><button class="primary" id="kSave">Aplică</button></div>`);
+  const help = () => {
+    dlg.querySelector("#kHelp").innerHTML = cfg.mode === "autocad"
+      ? "<b>Ca în AutoCAD:</b> scrii comanda oriunde pe desen (apare jos, în linia de comandă, cu sugestii) și o pornești cu <b>Spațiu</b> sau <b>Enter</b>. Spațiu sau Enter fără nimic scris <b>repetă ultima comandă</b>; la polilinie o termină. Spațiu ținut + tragere mută desenul, Esc renunță. Tastele directe nu se folosesc în acest mod."
+      : "<b>Taste directe:</b> o tastă pornește unealta (coloana Tastă). Comenzile din coloana a treia merg și aici: <b>Enter</b> deschide linia de comandă de jos, scrii de exemplu <b class=\"mono\">DLI</b> și dai Spațiu sau Enter.";
+  };
+  help();
+  const read = () => {
+    const keys = {};
+    const aliases = {};
+    dlg.querySelectorAll("#kRows tr[data-id]").forEach((tr) => {
+      const id = tr.dataset.id;
+      const k = tr.querySelector("input.k");
+      const al = tr.querySelector("input.al");
+      if (k) {
+        const tool = TOOLS.find((t) => t.id === id);
+        const v = k.value.trim().toUpperCase();
+        if (v !== String((tool && tool.key) || "").toUpperCase()) keys[id] = v;
+      }
+      const list = [...new Set(al.value.split(/[,;\s]+/).map((x) => x.trim().toUpperCase()).filter((x) => /^[A-Z0-9]{1,16}$/.test(x)))];
+      const def = (DEFAULT_ALIASES[id] || (ACTIONS.find((a) => a.id === id) || {}).aliases || []).map((x) => x.toUpperCase());
+      if (list.join(",") !== def.join(",")) aliases[id] = list;
+    });
+    return { mode: cfg.mode, keys, aliases };
+  };
+  const check = () => {
+    cfg = read();
+    const bad = conflicts(cfg);
+    const msgs = [];
+    dlg.querySelectorAll("#kRows input").forEach((x) => x.classList.remove("bad"));
+    const mark = (id, sel) => {
+      const el = dlg.querySelector(`#kRows tr[data-id="${id}"] ${sel}`);
+      if (el) el.classList.add("bad");
+    };
+    for (const [k, ids] of Object.entries(bad.keys)) {
+      ids.forEach((id) => mark(id, "input.k"));
+      msgs.push(`tasta ${k}: ${ids.map(labelOf).join(" și ")}`);
+    }
+    for (const k of bad.reserved) {
+      commandList(cfg).filter((c) => c.key === k).forEach((c) => mark(c.id, "input.k"));
+      msgs.push(`tasta ${k} e rezervată (F = potrivește, +/− = zoom)`);
+    }
+    for (const [a, ids] of Object.entries(bad.aliases)) {
+      ids.forEach((id) => mark(id, "input.al"));
+      msgs.push(`${a}: ${ids.map(labelOf).join(" și ")}`);
+    }
+    dlg.querySelector("#kMsg").textContent = msgs.length ? `Dubluri — ${msgs.slice(0, 3).join(" · ")}${msgs.length > 3 ? " …" : ""}` : "";
+    dlg.querySelector("#kSave").disabled = msgs.length > 0;
+  };
+  dlg.querySelector("#kRows").addEventListener("input", check);
+  dlg.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => {
+    cfg.mode = b.dataset.mode;
+    dlg.querySelectorAll("[data-mode]").forEach((x) => x.classList.toggle("on", x === b));
+    help();
+  }));
+  dlg.querySelector("#kQ").addEventListener("input", (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    dlg.querySelectorAll("#kRows tr").forEach((tr) => {
+      tr.hidden = !!q && (!tr.dataset.q || !tr.dataset.q.includes(q));
+    });
+  });
+  dlg.querySelector("#kReset").addEventListener("click", () => {
+    cfg = { ...defaultKeyConfig(), mode: cfg.mode };
+    dlg.querySelector("#kRows").innerHTML = rowsHtml();
+    check();
+  });
+  dlg.querySelector("#kSave").addEventListener("click", () => {
+    check();
+    if (dlg.querySelector("#kSave").disabled) return;
+    saveKeyConfig(cfg);
+    app.applyKeyCfg(cfg);
+    closeModal();
+    toast(cfg.mode === "autocad" ? "Comenzi ca în AutoCAD: scrie comanda + Spațiu" : "Taste directe; Enter deschide linia de comandă");
+  });
+  check();
 }
 
 export function storedDefaults() {

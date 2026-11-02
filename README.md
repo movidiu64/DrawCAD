@@ -141,6 +141,16 @@ Modurile se aleg din săgeata de lângă „Snap”, în bara de jos. Taste: **F
 
 **Scanuri:** după deschidere folosește **Calibrare (K)**. Dai click pe capetele unei cote cunoscute și introduci valoarea reală.
 
+**Taste și comenzi:** sunt două moduri. Se aleg din **Setări → Taste și comenzi** sau scriind comanda `ALIASEDIT`.
+- **Taste directe** (implicit): o tastă pornește unealta (tabelul de mai jos). **Enter** deschide linia de comandă din bara de jos: scrii `DLI`, `C`, `PL`… și dai Spațiu sau Enter.
+- **Ca în AutoCAD:** scrii comanda oriunde pe desen. Ea apare în linia de comandă, cu sugestii, iar **Spațiu** sau **Enter** o pornește. Spațiu sau Enter fără nimic scris repetă ultima comandă, iar la polilinie o termină. Spațiu ținut + tragere mută foaia.
+
+Prescurtările implicite urmează AutoCAD: `L` linie, `PL` polilinie, `REC` dreptunghi, `C` cerc, `A` arc, `H` hașură, `CM` axe cerc, `DLI` / `DAL` / `DDI` / `DRA` / `DAN` cote, `LE` indicație, `T` / `MT` text, `TOL` GD&T, `E` șterge (cu selecție: șterge selecția), `DI` măsoară, `P` mută, `U` anulează, `Z` potrivește pagina, `OS` / `OR` snap / ortho, `OP` setări. Comenzile fără echivalent în AutoCAD au nume scurte: `RUG` rugozitate, `NOTE`, `REV` tabel de revizii, `BOM`, `SEC` secțiune, `DET` detaliu, `BAL` reper, `STR` taie cota, `WO` acoperire, `CALIB` calibrare. Merge și numele uneltei („cerc”, „rază”).
+
+În același dialog fiecare unealtă poate primi altă tastă și alte prescurtări. Dublurile se semnalează și blochează salvarea. Configurarea se păstrează în browser (în aplicația desktop, pe calculator), pentru toate documentele.
+
+Tastele directe implicite:
+
 | Tastă | Unealtă | Tastă | Unealtă |
 |---|---|---|---|
 | V | selecție | G | cadru GD&T |

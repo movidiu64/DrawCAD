@@ -259,7 +259,7 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
   .tool svg { width: 20px; height: 20px; }
   .panel { left: 0; right: 0; top: auto; bottom: 0; width: auto; height: min(58vh, 520px); border-left: 0; border-top: 1px solid var(--line2); border-radius: 14px 14px 0 0; transform: translateY(105%); box-shadow: 0 -12px 30px rgba(0,0,0,0.45); }
   .status { flex-wrap: nowrap; overflow-x: auto; gap: 12px; padding: 3px 8px; }
-  .status .hint, #stCoords, #stScale { display: none; }
+  .status .hint, #stCoords, #stScale, .cmdline { display: none; }
   .vphint:not(:empty) { display: block; position: absolute; left: 8px; right: 8px; top: 8px; z-index: 3; padding: 6px 10px; border-radius: 8px; background: rgba(21,24,28,0.88); color: var(--text); font-size: 12px; line-height: 1.4; pointer-events: none; }
   .snapmenu { position: fixed; left: 8px; right: 8px; bottom: 40px; width: auto; }
   .dialog { padding: 14px; gap: 12px; max-height: calc(100vh - 16px); }
@@ -287,3 +287,26 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
 .dxfopts { display: flex; flex-direction: column; gap: 7px; font-size: 13px; }
 .dxfopts .seg { margin-bottom: 2px; }
 .seg button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* linia de comandă (ca în AutoCAD) */
+.cmdline { position: relative; display: flex; align-items: center; gap: 4px; }
+.cmdline > span { color: var(--accent); font-weight: 700; }
+.status .cmdline input { height: 22px; width: 230px; padding: 0 6px; border: 1px solid var(--line2); border-radius: 4px; background: var(--bg); color: var(--text); font-size: 12px; text-transform: uppercase; }
+.status .cmdline input::placeholder { text-transform: none; color: var(--muted); }
+.status .cmdline input:focus { outline: none; border-color: var(--accent); }
+.cmdsug { position: absolute; left: 14px; bottom: calc(100% + 6px); min-width: 300px; background: var(--panel); border: 1px solid var(--line2); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.45); z-index: 60; }
+.cmdsug .cs { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 5px; cursor: pointer; font-size: 12.5px; color: var(--text); }
+.cmdsug .cs b { min-width: 64px; color: var(--accent); }
+.cmdsug .cs span { flex: 1; }
+.cmdsug .cs i { font-style: normal; color: var(--muted); border: 1px solid var(--line2); border-radius: 3px; padding: 0 4px; font-size: 11px; }
+.cmdsug .cs.on, .cmdsug .cs:hover { background: var(--raised); }
+/* dialogul „Taste și comenzi” */
+.keytab { max-height: 52vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.keytab table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.keytab th { position: sticky; top: 0; background: var(--panel); text-align: left; font-weight: 600; color: var(--text2); padding: 6px 8px; font-size: 12px; }
+.keytab td { padding: 3px 8px; border-top: 1px solid var(--line); }
+.keytab td.g { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; padding-top: 10px; }
+.keytab input { height: 28px !important; }
+.keytab input.k { width: 44px !important; text-align: center; text-transform: uppercase; }
+.keytab input.al { text-transform: uppercase; }
+.keytab input.bad { border-color: var(--bad) !important; background: #3a1c1c !important; }

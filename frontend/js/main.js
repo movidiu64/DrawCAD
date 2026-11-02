@@ -4,10 +4,11 @@ import { build, derive, hit, setHandle, moveAnnot, annotSnapPoints, exportPrims,
 import { View, COLORS } from "./view.js";
 import { Snapper, MODES, DEFAULT_MODES, LABELS } from "./osnap.js";
 import { Panel } from "./panel.js";
-import { TOOLS, TOOL_BY_ID, TOOL_BY_KEY, finalize } from "./tools.js";
+import { TOOLS, TOOL_BY_ID, finalize } from "./tools.js";
 import * as dlg from "./dialogs.js";
 import { VIEW_LETTERS } from "./symbols.js";
 import { markingConfig, MM_ICONS } from "./mmenu.js";
+import { keyConfig, directKeyMap, resolveCommand, suggest, commandList } from "./commands.js";
 
 const $ = (id) => document.getElementById(id);
 /** Hash scurt (FNV-1a) pentru cheile de randare. */
@@ -279,6 +280,8 @@ class App {
     this.bindSnapUi();
     this.bindCanvas();
     this.bindKeys();
+    this.bindCmdLine();
+    this.applyKeyCfg(keyConfig());
     this.panel.render();
     this.refreshRecent();
     this.setTool("select");
@@ -415,7 +418,10 @@ class App {
 
   setTool(id) {
     if (!TOOL_BY_ID[id]) return;
-    if (id !== "select" && id !== "pan") this.lastTool = id;
+    if (id !== "select" && id !== "pan") {
+      this.lastTool = id;
+      this.lastCmd = id; // Enter / Spațiu (în modul AutoCAD) o repornește
+    }
     this.tool = id;
     this.clicks = [];
     this.lastMeasure = null;
@@ -1304,6 +1310,7 @@ class App {
         }, 550);
       }
       if (e.button === 1 || this.space || this.tool === "pan") {
+        if (this.space) this.spaceDragged = true;
         this.drag = { kind: "pan", sx, sy };
         cv.style.cursor = "grabbing";
         e.preventDefault();
@@ -1826,6 +1833,163 @@ class App {
   }
 
   // ------------------------------------------------------------ tastatură
+  // ------------------------------------------------------------ taste și linia de comandă
+  applyKeyCfg(cfg) {
+    this.keyCfg = cfg;
+    this.keyMap = directKeyMap(cfg);
+    const byId = Object.fromEntries(commandList(cfg).map((c) => [c.id, c]));
+    $("tools").querySelectorAll("[data-tool]").forEach((b) => {
+      const c = byId[b.dataset.tool];
+      if (!c) return;
+      const bits = [c.key, c.aliases[0]].filter(Boolean);
+      b.title = `${c.label}${bits.length ? ` (${[...new Set(bits)].join(" · ")})` : ""}`;
+    });
+    const inp = $("cmdIn");
+    if (inp) inp.placeholder = cfg.mode === "autocad" ? "Comandă (L, C, PL, DLI…)" : "Enter → comandă (L, C, DLI…)";
+    if (this.panel) this.panel.render();
+  }
+
+  bindCmdLine() {
+    const inp = $("cmdIn");
+    const box = $("cmdSug");
+    if (!inp) return;
+    let list = [];
+    let pick = 0;
+    const show = () => {
+      list = suggest(inp.value, this.keyCfg);
+      pick = 0;
+      if (!list.length) {
+        box.hidden = true;
+        return;
+      }
+      box.innerHTML = list.map((c, i) => `<div class="cs${i === pick ? " on" : ""}" data-i="${i}"><b class="mono">${c.hit || ""}</b><span>${c.label}</span>${c.key ? `<i class="mono">${c.key}</i>` : ""}</div>`).join("");
+      box.hidden = false;
+      box.querySelectorAll("[data-i]").forEach((el) => el.addEventListener("mousedown", (ev) => {
+        ev.preventDefault();
+        this.execCmdLine(list[Number(el.dataset.i)]);
+      }));
+    };
+    const mark = () => box.querySelectorAll(".cs").forEach((el, i) => el.classList.toggle("on", i === pick));
+    this._cmdShow = show;
+    inp.addEventListener("input", show);
+    inp.addEventListener("focus", show);
+    inp.addEventListener("blur", () => setTimeout(() => { box.hidden = true; }, 120));
+    inp.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Escape") {
+        inp.value = "";
+        inp.blur();
+        this.escape();
+        return;
+      }
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        if (list.length) pick = (pick + (e.key === "ArrowDown" ? 1 : list.length - 1)) % list.length;
+        mark();
+        return;
+      }
+      if (e.key === "Enter" || e.key === " " || e.key === "Tab") {
+        e.preventDefault();
+        const v = inp.value.trim();
+        if (!v) {
+          inp.blur();
+          if (e.key !== "Tab") this.repeatCmd();
+          return;
+        }
+        // potrivirea exactă are întâietate; altfel prima sugestie (sau cea aleasă cu săgețile)
+        const exact = resolveCommand(v, this.keyCfg);
+        const chosen = pick > 0 && list[pick] ? list[pick] : exact || list[0];
+        if (!chosen) {
+          dlg.toast(`Comandă necunoscută: ${v.toUpperCase()}`);
+          inp.select();
+          return;
+        }
+        this.execCmdLine(chosen);
+      }
+    });
+  }
+
+  /** Începe scrierea unei comenzi (modul AutoCAD) sau deschide linia de comandă goală. */
+  focusCmdLine(ch = "") {
+    const inp = $("cmdIn");
+    if (!inp || inp.offsetParent === null) return false;
+    inp.value = ch;
+    inp.focus();
+    inp.setSelectionRange(inp.value.length, inp.value.length);
+    if (this._cmdShow) this._cmdShow();
+    return true;
+  }
+
+  execCmdLine(c) {
+    const inp = $("cmdIn");
+    inp.value = "";
+    inp.blur();
+    $("cmdSug").hidden = true;
+    this.runCommand(c.id);
+  }
+
+  repeatCmd() {
+    if (this.lastCmd) this.runCommand(this.lastCmd);
+  }
+
+  toggleSnapFlag(fk) {
+    const c = this.snapCfg;
+    c[fk] = !c[fk];
+    if (fk === "ortho" && c.ortho) c.polar = false;
+    if (fk === "polar" && c.polar) c.ortho = false;
+    if (fk === "on") this.clearAcq();
+    this.saveSnapCfg();
+    const names = { on: "Snap", ortho: "Ortho", polar: `Polar ${c.polarInc}°`, tracking: "Urmărire" };
+    dlg.toast(`${names[fk]}: ${c[fk] ? "pornit" : "oprit"}`, 1500);
+  }
+
+  zoomSelection() {
+    const boxes = this.selectedAll().map((a) => this.builtOf(a).bbox).filter(Boolean);
+    if (!boxes.length) return this.view.fit();
+    this.view.zoomToBox([Math.min(...boxes.map((q) => q[0])), Math.min(...boxes.map((q) => q[1])), Math.max(...boxes.map((q) => q[2])), Math.max(...boxes.map((q) => q[3]))]);
+  }
+
+  /** O comandă după id: unealtă sau acțiune (din linia de comandă, tastă sau repetare). */
+  runCommand(id) {
+    const needDoc = () => {
+      if (this.doc) return true;
+      dlg.toast("Deschide întâi un desen");
+      return false;
+    };
+    if (TOOL_BY_ID[id]) {
+      if (!needDoc()) return;
+      // E (ERASE) cu ceva selectat șterge selecția, ca în AutoCAD; altfel pornește ștergerea din original
+      if (id === "redact" && this.sel.size) {
+        this.deleteSelected();
+        this.lastCmd = id;
+        return;
+      }
+      this.setTool(id);
+      return;
+    }
+    const act = {
+      undo: () => this.doUndo(),
+      redo: () => this.doRedo(),
+      fit: () => this.view.fit(),
+      zoomSel: () => this.zoomSelection(),
+      find: () => needDoc() && dlg.textDialog(this),
+      export: () => needDoc() && dlg.exportDialog(this),
+      open: () => $("btnOpen").click(),
+      close: () => this.doc && this.closeDoc(),
+      settings: () => needDoc() && dlg.settingsDialog(this),
+      keys: () => dlg.keysDialog(this),
+      osnap: () => this.toggleSnapFlag("on"),
+      ortho: () => this.toggleSnapFlag("ortho"),
+      polar: () => this.toggleSnapFlag("polar"),
+      selAll: () => this.doc && this.selectMany(this.visibleBuilt().map(({ a }) => a.id)),
+      nextPage: () => this.doc && this.page < this.doc.pages.length - 1 && this.setPage(this.page + 1),
+      prevPage: () => this.doc && this.page > 0 && this.setPage(this.page - 1),
+    }[id];
+    if (!act) return;
+    act();
+    if (id !== "keys" && id !== "settings") this.lastCmd = id;
+  }
+
   bindKeys() {
     window.addEventListener("keydown", (e) => {
       this.frame = (this.frame || 0) + 1;
@@ -1833,14 +1997,7 @@ class App {
       const fk = { F3: "on", F8: "ortho", F10: "polar", F11: "tracking" }[e.key];
       if (fk) {
         e.preventDefault();
-        const c = this.snapCfg;
-        c[fk] = !c[fk];
-        if (fk === "ortho" && c.ortho) c.polar = false;
-        if (fk === "polar" && c.polar) c.ortho = false;
-        if (fk === "on") this.clearAcq();
-        this.saveSnapCfg();
-        const names = { on: "Snap", ortho: "Ortho", polar: `Polar ${c.polarInc}°`, tracking: "Urmărire" };
-        dlg.toast(`${names[fk]}: ${c[fk] ? "pornit" : "oprit"}`, 1500);
+        this.toggleSnapFlag(fk);
         return;
       }
       const tag = document.activeElement && document.activeElement.tagName;
@@ -1887,10 +2044,29 @@ class App {
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const autocad = this.keyCfg && this.keyCfg.mode === "autocad";
+      // modul AutoCAD: literele și cifrele scriu comanda (Shift+F rămâne zoom pe selecție)
+      if (autocad && e.key.length === 1 && /[a-z0-9]/i.test(e.key) && !(e.shiftKey && k === "f") && !this.mmenu) {
+        e.preventDefault();
+        this.focusCmdLine(e.key);
+        return;
+      }
       if (e.key === " ") {
+        if (!this.space) {
+          this.spaceAt = Date.now();
+          this.spaceDragged = false;
+        }
         this.space = true;
         $("canvas").style.cursor = "grab";
         e.preventDefault();
+        return;
+      }
+      if (e.key === "Enter" && !this.clicks.length && !this.mmenu) {
+        // fără nimic în lucru: AutoCAD repetă ultima comandă; în modul cu taste directe,
+        // Enter deschide linia de comandă
+        e.preventDefault();
+        if (autocad) this.repeatCmd();
+        else this.focusCmdLine();
         return;
       }
       if (e.key === "Escape" && this.mmenu) {
@@ -1919,10 +2095,8 @@ class App {
       }
       if (k === "f") {
         // Shift+F: zoom pe selecție; F: toată pagina
-        const boxes = e.shiftKey ? this.selectedAll().map((a) => this.builtOf(a).bbox).filter(Boolean) : [];
-        if (boxes.length) {
-          this.view.zoomToBox([Math.min(...boxes.map((q) => q[0])), Math.min(...boxes.map((q) => q[1])), Math.max(...boxes.map((q) => q[2])), Math.max(...boxes.map((q) => q[3]))]);
-        } else this.view.fit();
+        if (e.shiftKey) this.zoomSelection();
+        else this.view.fit();
         return;
       }
       if (e.key === "+" || e.key === "=") {
@@ -1935,11 +2109,20 @@ class App {
       }
       if (e.key === "PageDown" && this.doc && this.page < this.doc.pages.length - 1) this.setPage(this.page + 1);
       if (e.key === "PageUp" && this.doc && this.page > 0) this.setPage(this.page - 1);
-      const t = TOOL_BY_KEY[k];
-      if (t && this.doc) this.setTool(t.id);
+      const id = !autocad && this.keyMap ? this.keyMap[k] : null;
+      if (id && this.doc) this.setTool(id);
     });
     window.addEventListener("keyup", (e) => {
       if (e.key === " ") {
+        // modul AutoCAD: Spațiu apăsat scurt (fără tragere) = Enter: termină sau repetă comanda
+        const tap = this.space && !this.spaceDragged && Date.now() - (this.spaceAt || 0) < 300;
+        if (tap && this.keyCfg && this.keyCfg.mode === "autocad" && !dlg.isModalOpen()) {
+          const tag = document.activeElement && document.activeElement.tagName;
+          if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
+            if (this.clicks.length) this.escape();
+            else this.repeatCmd();
+          }
+        }
         this.space = false;
         $("canvas").style.cursor = this.tool === "pan" ? "grab" : this.tool === "select" ? "default" : "crosshair";
       }
