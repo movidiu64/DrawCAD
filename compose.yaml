@@ -6,7 +6,7 @@ name: drawcad
 
 services:
   drawcad:
-    image: ghcr.io/gg64nou/drawcad:${DRAWCAD_TAG:-${COTARE_TAG:-latest}}
+    image: ghcr.io/movidiu64/drawcad:${DRAWCAD_TAG:-${COTARE_TAG:-latest}}
     container_name: drawcad
     restart: unless-stopped
     pull_policy: always

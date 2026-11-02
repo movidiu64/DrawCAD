@@ -21,15 +21,15 @@ Originalul nu se modifică. Adnotările se păstrează separat și se aplică ab
 
 ## Instalare
 
-Imaginea `ghcr.io/gg64nou/drawcad:latest` e construită de GitHub Actions la fiecare push pe `main`, după ce trec testele și testul în browser pe container. Pentru instalare e suficient `compose.yaml`.
+Imaginea `ghcr.io/movidiu64/drawcad:latest` e construită de GitHub Actions la fiecare push pe `main`, după ce trec testele și testul în browser pe container. Pentru instalare e suficient `compose.yaml`.
 
 ### Cu Dockhand (stack din Git) — recomandat
 
 Dockhand clonează repo-ul și construiește imaginea direct pe server. Nu e nevoie de registry și nici de token pentru `ghcr.io`.
 
-1. **Acces la repo.** Pe GitHub creează un token fine-grained, doar pentru `DrawCAD`, cu **Contents: Read-only**. În Dockhand adaugă-l la credențialele Git: utilizator `gg64nou`, parola = tokenul.
+1. **Acces la repo.** Pe GitHub creează un token fine-grained, doar pentru `DrawCAD`, cu **Contents: Read-only**. În Dockhand adaugă-l la credențialele Git: utilizator `movidiu64`, parola = tokenul.
 2. **Stack nou din Git:**
-   - repository: `https://github.com/gg64nou/DrawCAD.git`
+   - repository: `https://github.com/movidiu64/DrawCAD.git`
    - ramura: `main`
    - fișierul compose: **`compose.build.yaml`**
 3. **Variabile ale stack-ului** (opțional; lista completă e în `.env.example`):
