@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -37,15 +38,32 @@ _LANGS = None
 RAGGED = None  # None = automat (scan → da)
 
 
+def _exe():
+    """Tesseract: calea dată explicit (aplicația desktop îl are în pachet) sau cel din PATH."""
+    p = os.environ.get("DRAWCAD_TESSERACT")
+    if p and os.path.isfile(p):
+        return p
+    return shutil.which("tesseract")
+
+
+def _run_kw() -> dict:
+    # ieșirea Tesseract e UTF-8 (diacriticele); pe Windows, fără fereastră de consolă
+    kw = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
+    if sys.platform == "win32":
+        kw["creationflags"] = subprocess.CREATE_NO_WINDOW
+    return kw
+
+
 def available_langs() -> list[str]:
     global _LANGS
     if _LANGS is None:
-        exe = shutil.which("tesseract")
+        exe = _exe()
         if not exe:
             _LANGS = []
         else:
             try:
-                out = subprocess.run([exe, "--list-langs"], capture_output=True, text=True, timeout=10).stdout
+                r = subprocess.run([exe, "--list-langs"], timeout=10, **_run_kw())
+                out = r.stdout or r.stderr or ""
                 _LANGS = [ln.strip() for ln in out.splitlines()[1:] if ln.strip() and ln.strip() != "osd"]
             except Exception:  # noqa: BLE001
                 _LANGS = []
@@ -147,14 +165,14 @@ def _denoise(gray: np.ndarray) -> np.ndarray:
 
 
 def _tesseract(img: Image.Image, lng: str, dpi: int) -> list[dict]:
-    exe = shutil.which("tesseract")
+    exe = _exe()
     with tempfile.TemporaryDirectory(prefix="drawcad-ocr-") as td:
         p = os.path.join(td, "in.png")
         img.save(p)
         env = {**os.environ, "OMP_THREAD_LIMIT": "1"}
         r = subprocess.run(
             [exe, p, "stdout", "-l", lng, "--psm", "11", "--dpi", str(int(dpi)), "-c", "preserve_interword_spaces=1", "tsv"],
-            capture_output=True, text=True, timeout=OCR_TIMEOUT, env=env,
+            timeout=OCR_TIMEOUT, env=env, **_run_kw(),
         )
         if r.returncode != 0:
             raise RuntimeError((r.stderr or "tesseract a eșuat").strip().splitlines()[-1][:200])

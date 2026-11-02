@@ -286,15 +286,15 @@ export function exportDialog(app, opts = {}) {
         ? { format: "dxf", dxf: { scale: scaleMode === "real" ? realScale : 1, geom: chk("#xGeom"), text: chk("#xText"), annots: chk("#xAnn"), ocr: chk("#xOcr"), vectorize: chk("#xVec"), image: chk("#xImg") } }
         : { ocrLayer: chk("#eOcr") };
       const { blob, report, kind, stats } = await app.exportPdf(name, color, chk("#eEmbed"), sel, split, extra);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
       const stem = name.replace(/\.(pdf|dxf|zip)$/i, "");
-      a.download = `${stem}.${kind === "zip" ? "zip" : kind === "dxf" ? "dxf" : "pdf"}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      const fileName = `${stem}.${kind === "zip" ? "zip" : kind === "dxf" ? "dxf" : "pdf"}`;
+      const saved = await saveBlob(blob, fileName);
+      if (!saved) {
+        dlg.querySelector("#eMsg").textContent = "Salvare anulată";
+        btn.disabled = false;
+        return;
+      }
+      const a = { download: saved };
       closeModal();
       const removed = Object.values(report).reduce((s, r) => s + (r.removed || 0), 0);
       const blackened = Object.values(report).reduce((s, r) => s + (r.black || 0), 0);
@@ -317,6 +317,36 @@ export function exportDialog(app, opts = {}) {
       btn.disabled = false;
     }
   });
+}
+
+// ------------------------------------------------------------------ salvare fișier
+/** Salvează un fișier generat. În aplicația desktop deschide dialogul „Salvează ca” al sistemului;
+ *  în browser îl descarcă. Întoarce numele salvat sau null dacă utilizatorul a renunțat. */
+export async function saveBlob(blob, fileName) {
+  const bridge = window.pywebview && window.pywebview.api;
+  if (bridge && bridge.save_file) {
+    const b64 = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(",", 2)[1] || "");
+      r.onerror = () => reject(new Error("Fișierul nu a putut fi pregătit"));
+      r.readAsDataURL(blob);
+    });
+    const res = await bridge.save_file(fileName, b64);
+    if (!res || !res.ok) {
+      if (res && res.error) throw new Error(res.error);
+      return null;
+    }
+    return res.name || fileName;
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+  return fileName;
 }
 
 // ------------------------------------------------------------------ text și OCR

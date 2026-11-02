@@ -202,6 +202,17 @@ class SecurityTest(unittest.TestCase):
         finally:
             appmain.AUTH_PASSWORD = old
 
+    def test_allowed_hosts_block_dns_rebinding(self):
+        """Aplicația desktop: un site al cărui nume indică spre 127.0.0.1 nu ajunge la server."""
+        old = appmain.ALLOWED_HOSTS
+        appmain.ALLOWED_HOSTS = {"127.0.0.1", "localhost"}
+        try:
+            self.assertEqual(self.call("GET", "/api/docs")[0], 200)
+            st, _h, _b = self.call("GET", "/api/docs", headers={"Host": "rebind.example.com:8080"})
+            self.assertEqual(st, 421)
+        finally:
+            appmain.ALLOWED_HOSTS = old
+
     def test_private_mode_isolates_browsers(self):
         """În modul private, fiecare browser își vede doar documentele lui."""
         old = appmain.MODE

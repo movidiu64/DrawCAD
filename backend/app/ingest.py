@@ -124,21 +124,39 @@ def process(path: str, out_dir: str, dpi: float | None) -> dict:
     return {"kind": kind, "dpi": used_dpi, "pages": pages, "state": state, "removed": removed}
 
 
+def _emit(out_dir, obj):
+    """Rezultatul: pe ieșirea standard și în out_dir/result.json (pe Windows, o aplicație
+    împachetată fără consolă poate să nu aibă ieșire standard)."""
+    txt = json.dumps(obj)
+    try:
+        with open(os.path.join(out_dir, "result.json"), "w", encoding="utf-8") as f:
+            f.write(txt)
+    except OSError:
+        pass
+    if sys.stdout is not None:
+        try:
+            sys.stdout.write(txt)
+            sys.stdout.flush()
+        except (OSError, ValueError):
+            pass
+
+
 def main(argv):
     _limit_self()
+    out_dir = argv[2] if len(argv) > 2 else "."
     try:
         dpi = float(argv[3]) if len(argv) > 3 and argv[3] else None
-        res = process(argv[1], argv[2], dpi)
-        sys.stdout.write(json.dumps({"ok": True, **res}))
+        res = process(argv[1], out_dir, dpi)
+        _emit(out_dir, {"ok": True, **res})
         return 0
     except Rejected as e:
-        sys.stdout.write(json.dumps({"ok": False, "error": str(e)}))
+        _emit(out_dir, {"ok": False, "error": str(e)})
         return 2
     except MemoryError:
-        sys.stdout.write(json.dumps({"ok": False, "error": "Fișierul cere prea multă memorie la citire"}))
+        _emit(out_dir, {"ok": False, "error": "Fișierul cere prea multă memorie la citire"})
         return 3
     except Exception as e:  # noqa: BLE001
-        sys.stdout.write(json.dumps({"ok": False, "error": f"PDF imposibil de citit: {e}"}))
+        _emit(out_dir, {"ok": False, "error": f"PDF imposibil de citit: {e}"})
         return 4
 
 

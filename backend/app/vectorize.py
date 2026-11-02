@@ -664,12 +664,28 @@ def vectorize(gray: np.ndarray, px_per_pt: float, masks=(), deskew=True) -> dict
     }
 
 
+def _emit(path, obj):
+    txt = json.dumps(obj)
+    try:
+        with open(path + ".status", "w", encoding="utf-8") as f:
+            f.write(txt)
+    except OSError:
+        pass
+    if sys.stdout is not None:
+        try:
+            sys.stdout.write(txt)
+            sys.stdout.flush()
+        except (OSError, ValueError):
+            pass
+
+
 def main(argv):
     from PIL import Image
 
     from .ingest import _limit_self
 
     _limit_self()
+    out = argv[2]
     try:
         Image.MAX_IMAGE_PIXELS = 120_000_000
         gray = np.asarray(Image.open(argv[1]).convert("L"))
@@ -679,15 +695,15 @@ def main(argv):
             with open(argv[4], encoding="utf-8") as f:
                 masks = [m for m in json.load(f) if isinstance(m, list) and len(m) == 4]
         res = vectorize(gray, scale, masks)
-        with open(argv[2], "w", encoding="utf-8") as f:
+        with open(out, "w", encoding="utf-8") as f:
             json.dump(res, f)
-        sys.stdout.write(json.dumps({"ok": True, "polys": len(res["polys"]), "circles": len(res["circles"])}))
+        _emit(out, {"ok": True, "polys": len(res["polys"]), "circles": len(res["circles"])})
         return 0
     except MemoryError:
-        sys.stdout.write(json.dumps({"ok": False, "error": "Vectorizarea cere prea multă memorie"}))
+        _emit(out, {"ok": False, "error": "Vectorizarea cere prea multă memorie"})
         return 3
     except Exception as e:  # noqa: BLE001
-        sys.stdout.write(json.dumps({"ok": False, "error": f"Vectorizare eșuată: {e}"}))
+        _emit(out, {"ok": False, "error": f"Vectorizare eșuată: {e}"})
         return 4
 
 

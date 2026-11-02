@@ -270,6 +270,7 @@ class App {
       this.retentionDays = h.retentionDays;
       this.mode = h.mode || "personal";
       this.ocrLang = h.ocr || null;
+      this.desktop = !!h.desktop;
     } catch (_) {
       this.retentionDays = 0;
     }
@@ -281,6 +282,13 @@ class App {
     this.panel.render();
     this.refreshRecent();
     this.setTool("select");
+    // aplicația desktop deschide un fișier dat din Explorer („Deschide cu DrawCAD”) ca #doc=<id>
+    const m = /^#doc=([a-f0-9]{32})$/.exec(location.hash);
+    if (m) {
+      history.replaceState(null, "", location.pathname);
+      this.loadDoc(m[1]);
+      return;
+    }
     const last = localStorage.getItem("cotare.lastDoc");
     if (last) this.loadDoc(last, true);
   }

@@ -50,6 +50,26 @@ WS_COOKIE = "drawcad_ws"
 _WS_RE = re.compile(r"^[A-Za-z0-9_-]{24,64}$")
 
 DOCS = DATA_DIR / "docs"
+# aplicația desktop (Windows): servește doar local și răspunde doar pe aceste nume de gazdă
+DESKTOP = str(_env("DESKTOP", "")).strip() == "1"
+ALLOWED_HOSTS = {h.strip().lower() for h in _env("ALLOWED_HOSTS", "").split(",") if h.strip()}
+
+
+def _child_cmd(module: str, *args) -> list[str]:
+    """Comanda pentru un proces-copil Python (citirea fișierelor, vectorizarea). În aplicația
+    împachetată (PyInstaller) nu există `python -m`: executabilul primește `--run-module`."""
+    if getattr(sys, "frozen", False):
+        return [sys.executable, "--run-module", module, *map(str, args)]
+    return [sys.executable, "-m", module, *map(str, args)]
+
+
+def _child_kw() -> dict:
+    kw = {}
+    if sys.platform == "win32":
+        import subprocess as _sp
+
+        kw["creationflags"] = _sp.CREATE_NO_WINDOW  # fără fereastră de consolă care clipește
+    return kw
 _ID_RE = re.compile(r"^[a-f0-9]{32}$")
 _OID_RE = re.compile(r"^\d{1,6}(\.\d{1,6}){0,8}$")  # id-ul unui obiect din pagină: „12” sau „3.4.1”
 
@@ -271,9 +291,9 @@ async def api_open(request: Request):
         out_dir.mkdir()
         # fișierul necunoscut se citește prima dată într-un proces separat, limitat în memorie și timp
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "app.ingest", str(upload), str(out_dir), str(dpi_v or ""),
+            *_child_cmd("app.ingest", upload, out_dir, dpi_v or ""),
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
-            cwd=str(Path(__file__).resolve().parents[1]),
+            cwd=str(Path(__file__).resolve().parents[1]), **_child_kw(),
         )
         try:
             out, _ = await asyncio.wait_for(proc.communicate(), INGEST_TIMEOUT)
@@ -285,6 +305,10 @@ async def api_open(request: Request):
             res = json.loads(out.decode("utf-8") or "{}")
         except Exception:  # noqa: BLE001
             res = {}
+        if not res:
+            # copilul scrie rezultatul și în fișier (pe Windows, o aplicație fără consolă poate
+            # pierde ieșirea standard)
+            res = _read_json(out_dir / "result.json", {}) or {}
         if not res.get("ok"):
             if not res and proc.returncode:
                 return _err("Fișier respins: biblioteca de citire s-a oprit (fișier corupt sau construit special)")
@@ -613,9 +637,9 @@ async def _vectorize(doc_id, n, pdf_bytes, masks, key):
             with open(mp, "w", encoding="utf-8") as f:
                 json.dump(masks, f)
             proc = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", "app.vectorize", ip, op, str(scale), mp,
+                *_child_cmd("app.vectorize", ip, op, scale, mp),
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
-                cwd=str(Path(__file__).resolve().parents[1]),
+                cwd=str(Path(__file__).resolve().parents[1]), **_child_kw(),
             )
             try:
                 out, _ = await asyncio.wait_for(proc.communicate(), VECTOR_TIMEOUT)
@@ -627,6 +651,8 @@ async def _vectorize(doc_id, n, pdf_bytes, masks, key):
                 res = json.loads(out.decode("utf-8") or "{}")
             except Exception:  # noqa: BLE001
                 res = {}
+            if not res and os.path.exists(op + ".status"):
+                res = _read_json(Path(op + ".status"), {}) or {}
             if not res.get("ok"):
                 raise ValueError(res.get("error") or f"Vectorizarea paginii {n + 1} a eșuat")
             data = _read_json(Path(op), None)
@@ -827,7 +853,7 @@ async def api_export(request: Request):
 async def api_health(request: Request):
     from . import ocr as ocrmod
 
-    return JSONResponse({"ok": True, "retentionDays": RETENTION_DAYS, "mode": MODE, "ocr": ocrmod.lang(), "dxf": True})
+    return JSONResponse({"ok": True, "retentionDays": RETENTION_DAYS, "mode": MODE, "ocr": ocrmod.lang(), "dxf": True, "desktop": DESKTOP})
 
 
 async def api_workspace(request: Request):
@@ -936,6 +962,13 @@ class SecurityMiddleware:
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
         hdr = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers", [])}
+        if ALLOWED_HOSTS:
+            # apără serverul local de „DNS rebinding”: un site străin al cărui nume indică spre
+            # 127.0.0.1 ar trece de verificarea originii, dar nu și de cea a numelui gazdei
+            hname = hdr.get("host", "").rsplit(":", 1)[0].strip("[]").lower()
+            if hname not in ALLOWED_HOSTS:
+                resp = Response("Gazdă nepermisă", status_code=421)
+                return await resp(scope, receive, send)
         if AUTH_PASSWORD and scope.get("path") != "/api/health" and not _auth_ok(hdr.get("authorization", "")):
             resp = Response("Autentificare necesară", status_code=401, headers={"WWW-Authenticate": 'Basic realm="DrawCAD", charset="UTF-8"'})
             return await resp(scope, receive, send)

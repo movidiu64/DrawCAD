@@ -1,0 +1,3 @@
+# în plus față de backend/requirements.txt, doar pentru aplicația desktop (Windows)
+pywebview>=5.3,<7
+pyinstaller>=6.10,<7
