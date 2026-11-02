@@ -66,7 +66,11 @@ jobs:
         run: |
           $rep = Join-Path $env:RUNNER_TEMP "selftest.json"
           $p = Start-Process -FilePath "dist\DrawCAD\DrawCAD.exe" -ArgumentList "--selftest", "--report", "`"$rep`"" -Wait -PassThru
-          if (Test-Path $rep) { Get-Content $rep -Raw | Write-Host } else { Write-Host "::error::autotestul nu a scris raportul" }
+          if (Test-Path $rep) {
+            Get-Content $rep -Raw | Write-Host
+            $j = Get-Content $rep -Raw | ConvertFrom-Json
+            Write-Host "::notice::Autotest: OCR $($j.steps.ocr.lang) → $($j.steps.ocr.texts -join ' / '); DXF scan: $($j.steps.scan_dxf.stats | ConvertTo-Json -Compress)"
+          } else { Write-Host "::error::autotestul nu a scris raportul" }
           if ($p.ExitCode -ne 0) {
             $j = Get-Content $rep -Raw -ErrorAction SilentlyContinue
             Write-Host "::error::Autotest eșuat (cod $($p.ExitCode)): $($j -replace "`r?`n", ' ')"

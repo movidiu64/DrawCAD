@@ -63,6 +63,35 @@ docker compose up -d          # cu imaginea din GHCR
 docker compose -f compose.build.yaml up -d --build
 ```
 
+### Aplicația desktop pentru Windows
+
+Aceeași aplicație, fără server și fără Docker. Rulează pe calculator, într-o fereastră proprie, și merge și fără internet.
+
+**Instalare:**
+1. Descarcă din **Releases** fișierul `DrawCAD-<versiune>-setup.exe` și rulează-l. Nu cere drepturi de administrator. Se instalează pentru utilizatorul curent, în `%LOCALAPPDATA%\Programs\DrawCAD`.
+2. Opțional, installerul pune o iconiță pe desktop și adaugă „Deschide cu → DrawCAD” la PDF-uri și imagini, fără să devină aplicația implicită.
+3. Varianta `…-portabil.zip` nu se instalează: dezarhivezi și pornești `DrawCAD.exe`.
+
+**Ce conține:** totul, inclusiv OCR-ul (Tesseract, română și engleză).
+
+**Unde stau documentele de lucru:** în `%LOCALAPPDATA%\DrawCAD`. Ele rămân până le ștergi din Recente, fără curățare automată.
+
+**Exportul:** deschide dialogul „Salvează ca” al Windows.
+
+**Fereastra** folosește Microsoft Edge WebView2, care vine cu Windows 11 și cu Edge pe Windows 10. Dacă lipsește, DrawCAD se deschide în browserul implicit.
+
+**Serverul intern** ascultă doar pe `127.0.0.1` și răspunde doar la numele `127.0.0.1` și `localhost`. Alte calculatoare nu ajung la el, iar un site străin nu-l poate accesa prin DNS rebinding.
+
+**Construire:** GitHub Actions (`.github/workflows/desktop.yml`) face automat, la fiecare push pe `main`:
+- executabilul, cu PyInstaller;
+- un autotest pe executabil: citire, randare, OCR, export PDF și DXF, vectorizarea unui scan;
+- testul complet în browser pe serverul din executabil;
+- installerul, cu Inno Setup.
+
+Rezultatul se descarcă din pagina rulării (Artifacts). Un tag `v1.2.3` publică installerul în Releases.
+
+**Actualizare:** rulezi installerul versiunii noi peste cea veche. Documentele și setările rămân.
+
 ### Folderul de date și permisiuni
 
 Containerul pornește ca root doar cât să creeze folderul de date și să-i dea proprietarul `PUID:PGID`, implicit `99:100` (nobody:users pe Unraid). Apoi rulează aplicația ca acel utilizator. Nu mai e nevoie de `chown` manual. Dacă folosești `user:` în compose, folderul trebuie să fie deja scriibil de acel utilizator.
@@ -339,6 +368,7 @@ backend/    Starlette
   app/ocr.py     OCR cu Tesseract: îndreptare, ștergerea liniilor, text orizontal și vertical
   app/dxfout.py  export DXF (ezdxf): geometrie, texte, adnotări, straturi
   app/vectorize.py vectorizarea scanurilor, în proces separat (subțiere, graf, arce, cercuri)
+desktop/    aplicația Windows: lansator (pywebview), specificația PyInstaller, installer Inno Setup
 ```
 
 Frontend-ul calculează o singură dată geometria fiecărei cote și o trimite la export ca primitive. Ce vezi pe ecran e ce iese în PDF, cu același font și aceleași lățimi de text.
@@ -360,6 +390,8 @@ Frontend-ul calculează o singură dată geometria fiecărei cote și o trimite 
 | ezdxf | MIT |
 | NumPy | BSD |
 | Tesseract OCR | Apache-2.0 |
+| pywebview | BSD |
+| PyInstaller (doar la construire; bootloader-ul are excepție pentru programe distribuite) | GPL-2.0 cu excepție |
 
 ## Teste
 
