@@ -6,6 +6,8 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -30,7 +32,8 @@ jobs:
       - name: Versiune
         id: ver
         run: |
-          if ("${{ github.ref_type }}" -eq "tag") { $v = "${{ github.ref_name }}".TrimStart("v") }
+          if ("${{ github.event_name }}" -eq "release") { $v = "${{ github.event.release.tag_name }}".TrimStart("v") }
+          elseif ("${{ github.ref_type }}" -eq "tag") { $v = "${{ github.ref_name }}".TrimStart("v") }
           else { $v = "0.0.0-dev.${{ github.run_number }}" }
           "version=$v" >> $env:GITHUB_OUTPUT
           Write-Host "Versiune: $v"
@@ -126,9 +129,15 @@ jobs:
           retention-days: 7
 
       - name: Release
-        if: github.ref_type == 'tag'
+        if: github.event_name == 'release' || (github.event_name == 'push' && github.ref_type == 'tag')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}" (Get-ChildItem dist -File -Include *-setup.exe, *-portabil.zip -Recurse).FullName `
-            --title "DrawCAD ${{ steps.ver.outputs.version }}" --notes "Installer pentru Windows 10/11 (64 biți) și varianta portabilă (ZIP)."
+          $files = (Get-ChildItem dist -File -Include *-setup.exe, *-portabil.zip -Recurse).FullName
+          if ("${{ github.event_name }}" -eq "release") {
+            # release creat din GitHub: i se atașează fișierele
+            gh release upload "${{ github.event.release.tag_name }}" $files --clobber
+          } else {
+            gh release create "${{ github.ref_name }}" $files `
+              --title "DrawCAD ${{ steps.ver.outputs.version }}" --notes "Installer pentru Windows 10/11 (64 biți) și varianta portabilă (ZIP)."
+          }
