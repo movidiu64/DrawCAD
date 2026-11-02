@@ -434,6 +434,8 @@ class App {
     if (id !== "select" && id !== "pan") {
       this.lastTool = id;
       this.lastCmd = id; // Enter / Spațiu (în modul AutoCAD) o repornește
+      this.recordCmd(id, this._typedCmd);
+      this._typedCmd = null;
     }
     this.tool = id;
     this.clicks = [];
@@ -1928,7 +1930,41 @@ class App {
     if (!inp) return;
     let list = [];
     let pick = 0;
+    let hIdx = -1; // poziția în istoric (-1 = nu se răsfoiește)
+    const showHistory = () => {
+      const hist = this.cmdHistory;
+      const byId = Object.fromEntries(commandList(this.keyCfg).map((c) => [c.id, c]));
+      // ca în AutoCAD: cele mai recente jos, lângă linia de comandă
+      const from = Math.max(0, hIdx - 7);
+      const rows = hist.slice(from, from + 8).map((h, k) => ({ ...h, i: from + k })).reverse();
+      box.innerHTML = rows.map((h) => {
+        const c = byId[h.id];
+        return `<div class="cs${h.i === hIdx ? " on" : ""}" data-h="${h.i}"><b class="mono">${h.text}</b><span>${c ? c.label : ""}</span></div>`;
+      }).join("");
+      box.hidden = !rows.length;
+      box.querySelectorAll("[data-h]").forEach((el) => el.addEventListener("mousedown", (ev) => {
+        ev.preventDefault();
+        const h = hist[Number(el.dataset.h)];
+        const c = h && resolveCommand(h.text, this.keyCfg);
+        if (c) this.execCmdLine(c);
+      }));
+    };
+    /** Săgeată sus / jos: comenzile folosite înainte, de la cea mai recentă. */
+    const browse = (dir) => {
+      const hist = this.cmdHistory;
+      if (!hist.length) return false;
+      hIdx = Math.max(-1, Math.min(hist.length - 1, hIdx + dir));
+      list = [];
+      pick = 0;
+      inp.value = hIdx >= 0 ? hist[hIdx].text : "";
+      inp.setSelectionRange(inp.value.length, inp.value.length);
+      if (hIdx >= 0) showHistory();
+      else box.hidden = true;
+      return true;
+    };
+    this._cmdBrowse = browse;
     const show = () => {
+      hIdx = -1;
       list = suggest(inp.value, this.keyCfg);
       pick = 0;
       if (!list.length) {
@@ -1945,8 +1981,11 @@ class App {
     const mark = () => box.querySelectorAll(".cs").forEach((el, i) => el.classList.toggle("on", i === pick));
     this._cmdShow = show;
     inp.addEventListener("input", show);
-    inp.addEventListener("focus", show);
-    inp.addEventListener("blur", () => setTimeout(() => { box.hidden = true; }, 120));
+    inp.addEventListener("focus", () => { if (hIdx < 0) show(); });
+    inp.addEventListener("blur", () => setTimeout(() => {
+      box.hidden = true;
+      hIdx = -1;
+    }, 120));
     inp.addEventListener("keydown", (e) => {
       e.stopPropagation();
       if (e.key === "Escape") {
@@ -1957,6 +1996,11 @@ class App {
       }
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
+        // linia goală (sau deja în istoric): istoricul comenzilor; altfel, sugestiile
+        if (!inp.value.trim() || hIdx >= 0) {
+          browse(e.key === "ArrowUp" ? 1 : -1);
+          return;
+        }
         if (list.length) pick = (pick + (e.key === "ArrowDown" ? 1 : list.length - 1)) % list.length;
         mark();
         return;
@@ -1971,7 +2015,7 @@ class App {
         }
         // potrivirea exactă are întâietate; altfel prima sugestie (sau cea aleasă cu săgețile)
         const exact = resolveCommand(v, this.keyCfg);
-        const chosen = pick > 0 && list[pick] ? list[pick] : exact || list[0];
+        const chosen = hIdx >= 0 ? exact : pick > 0 && list[pick] ? list[pick] : exact || list[0];
         if (!chosen) {
           dlg.toast(`Comandă necunoscută: ${v.toUpperCase()}`);
           inp.select();
@@ -1995,6 +2039,9 @@ class App {
 
   execCmdLine(c) {
     const inp = $("cmdIn");
+    // în istoric rămâne ce ai scris (dacă e chiar o prescurtare a comenzii), altfel prescurtarea ei
+    const typed = inp.value.trim().toUpperCase();
+    this._typedCmd = c.aliases && c.aliases.includes(typed) ? typed : null;
     inp.value = "";
     inp.blur();
     $("cmdSug").hidden = true;
@@ -2003,6 +2050,32 @@ class App {
 
   repeatCmd() {
     if (this.lastCmd) this.runCommand(this.lastCmd);
+  }
+
+  /** Istoricul comenzilor (cea mai recentă prima), păstrat în browser între sesiuni. */
+  get cmdHistory() {
+    if (!this._cmdHist) {
+      try {
+        const h = JSON.parse(localStorage.getItem("drawcad.cmdhist") || "[]");
+        this._cmdHist = Array.isArray(h) ? h.filter((x) => x && typeof x.id === "string" && typeof x.text === "string") : [];
+      } catch (_) {
+        this._cmdHist = [];
+      }
+    }
+    return this._cmdHist;
+  }
+
+  recordCmd(id, text) {
+    if (!id || id === "select" || id === "pan") return;
+    const c = commandList(this.keyCfg).find((x) => x.id === id);
+    const t = String(text || (c && c.aliases[0]) || "").toUpperCase();
+    if (!t) return;
+    const h = this.cmdHistory.filter((x) => x.text !== t);
+    h.unshift({ id, text: t });
+    this._cmdHist = h.slice(0, 50);
+    try {
+      localStorage.setItem("drawcad.cmdhist", JSON.stringify(this._cmdHist));
+    } catch (_) { /* stocare indisponibilă */ }
   }
 
   toggleSnapFlag(fk) {
@@ -2035,6 +2108,8 @@ class App {
       if (id === "redact" && this.sel.size) {
         this.deleteSelected();
         this.lastCmd = id;
+        this.recordCmd(id, this._typedCmd);
+        this._typedCmd = null;
         return;
       }
       this.setTool(id);
@@ -2064,6 +2139,8 @@ class App {
     if (!act) return;
     act();
     if (id !== "keys" && id !== "settings") this.lastCmd = id;
+    this.recordCmd(id, this._typedCmd);
+    this._typedCmd = null;
   }
 
   bindKeys() {
@@ -2151,6 +2228,12 @@ class App {
       }
       if (e.key === "Escape" || (e.key === "Enter" && this.clicks.length)) {
         this.escape();
+        return;
+      }
+      if ((e.key === "ArrowUp" || e.key === "ArrowDown") && autocad && !this.sel.size && !this.clicks.length) {
+        // ca în AutoCAD: săgeata sus aduce ultimele comenzi în linia de comandă
+        e.preventDefault();
+        if (this.focusCmdLine("") && this._cmdBrowse) this._cmdBrowse(e.key === "ArrowUp" ? 1 : -1);
         return;
       }
       if (e.key.startsWith("Arrow") && this.sel.size) {
