@@ -147,12 +147,11 @@ Modurile se aleg din săgeata de lângă „Snap”, în bara de jos. Taste: **F
 
 Cotele nu se schimbă la calibrare: ele măsoară desenul.
 
-**Intrare dinamică (ca DYN din AutoCAD):** după primul punct al unei linii, polilinii, dreptunghi, cerc, arc sau cote, lângă cursor apar **X**, **Y**, **L** (lungimea) și **∠** (unghiul), sub eticheta de snap / polar. Valorile sunt relative la ultimul punct, în mm reali, cu Y în sus și unghiul trigonometric, ca în CAD.
-- Scrii direct cifrele, fără click în casetă. **Tab** trece la câmpul următor (Shift+Tab înapoi), iar **virgula** trece între X și Y: `40,-20` Enter = 40 la dreapta, 20 în jos.
-- Un câmp scris rămâne fixat (🔒), iar celelalte urmează cursorul. De exemplu, X = 50 fixat și Y ales cu mouse-ul, apoi click.
-- **Enter** sau **Spațiu** pune punctul. **Backspace** corectează, iar **Esc** renunță la valori (al doilea Esc oprește comanda).
-- Primul câmp e mereu X. Lungimea și unghiul se ating cu Tab Tab: `Tab Tab 100` Enter pune 100 pe direcția cursorului. La cerc, raza 15 se scrie `15,0` sau `Tab Tab 15`.
-- **F12** pornește / oprește intrarea dinamică.
+**Lungime scrisă (ca în AutoCAD):** după primul punct al unei linii, polilinii, cerc, arc sau cote, lângă cursor apare **L**, adică distanța de la ultimul punct, în mm reali.
+- Scrii direct cifrele, fără click în casetă: `100` Enter pune punctul la 100 pe direcția cursorului. Virgula e separator zecimal (`12,5`).
+- Direcția o dau cursorul, **ortho** (Shift / F8), **polar** (F10) sau un snap. La cerc, L e raza.
+- **Enter** sau **Spațiu** pune punctul. **Backspace** corectează, iar **Esc** renunță la valoare (al doilea Esc oprește comanda).
+- **F12** pornește / oprește caseta.
 
 **Taste și comenzi:** sunt două moduri. Se aleg din **Setări → Taste și comenzi** sau scriind comanda `ALIASEDIT`.
 - **Taste directe** (implicit): o tastă pornește unealta (tabelul de mai jos). **Enter** deschide linia de comandă din bara de jos: scrii `DLI`, `C`, `PL`… și dai Spațiu sau Enter.

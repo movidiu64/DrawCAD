@@ -442,7 +442,7 @@ export const EN = {
   "Punct 1 → punct 2 → poziția liniei, paralelă cu segmentul": "Point 1 → point 2 → line position, parallel to the segment",
   "Punct de adnotare": "Annotation point",
   "Punct de cotă — trage pe alt punct": "Dimension point — drag to another point",
-  "Punct de start → capăt, sau scrie valorile: X Tab Y (ori 40,-20) / lungimea, Enter · linia următoare pornește din capăt · Shift ortho · Esc termină": "Start point → end point, or type the values: X Tab Y (or 40,-20) / the length, Enter · the next line starts at the end · Shift ortho · Esc ends",
+  "Punct de start → capăt, sau scrie lungimea și Enter (direcția e a cursorului) · linia următoare pornește din capăt · Shift ortho · Esc termină": "Start point → end point, or type the length and Enter (direction follows the cursor) · the next line starts at the end · Shift ortho · Esc ends",
   "Punct pe arc": "Point on arc",
   "Punct pe element (sau pe linia de cotă) → poziția casetei": "Point on the feature (or on the dimension line) → box position",
   "Punct pe piesă → poziția cercului; numărul crește automat": "Point on the part → balloon position; the number increments automatically",

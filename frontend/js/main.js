@@ -1957,8 +1957,8 @@ class App {
   }
 
   defaultDynField() {
-    // mereu X întâi (apoi Tab / virgulă → Y), ca să intre în reflex; L și ∠ se ating cu Tab
-    return "dx";
+    // un singur câmp: lungimea pe direcția cursorului (direcția o dau ortho / polar / snap)
+    return "len";
   }
 
   dynParse() {
@@ -1977,10 +1977,9 @@ class App {
   dynKey(e) {
     if (!this.dynTool()) return false;
     const d = this.dyn;
-    // virgula de pe tastatura numerică (în română) e punct zecimal, nu schimbare de câmp
-    const k = e.code === "NumpadDecimal" ? "." : e.key;
+    // virgula (și cea de pe tastatura numerică) e separator zecimal: 12,5 = 12.5
+    const k = e.code === "NumpadDecimal" || e.key === "," ? "." : e.key;
     const has = d.active || Object.keys(d.vals).length;
-    const order = ["dx", "dy", "len", "ang"];
     if (/^[0-9.\-]$/.test(k)) {
       if (!d.active) {
         d.active = this.defaultDynField();
@@ -1993,26 +1992,7 @@ class App {
       this.dynRefresh();
       return true;
     }
-    if (k === "Tab" || k === ",") {
-      // ca în AutoCAD: Tab (sau virgula, între X și Y) trece la câmpul următor; valoarea rămâne fixată
-      if (k === ",") {
-        // virgula = coordonate X,Y ca în AutoCAD („40,-20”): ce s-a scris înainte e X
-        if (d.active === "len" || d.active === "ang") {
-          const v = d.vals[d.active];
-          delete d.vals.len;
-          delete d.vals.ang;
-          if (v != null) d.vals.dx = v;
-        }
-        d.active = d.active === "dy" ? "dx" : "dy";
-      } else {
-        // X e câmpul curent de la început: primul Tab duce la Y, al doilea la L
-        const cur = d.active || this.defaultDynField();
-        d.active = order[(order.indexOf(cur) + (e.shiftKey ? 3 : 1)) % 4];
-      }
-      d.text = d.vals[d.active] != null ? String(d.vals[d.active]) : "";
-      this.dynRefresh();
-      return true;
-    }
+    if (k === "Tab") return true; // un singur câmp; Tab nu mută focusul din desen
     if (k === "Backspace" && has) {
       if (d.text) d.text = d.text.slice(0, -1);
       else if (d.active) delete d.vals[d.active];
@@ -2062,7 +2042,7 @@ class App {
     const dy = (-(pt[1] - anchor[1]) / K) * k;
     const live = { dx, dy, len: Math.hypot(dx, dy), ang: ((((Math.atan2(dy, dx) * 180) / Math.PI) % 360) + 360) % 360 };
     const names = { dx: "X", dy: "Y", len: "L", ang: "∠" };
-    box.innerHTML = ["dx", "dy", "len", "ang"].map((f) => {
+    box.innerHTML = ["len"].map((f) => {
       const on = d.active === f;
       const lock = !on && d.vals[f] != null;
       const txt = on ? d.text.replace(".", sep) : fmtNum(lock ? d.vals[f] : live[f], sep, f === "ang" ? 1 : 2) + (f === "ang" ? "°" : "");
@@ -2071,7 +2051,7 @@ class App {
     // lângă cursor, sub eticheta de snap / polar (aceea e la +16, +18 și are 20 px)
     const [sx, sy] = this.view.toScreen(this._dynPt || pt);
     const vp = $("viewport");
-    box.style.left = `${Math.max(4, Math.min(sx + 16, vp.clientWidth - 330))}px`;
+    box.style.left = `${Math.max(4, Math.min(sx + 16, vp.clientWidth - 110))}px`;
     box.style.top = `${Math.min(sy + 42, vp.clientHeight - 28)}px`;
     box.hidden = false;
   }
@@ -2390,7 +2370,7 @@ class App {
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      // în timpul unei comenzi, cifrele, Tab și virgula merg în intrarea dinamică de lângă cursor
+      // în timpul unei comenzi, cifrele merg în lungimea de lângă cursor (intrarea dinamică)
       if (this.dyn && this.dynKey(e)) {
         e.preventDefault();
         return;
