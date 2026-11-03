@@ -1957,10 +1957,7 @@ class App {
   }
 
   defaultDynField() {
-    const t = TOOL_BY_ID[this.tool];
-    // cu ortho / polar, sau la raza unui cerc: distanța pe direcția cursorului
-    if (this.snapCfg.ortho || (this._dynSn && this._dynSn.kind === "pol")) return "len";
-    if ((t.id === "circle" || t.id === "arc" || t.id === "cross" || t.id === "detail") && this.clicks.length === 1) return "len";
+    // mereu X întâi (apoi Tab / virgulă → Y), ca să intre în reflex; L și ∠ se ating cu Tab
     return "dx";
   }
 
@@ -2007,8 +2004,11 @@ class App {
           if (v != null) d.vals.dx = v;
         }
         d.active = d.active === "dy" ? "dx" : "dy";
-      } else if (!d.active) d.active = this.defaultDynField();
-      else d.active = order[(order.indexOf(d.active) + (e.shiftKey ? 3 : 1)) % 4];
+      } else {
+        // X e câmpul curent de la început: primul Tab duce la Y, al doilea la L
+        const cur = d.active || this.defaultDynField();
+        d.active = order[(order.indexOf(cur) + (e.shiftKey ? 3 : 1)) % 4];
+      }
       d.text = d.vals[d.active] != null ? String(d.vals[d.active]) : "";
       this.dynRefresh();
       return true;

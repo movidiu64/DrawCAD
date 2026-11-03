@@ -151,7 +151,7 @@ Cotele nu se schimbă la calibrare: ele măsoară desenul.
 - Scrii direct cifrele, fără click în casetă. **Tab** trece la câmpul următor (Shift+Tab înapoi), iar **virgula** trece între X și Y: `40,-20` Enter = 40 la dreapta, 20 în jos.
 - Un câmp scris rămâne fixat (🔒), iar celelalte urmează cursorul. De exemplu, X = 50 fixat și Y ales cu mouse-ul, apoi click.
 - **Enter** sau **Spațiu** pune punctul. **Backspace** corectează, iar **Esc** renunță la valori (al doilea Esc oprește comanda).
-- Primul câmp e X. Cu ortho, cu polar prins pe o direcție sau la raza cercului, primul câmp e lungimea, deci scrii `100` Enter pe direcția cursorului.
+- Primul câmp e mereu X. Lungimea și unghiul se ating cu Tab Tab: `Tab Tab 100` Enter pune 100 pe direcția cursorului. La cerc, raza 15 se scrie `15,0` sau `Tab Tab 15`.
 - **F12** pornește / oprește intrarea dinamică.
 
 **Taste și comenzi:** sunt două moduri. Se aleg din **Setări → Taste și comenzi** sau scriind comanda `ALIASEDIT`.
