@@ -165,7 +165,10 @@ class Bridge:
     """Funcții apelate din pagină (window.pywebview.api): salvarea cu dialogul sistemului."""
 
     def __init__(self):
-        self.window = None
+        # cu „_” în față: pywebview expune paginii tot ce e public în acest obiect și coboară
+        # recursiv în atribute; prin fereastră ajungea în obiectele .NET ale ferestrei (mii de
+        # niveluri, „maximum recursion depth”), ceea ce bloca pornirea și fiecare încărcare a paginii
+        self._window = None
 
     def save_file(self, name, b64):
         import webview
@@ -180,7 +183,7 @@ class Bridge:
         if kind is None:
             kind = webview.SAVE_DIALOG
         try:
-            res = self.window.create_file_dialog(kind, save_filename=name, file_types=types)
+            res = self._window.create_file_dialog(kind, save_filename=name, file_types=types)
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "error": f"Dialogul de salvare nu s-a deschis: {e}"}
         if not res:
@@ -209,7 +212,7 @@ def open_window(url: str) -> bool:
     bridge = Bridge()
     try:
         win = webview.create_window(APP, url, js_api=bridge, width=1440, height=900, min_size=(900, 600))
-        bridge.window = win
+        bridge._window = win
         kw = {"private_mode": False, "storage_path": str(data_root() / "webview")}
         if sys.platform == "win32":
             kw["gui"] = "edgechromium"  # niciodată vechiul motor IE: nu înțelege interfața
