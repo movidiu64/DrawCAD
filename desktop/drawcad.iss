@@ -42,6 +42,7 @@ Name: "openwith"; Description: "„Deschide cu DrawCAD” pentru PDF-uri și ima
 
 [Files]
 Source: "{#SrcDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\DrawCAD"; Filename: "{app}\DrawCAD.exe"

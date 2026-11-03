@@ -22,6 +22,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/app ./app
 COPY frontend /app/frontend
 COPY docker/entrypoint.sh /entrypoint.sh
+COPY LICENSE /app/LICENSE
+
+LABEL org.opencontainers.image.title="DrawCAD" \
+      org.opencontainers.image.description="Self-hosted PDF editor for technical drawings: dimensions, tolerances, GD&T, revisions, OCR, DXF export" \
+      org.opencontainers.image.source="https://github.com/movidiu64/DrawCAD" \
+      org.opencontainers.image.licenses="AGPL-3.0-only"
 RUN chmod 0755 /entrypoint.sh && mkdir -p /data
 
 VOLUME /data
