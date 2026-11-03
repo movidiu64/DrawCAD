@@ -479,7 +479,10 @@ export class Panel {
   html_shape(a) {
     const b = this.app.builtOf(a);
     const inf = (b && b.info) || {};
-    const num = (id, f, label, v, dec = 2) => `<div class="field"><label for="${id}">${label}</label><input type="text" class="mono" id="${id}" data-shf="${f}" value="${v != null ? fmtNum(v, ",", dec) : ""}"></div>`;
+    // dimensiunile formelor sunt reale, la scara desenului (ca valorile din cote)
+    const k = Number(this.app.settings.scale) || 1;
+    const real = new Set(["len", "w", "h", "d", "r"]);
+    const num = (id, f, label, v, dec = 2) => `<div class="field"><label for="${id}">${label}${k !== 1 && real.has(f) ? ` <span class="muted">· scara ${fmtNum(k, ",", 4)}</span>` : ""}</label><input type="text" class="mono" id="${id}" data-shf="${f}" value="${v != null ? fmtNum(real.has(f) ? v * k : v, ",", dec) : ""}"></div>`;
     let geo = "";
     if (a.kind === "line") geo = `<div class="row">${num("shLen", "len", "Lungime (mm)", inf.len)}${num("shAng", "ang", "Unghi (°)", inf.ang, 2)}</div>`;
     if (a.kind === "rect") geo = `<div class="row">${num("shW", "w", "Lățime (mm)", inf.w)}${num("shH", "h", "Înălțime (mm)", inf.h)}</div>`;
@@ -493,7 +496,7 @@ export class Panel {
         <div class="btns"><button class="ghost" data-act="shflip">Arcul complementar</button></div>`;
     }
     if (a.kind === "poly") {
-      geo = `<div class="sub">${inf.n} vârfuri · lungime ${fmtNum(inf.len, ",", 2)} mm</div>
+      geo = `<div class="sub">${inf.n} vârfuri · lungime ${fmtNum(inf.len * k, ",", 2)} mm</div>
         <div class="seg"><button data-act="shset" data-k="closed" data-v="0" class="${!a.closed ? "on" : ""}">Deschisă</button><button data-act="shset" data-k="closed" data-v="1" class="${a.closed ? "on" : ""}">Închisă</button></div>`;
     }
     if (a.kind === "break") {
@@ -621,9 +624,11 @@ export class Panel {
     el.querySelectorAll("[data-st]").forEach((btn) => btn.addEventListener("click", () => this.onStyle(btn.dataset.st, btn.dataset.v, btn.dataset.scope)));
     el.querySelectorAll("[data-shf]").forEach((inp) => {
       inp.addEventListener("change", () => {
-        const v = parseNum(inp.value);
+        let v = parseNum(inp.value);
         if (v == null) return;
         const f = inp.dataset.shf;
+        // valoarea scrisă e reală: pe hârtie se desenează împărțită la scară
+        if (["len", "w", "h", "d", "r"].includes(f)) v /= Number(app.settings.scale) || 1;
         app.updateSel((a) => {
           if (f === "d") resizeShape(a, "r", v / 2);
           else if (f === "angle" || f === "sp") {

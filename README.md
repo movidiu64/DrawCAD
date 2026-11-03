@@ -141,6 +141,19 @@ Modurile se aleg din săgeata de lângă „Snap”, în bara de jos. Taste: **F
 
 **Scanuri:** după deschidere folosește **Calibrare (K)**. Dai click pe capetele unei cote cunoscute și introduci valoarea reală.
 
+**Desen la scară:** liniile, cercurile și dreptunghiurile se desenează și se editează în mm reali, ca valorile din cote. La scara 2, o linie scrisă de 10 are 5 mm pe hârtie și cota pusă pe ea arată 10. În panou, lângă câmp, apare „· scara 2”. Dacă ai desenat înainte de calibrare, Calibrarea te întreabă ce faci cu formele:
+- **Rămân pe desen** (implicit): pentru forme puse cu snap pe contur. Stau pe aceleași linii, iar dimensiunea lor reală se recalculează.
+- **Își păstrează dimensiunile reale**: pentru forme desenate cu valori scrise. Se scalează față de punctul lor de start, deci linia de 10 rămâne 10.
+
+Cotele nu se schimbă la calibrare: ele măsoară desenul.
+
+**Intrare dinamică (ca DYN din AutoCAD):** după primul punct al unei linii, polilinii, dreptunghi, cerc, arc sau cote, lângă cursor apar **X**, **Y**, **L** (lungimea) și **∠** (unghiul), sub eticheta de snap / polar. Valorile sunt relative la ultimul punct, în mm reali, cu Y în sus și unghiul trigonometric, ca în CAD.
+- Scrii direct cifrele, fără click în casetă. **Tab** trece la câmpul următor (Shift+Tab înapoi), iar **virgula** trece între X și Y: `40,-20` Enter = 40 la dreapta, 20 în jos.
+- Un câmp scris rămâne fixat (🔒), iar celelalte urmează cursorul. De exemplu, X = 50 fixat și Y ales cu mouse-ul, apoi click.
+- **Enter** sau **Spațiu** pune punctul. **Backspace** corectează, iar **Esc** renunță la valori (al doilea Esc oprește comanda).
+- Primul câmp e X. Cu ortho, cu polar prins pe o direcție sau la raza cercului, primul câmp e lungimea, deci scrii `100` Enter pe direcția cursorului.
+- **F12** pornește / oprește intrarea dinamică.
+
 **Taste și comenzi:** sunt două moduri. Se aleg din **Setări → Taste și comenzi** sau scriind comanda `ALIASEDIT`.
 - **Taste directe** (implicit): o tastă pornește unealta (tabelul de mai jos). **Enter** deschide linia de comandă din bara de jos: scrii `DLI`, `C`, `PL`… și dai Spațiu sau Enter.
 - **Comenzi AutoCAD:** scrii comanda oriunde pe desen. Ea apare în linia de comandă, cu sugestii, iar **Spațiu** sau **Enter** o pornește. Spațiu sau Enter fără nimic scris repetă ultima comandă, iar la polilinie o termină. Spațiu ținut + tragere mută foaia.

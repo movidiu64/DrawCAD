@@ -330,3 +330,14 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
 .langsw button { border: 1px solid var(--line2); background: transparent; color: var(--text2); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
 .langsw button.on { color: var(--text); border-color: var(--accent); }
 .pgcard select.sheet { height: 26px; font-size: 12px; padding: 0 4px; border: 1px solid var(--line2); border-radius: 5px; background: var(--raised); color: var(--text2); width: 100%; }
+
+/* intrare dinamică (ca DYN din AutoCAD): valorile de lângă cursor, editabile */
+.dynbox { position: absolute; z-index: 4; display: flex; gap: 4px; pointer-events: none; font: 12px var(--mono); }
+.dynbox .df { display: flex; align-items: center; gap: 3px; background: rgba(21,24,28,0.92); border: 1px solid var(--line2); border-radius: 4px; padding: 2px 6px; color: var(--text2); white-space: nowrap; }
+.dynbox .df i { font-style: normal; color: var(--muted); }
+.dynbox .df b { font-weight: 500; color: var(--text); min-width: 34px; text-align: right; }
+.dynbox .df.on { border-color: var(--accent); background: #2b2416; }
+.dynbox .df.on b::after { content: "▏"; color: var(--accent); animation: dynblink 1s steps(1) infinite; }
+.dynbox .df.lock { border-color: #4c8dff; }
+.dynbox .df.lock b::before { content: "🔒"; font-size: 9px; margin-right: 3px; }
+@keyframes dynblink { 50% { opacity: 0; } }

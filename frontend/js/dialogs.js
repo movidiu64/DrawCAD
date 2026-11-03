@@ -873,10 +873,27 @@ export function calibDialog(app, paperMm) {
     const v = parseNum(e.target.value);
     out.textContent = v ? `scară ${fmtNum(v / paperMm, ",", 4)} (1:${fmtNum(v / paperMm, ",", 2)})` : "";
   });
+  const nShapes = app.annots.filter((a) => a.type === "shape").length;
+  if (nShapes) {
+    dlg.querySelector(".foot").insertAdjacentHTML("beforebegin", `<div class="sec">
+      <div class="lbl">Ai ${nShapes} ${nShapes === 1 ? "formă desenată" : "forme desenate"} (linii, cercuri…)</div>
+      <div class="cards">
+        <button class="card on" data-keep="paper"><b>Rămân pe desen</b><span>Desenate cu snap pe contur: stau pe aceleași linii, dimensiunea lor reală se recalculează.</span></button>
+        <button class="card" data-keep="real"><b>Își păstrează dimensiunile reale</b><span>Desenate cu valori scrise (ex. linie de 10): se scalează față de punctul lor de start și rămân 10.</span></button>
+      </div></div>`);
+  }
+  let keep = "paper";
+  dlg.querySelectorAll("[data-keep]").forEach((b) => b.addEventListener("click", () => {
+    keep = b.dataset.keep;
+    dlg.querySelectorAll("[data-keep]").forEach((x) => x.classList.toggle("on", x === b));
+  }));
   dlg.querySelector("#cOk").addEventListener("click", () => {
     const v = parseNum(dlg.querySelector("#cReal").value);
     if (!v || v <= 0) return;
-    app.setSettings({ scale: v / paperMm });
+    const old = Number(app.settings.scale) || 1;
+    const scale = v / paperMm;
+    if (keep === "real" && nShapes) app.rescaleShapes(old / scale);
+    app.setSettings({ scale });
     closeModal();
     toast(`Scară fixată: ${fmtNum(v / paperMm, ",", 4)} mm reali / mm hârtie`);
   });

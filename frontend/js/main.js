@@ -90,6 +90,9 @@ class App {
    */
   escape() {
     const t = TOOL_BY_ID[this.tool];
+    if (this.dyn) this.dynReset();
+    const db = $("dynBox");
+    if (db) db.hidden = true;
     if (this.clicks.length && t.kind === "poly") {
       this.finishPoly(false);
       return;
@@ -211,6 +214,7 @@ class App {
   /** Un click al uneltei active (puncte de cotă, vârfuri de polilinie…). */
   toolClick(pt) {
     const t = TOOL_BY_ID[this.tool];
+    if (this.dyn) this.dynReset();
     if (t.kind === "poly") {
       const v = this.view;
       const near = (q) => {
@@ -285,6 +289,11 @@ class App {
     this.bindKeys();
     this.bindCmdLine();
     this.applyKeyCfg(keyConfig());
+    let dynOn = true;
+    try {
+      dynOn = localStorage.getItem("drawcad.dyn") !== "0";
+    } catch (_) { /* implicit pornit */ }
+    this.dyn = { on: dynOn, vals: {}, active: null, text: "" };
     this.panel.render();
     this.refreshRecent();
     this.setTool("select");
@@ -439,6 +448,8 @@ class App {
     }
     this.tool = id;
     this.clicks = [];
+    if (this.dyn) this.dynReset();
+    if ($("dynBox")) $("dynBox").hidden = true;
     this.lastMeasure = null;
     this.hover = null;
     this.hoverKey2 = "";
@@ -517,6 +528,19 @@ class App {
       if (this.page === n) this.snapper = new Snapper(s);
     }).catch(() => {});
     if (this.showOcr && this.ocrPages.has(n)) this.loadOcr(n).catch(() => {});
+  }
+
+  /** Formele desenate se scalează față de primul lor punct (la calibrare, „își păstrează
+   *  dimensiunile reale”); cotele nu se ating, ele măsoară desenul. */
+  rescaleShapes(f) {
+    if (!(f > 0) || Math.abs(f - 1) < 1e-9) return;
+    this.pushHistory();
+    for (const a of this.annots) {
+      if (a.type !== "shape" || !Array.isArray(a.pts) || !a.pts.length) continue;
+      const o = a.pts[0];
+      a.pts = a.pts.map((p) => [o[0] + (p[0] - o[0]) * f, o[1] + (p[1] - o[1]) * f]);
+    }
+    this.changed();
   }
 
   // ------------------------------------------------------------ text și OCR
@@ -1411,7 +1435,7 @@ class App {
         this.drag = { kind: "tap" };
         return;
       }
-      this.toolClick(this.snapPoint(raw, e, anchor).pt);
+      this.toolClick(this.dynPoint(this.snapPoint(raw, e, anchor).pt, anchor));
     });
 
     cv.addEventListener("pointermove", (e) => {
@@ -1562,8 +1586,12 @@ class App {
         cv.style.cursor = "crosshair";
       }
       const anchor = d && d.kind === "rect" ? d.start : this.clicks[this.clicks.length - 1];
-      const { pt, sn } = this.snapPoint(raw, e, anchor);
+      const { pt: spt, sn } = this.snapPoint(raw, e, anchor);
       this.trackHover(sn, raw);
+      this._dynPt = spt;
+      this._dynSn = sn;
+      // valorile scrise (intrarea dinamică) fixează punctul: cursorul alege doar ce n-ai scris
+      const pt = d && d.kind === "rect" ? spt : this.dynPoint(spt, anchor);
       this.showCoords(pt, anchor);
       if (d && d.kind === "rect") {
         this.view.overlay = { rect: [d.start[0], d.start[1], pt[0], pt[1]], rectColor: t.id === "redact" ? COLORS.edred : COLORS.sel, snap: sn };
@@ -1571,6 +1599,7 @@ class App {
         return;
       }
       this.updateOverlay(pt, sn);
+      this.renderDyn(pt, anchor);
     });
 
     const up = (e) => {
@@ -1596,7 +1625,8 @@ class App {
       if (d.kind === "tap") {
         const [ux, uy] = pos(e);
         const raw = this.view.toPage(ux, uy);
-        this.toolClick(this.snapPoint(raw, e, this.clicks[this.clicks.length - 1]).pt);
+        const an = this.clicks[this.clicks.length - 1];
+        this.toolClick(this.dynPoint(this.snapPoint(raw, e, an).pt, an));
         return;
       }
       if (d.kind === "mmenu") {
@@ -1897,6 +1927,155 @@ class App {
     dlg.toast(`L = ${f(L)} mm · Δx ${f(Math.abs(dx))} · Δy ${f(Math.abs(dy))} · ${fmtNum(ang, ",", 2)}°${Math.abs(k - 1) > 1e-9 ? ` (scara ${this.scaleLabel()})` : ""}`, 8000);
   }
 
+  // ------------------------------------------------------------ intrare dinamică (DYN)
+  /** Unealta așteaptă un punct relativ la ultimul click: valorile se pot scrie de la tastatură. */
+  dynTool() {
+    const t = TOOL_BY_ID[this.tool];
+    return !!(this.doc && this.dyn.on && this.clicks.length && t && (t.kind === "clicks" || t.kind === "poly"));
+  }
+
+  dynReset() {
+    this.dyn.vals = {};
+    this.dyn.active = null;
+    this.dyn.text = "";
+  }
+
+  /** Punctul cursorului, cu valorile scrise (în mm reali, Y în sus ca în CAD) aplicate. */
+  dynPoint(pt, anchor) {
+    const v = this.dyn.vals;
+    if (!anchor || !Object.keys(v).length) return pt;
+    const k = Number(this.settings.scale) || 1;
+    const toPt = (mm) => (mm / k) * K;
+    const lx = ((pt[0] - anchor[0]) / K) * k;
+    const ly = (-(pt[1] - anchor[1]) / K) * k;
+    if (v.len != null || v.ang != null) {
+      const L = v.len ?? Math.hypot(lx, ly);
+      const th = ((v.ang != null ? v.ang : (Math.atan2(ly, lx) * 180) / Math.PI) * Math.PI) / 180;
+      return [anchor[0] + toPt(L * Math.cos(th)), anchor[1] - toPt(L * Math.sin(th))];
+    }
+    return [anchor[0] + toPt(v.dx ?? lx), anchor[1] - toPt(v.dy ?? ly)];
+  }
+
+  defaultDynField() {
+    const t = TOOL_BY_ID[this.tool];
+    // cu ortho / polar, sau la raza unui cerc: distanța pe direcția cursorului
+    if (this.snapCfg.ortho || (this._dynSn && this._dynSn.kind === "pol")) return "len";
+    if ((t.id === "circle" || t.id === "arc" || t.id === "cross" || t.id === "detail") && this.clicks.length === 1) return "len";
+    return "dx";
+  }
+
+  dynParse() {
+    const d = this.dyn;
+    if (!d.active) return;
+    const group = d.active === "len" || d.active === "ang" ? ["dx", "dy"] : ["len", "ang"];
+    const v = Number(d.text);
+    if (d.text === "" || d.text === "-" || d.text === ".") delete d.vals[d.active];
+    else if (Number.isFinite(v)) {
+      d.vals[d.active] = v;
+      for (const g of group) delete d.vals[g]; // carteziene sau polare, nu amestecate
+    }
+  }
+
+  /** Taste pentru intrarea dinamică; întoarce true dacă tasta a fost folosită aici. */
+  dynKey(e) {
+    if (!this.dynTool()) return false;
+    const d = this.dyn;
+    // virgula de pe tastatura numerică (în română) e punct zecimal, nu schimbare de câmp
+    const k = e.code === "NumpadDecimal" ? "." : e.key;
+    const has = d.active || Object.keys(d.vals).length;
+    const order = ["dx", "dy", "len", "ang"];
+    if (/^[0-9.\-]$/.test(k)) {
+      if (!d.active) {
+        d.active = this.defaultDynField();
+        d.text = "";
+      }
+      if (k === "-" && d.text) return true;
+      if (k === "." && d.text.includes(".")) return true;
+      d.text += k;
+      this.dynParse();
+      this.dynRefresh();
+      return true;
+    }
+    if (k === "Tab" || k === ",") {
+      // ca în AutoCAD: Tab (sau virgula, între X și Y) trece la câmpul următor; valoarea rămâne fixată
+      if (k === ",") {
+        // virgula = coordonate X,Y ca în AutoCAD („40,-20”): ce s-a scris înainte e X
+        if (d.active === "len" || d.active === "ang") {
+          const v = d.vals[d.active];
+          delete d.vals.len;
+          delete d.vals.ang;
+          if (v != null) d.vals.dx = v;
+        }
+        d.active = d.active === "dy" ? "dx" : "dy";
+      } else if (!d.active) d.active = this.defaultDynField();
+      else d.active = order[(order.indexOf(d.active) + (e.shiftKey ? 3 : 1)) % 4];
+      d.text = d.vals[d.active] != null ? String(d.vals[d.active]) : "";
+      this.dynRefresh();
+      return true;
+    }
+    if (k === "Backspace" && has) {
+      if (d.text) d.text = d.text.slice(0, -1);
+      else if (d.active) delete d.vals[d.active];
+      this.dynParse();
+      this.dynRefresh();
+      return true;
+    }
+    if ((k === "Enter" || k === " ") && has) {
+      const anchor = this.clicks[this.clicks.length - 1];
+      const p = this.dynPoint(this._dynPt || this.lastPt || anchor, anchor);
+      this.dynReset();
+      this.toolClick(p);
+      this.dynRefresh();
+      return true;
+    }
+    if (k === "Escape" && has) {
+      this.dynReset();
+      this.dynRefresh();
+      return true;
+    }
+    return false;
+  }
+
+  dynRefresh() {
+    const anchor = this.clicks[this.clicks.length - 1];
+    if (!anchor || !this._dynPt) {
+      this.renderDyn(null, null);
+      return;
+    }
+    const p = this.dynPoint(this._dynPt, anchor);
+    this.updateOverlay(p, this._dynSn);
+    this.showCoords(p, anchor);
+    this.renderDyn(p, anchor);
+  }
+
+  renderDyn(pt, anchor) {
+    const box = $("dynBox");
+    if (!box) return;
+    if (!pt || !anchor || !this.dynTool()) {
+      box.hidden = true;
+      return;
+    }
+    const d = this.dyn;
+    const k = Number(this.settings.scale) || 1;
+    const sep = this.settings.sep || ",";
+    const dx = ((pt[0] - anchor[0]) / K) * k;
+    const dy = (-(pt[1] - anchor[1]) / K) * k;
+    const live = { dx, dy, len: Math.hypot(dx, dy), ang: ((((Math.atan2(dy, dx) * 180) / Math.PI) % 360) + 360) % 360 };
+    const names = { dx: "X", dy: "Y", len: "L", ang: "∠" };
+    box.innerHTML = ["dx", "dy", "len", "ang"].map((f) => {
+      const on = d.active === f;
+      const lock = !on && d.vals[f] != null;
+      const txt = on ? d.text.replace(".", sep) : fmtNum(lock ? d.vals[f] : live[f], sep, f === "ang" ? 1 : 2) + (f === "ang" ? "°" : "");
+      return `<span class="df${on ? " on" : ""}${lock ? " lock" : ""}"><i>${names[f]}</i><b>${txt}</b></span>`;
+    }).join("");
+    // lângă cursor, sub eticheta de snap / polar (aceea e la +16, +18 și are 20 px)
+    const [sx, sy] = this.view.toScreen(this._dynPt || pt);
+    const vp = $("viewport");
+    box.style.left = `${Math.max(4, Math.min(sx + 16, vp.clientWidth - 330))}px`;
+    box.style.top = `${Math.min(sy + 42, vp.clientHeight - 28)}px`;
+    box.hidden = false;
+  }
+
   showCoords(pt, anchor) {
     let s = `X ${fmtNum(pt[0] / K, ",", 2)} · Y ${fmtNum(pt[1] / K, ",", 2)} mm`;
     if (anchor) {
@@ -2147,6 +2326,20 @@ class App {
     window.addEventListener("keydown", (e) => {
       this.frame = (this.frame || 0) + 1;
       if (dlg.isModalOpen()) return;
+      if (e.key === "F12") {
+        // ca în AutoCAD: intrarea dinamică pornită / oprită
+        e.preventDefault();
+        this.dyn.on = !this.dyn.on;
+        try {
+          localStorage.setItem("drawcad.dyn", this.dyn.on ? "1" : "0");
+        } catch (_) { /* fără memorare */ }
+        if (!this.dyn.on) {
+          this.dynReset();
+          $("dynBox").hidden = true;
+        }
+        dlg.toast(`Intrare dinamică: ${this.dyn.on ? "pornită" : "oprită"}`, 1500);
+        return;
+      }
       const fk = { F3: "on", F8: "ortho", F10: "polar", F11: "tracking" }[e.key];
       if (fk) {
         e.preventDefault();
@@ -2197,6 +2390,11 @@ class App {
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // în timpul unei comenzi, cifrele, Tab și virgula merg în intrarea dinamică de lângă cursor
+      if (this.dyn && this.dynKey(e)) {
+        e.preventDefault();
+        return;
+      }
       const autocad = this.keyCfg && this.keyCfg.mode === "autocad";
       // modul AutoCAD: literele și cifrele scriu comanda (Shift+F rămâne zoom pe selecție)
       if (autocad && e.key.length === 1 && /[a-z0-9]/i.test(e.key) && !(e.shiftKey && k === "f") && !this.mmenu) {
