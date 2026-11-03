@@ -119,7 +119,7 @@ export const TOOLS = [
     hint: "Click pe colțul dreapta-sus al cartușului: lista se așază deasupra, cu câte un rând pentru fiecare reper",
     make: (pts, app) => ({ type: "bom", p: pts[0], rows: app.bomRowsFromBalloons([], true), headerBottom: true }) },
   { id: "line", label: "Linie", key: "I", group: "Desen", icon: "M4 19L20 5M4 19h0M20 5h0", kind: "clicks", n: 2, chain: true,
-    hint: "Punct de start → capăt, sau scrie lungimea și Enter (direcția e a cursorului) · linia următoare pornește din capăt · Shift ortho · Esc termină",
+    hint: "Punct de start → capăt, sau scrie lungimea (Tab → unghiul) și Enter · linia următoare pornește din capăt · Shift ortho · Esc termină",
     make: (pts, app) => shape(app, "line", [pts[0], pts[1]]),
     preview(pts, cur, app) { return this.make([pts[0], cur], app); } },
   { id: "poly", label: "Polilinie", key: "P", group: "Desen", icon: "M3 18l5-9 6 5 7-10", kind: "poly", min: 2,

@@ -1957,7 +1957,7 @@ class App {
   }
 
   defaultDynField() {
-    // un singur câmp: lungimea pe direcția cursorului (direcția o dau ortho / polar / snap)
+    // întâi lungimea pe direcția cursorului; Tab → unghiul
     return "len";
   }
 
@@ -1992,7 +1992,13 @@ class App {
       this.dynRefresh();
       return true;
     }
-    if (k === "Tab") return true; // un singur câmp; Tab nu mută focusul din desen
+    if (k === "Tab") {
+      // Tab trece între lungime și unghi; valoarea scrisă rămâne fixată
+      d.active = (d.active || this.defaultDynField()) === "len" ? "ang" : "len";
+      d.text = d.vals[d.active] != null ? String(d.vals[d.active]) : "";
+      this.dynRefresh();
+      return true;
+    }
     if (k === "Backspace" && has) {
       if (d.text) d.text = d.text.slice(0, -1);
       else if (d.active) delete d.vals[d.active];
@@ -2042,7 +2048,7 @@ class App {
     const dy = (-(pt[1] - anchor[1]) / K) * k;
     const live = { dx, dy, len: Math.hypot(dx, dy), ang: ((((Math.atan2(dy, dx) * 180) / Math.PI) % 360) + 360) % 360 };
     const names = { dx: "X", dy: "Y", len: "L", ang: "∠" };
-    box.innerHTML = ["len"].map((f) => {
+    box.innerHTML = ["len", "ang"].map((f) => {
       const on = d.active === f;
       const lock = !on && d.vals[f] != null;
       const txt = on ? d.text.replace(".", sep) : fmtNum(lock ? d.vals[f] : live[f], sep, f === "ang" ? 1 : 2) + (f === "ang" ? "°" : "");
@@ -2051,7 +2057,7 @@ class App {
     // lângă cursor, sub eticheta de snap / polar (aceea e la +16, +18 și are 20 px)
     const [sx, sy] = this.view.toScreen(this._dynPt || pt);
     const vp = $("viewport");
-    box.style.left = `${Math.max(4, Math.min(sx + 16, vp.clientWidth - 110))}px`;
+    box.style.left = `${Math.max(4, Math.min(sx + 16, vp.clientWidth - 190))}px`;
     box.style.top = `${Math.min(sy + 42, vp.clientHeight - 28)}px`;
     box.hidden = false;
   }

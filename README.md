@@ -147,10 +147,11 @@ Modurile se aleg din săgeata de lângă „Snap”, în bara de jos. Taste: **F
 
 Cotele nu se schimbă la calibrare: ele măsoară desenul.
 
-**Lungime scrisă (ca în AutoCAD):** după primul punct al unei linii, polilinii, cerc, arc sau cote, lângă cursor apare **L**, adică distanța de la ultimul punct, în mm reali.
+**Lungime și unghi scrise (ca în AutoCAD):** după primul punct al unei linii, polilinii, cerc, arc sau cote, lângă cursor apar **L** (distanța de la ultimul punct, în mm reali) și **∠** (unghiul, trigonometric: 0° spre dreapta, 90° în sus).
 - Scrii direct cifrele, fără click în casetă: `100` Enter pune punctul la 100 pe direcția cursorului. Virgula e separator zecimal (`12,5`).
-- Direcția o dau cursorul, **ortho** (Shift / F8), **polar** (F10) sau un snap. La cerc, L e raza.
-- **Enter** sau **Spațiu** pune punctul. **Backspace** corectează, iar **Esc** renunță la valoare (al doilea Esc oprește comanda).
+- **Tab** trece între L și ∠. Valoarea scrisă rămâne fixată (🔒), cealaltă urmează cursorul: `100` Tab `30` Enter = 100 la 30°, iar doar Tab `45` fixează direcția și lungimea o alegi cu mouse-ul.
+- Fără unghi scris, direcția o dau cursorul, **ortho** (Shift / F8), **polar** (F10) sau un snap. La cerc, L e raza.
+- **Enter** sau **Spațiu** pune punctul. **Backspace** corectează, iar **Esc** renunță la valori (al doilea Esc oprește comanda).
 - **F12** pornește / oprește caseta.
 
 **Taste și comenzi:** sunt două moduri. Se aleg din **Setări → Taste și comenzi** sau scriind comanda `ALIASEDIT`.
