@@ -1,4 +1,4 @@
-"""Iconița aplicației desktop (drawcad.ico): semnul de cotă din antet, portocaliu pe fond închis."""
+"""The desktop app icon (drawcad.ico): the dimension mark from the header, orange on a dark background."""
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -9,7 +9,7 @@ BG = (30, 34, 41, 255)
 
 
 def draw(size: int) -> Image.Image:
-    k = 4  # desenat mare și micșorat, pentru margini netede
+    k = 4  # drawn large and scaled down, for smooth edges
     S = size * k
     im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
@@ -17,7 +17,7 @@ def draw(size: int) -> Image.Image:
     w = max(k * 2, int(S * 0.085))
     m = S * 0.22
     y = S / 2
-    # liniile de extindere, linia de cotă și săgețile (ca în favicon: M3 5v14 M21 5v14 M3 12h18 …)
+    # extension lines, dimension line and arrows (as in the favicon: M3 5v14 M21 5v14 M3 12h18 …)
     d.line([(m, S * 0.25), (m, S * 0.75)], fill=ORANGE, width=w)
     d.line([(S - m, S * 0.25), (S - m, S * 0.75)], fill=ORANGE, width=w)
     d.line([(m, y), (S - m, y)], fill=ORANGE, width=w)

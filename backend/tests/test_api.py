@@ -1,4 +1,4 @@
-"""Teste cap-coadă pentru API. Rulează: python -m unittest discover -s tests (din backend/)."""
+"""End-to-end API tests. Run: python -m unittest discover -s tests (from backend/)."""
 import io
 import json
 import os
@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 TMP = tempfile.mkdtemp(prefix="drawcad-test-")
 os.environ["DRAWCAD_DATA"] = TMP
-os.environ.setdefault("DRAWCAD_MODE", "personal")  # testele generale folosesc un singur spațiu
+os.environ.setdefault("DRAWCAD_MODE", "personal")  # the general tests use a single space
 sys.path.insert(0, str(ROOT / "backend"))
 sys.path.insert(0, str(ROOT / "tools"))
 
@@ -78,9 +78,9 @@ class ApiTest(unittest.TestCase):
         png, h = self.req("GET", f"/api/doc/{meta['id']}/page/0/render?scale=1", raw=True)
         self.assertTrue(png.startswith(b"\x89PNG"))
         snap = self.req("GET", f"/api/doc/{meta['id']}/page/0/snap")
-        # colțul conturului la (90, 75) mm
+        # outline corner at (90, 75) mm
         self.assertTrue(any(abs(p[0] - 90 * MM) < 0.05 and abs(p[1] - 75 * MM) < 0.05 for p in snap["pts"]))
-        # centrul cercului din vederea laterală
+        # center of the circle in the side view
         self.assertTrue(any(p[2] == "c" and abs(p[0] - 240 * MM) < 0.1 for p in snap["pts"]))
 
     def test_objects_and_export_roundtrip(self):
@@ -103,13 +103,13 @@ class ApiTest(unittest.TestCase):
         self.assertIn("arbore_rev1.pdf", h["Content-Disposition"])
         rep = json.loads(h["X-Removal-Report"])
         self.assertEqual(rep["0"]["removed"], len(ids))
-        # redeschiderea exportului: originalul și starea sunt recuperate
+        # reopening the export: the original and the state are recovered
         meta2 = self.req("POST", "/api/open", pdf, {"X-Filename": "arbore_rev1.pdf"})
         self.assertTrue(meta2["fromExport"])
         self.assertEqual(meta2["state"], state)
         orig = (Path(TMP) / "docs" / meta2["id"] / "original.pdf").read_bytes()
         self.assertEqual(orig, self.sample.read_bytes())
-        # textul Ø30 a dispărut din export, cel nou apare
+        # the text Ø30 is gone from the export, the new one appears
         import pypdfium2 as pdfium
         d = pdfium.PdfDocument(pdf)
         txt = d[0].get_textpage().get_text_range()
@@ -123,11 +123,11 @@ class ApiTest(unittest.TestCase):
         import pypdfium2.raw as R
 
         src = self.sample.read_bytes()
-        # zona trece peste conturul de sus (y = 110) și peste capătul cotei Ø30 (x = 165)
+        # the zone crosses the top outline (y = 110) and the end of the Ø30 dimension (x = 165)
         rect = [160 * MM, 105 * MM, 170 * MM, 113 * MM]
         x0, y0, x1, y1 = rect
         pdf, rep = pdfcore.apply_removals(src, {0: [{"mode": "zone", "rect": rect}]})
-        self.assertGreaterEqual(rep[0]["cut"], 2)  # conturul + linia de cotă
+        self.assertGreaterEqual(rep[0]["cut"], 2)  # the outline + the dimension line
         d = pdfium.PdfDocument(pdf)
         page = d[0]
         g = pdfcore.PageGeo.of(page)
@@ -139,18 +139,18 @@ class ApiTest(unittest.TestCase):
             fill, stroke = ctypes.c_int(), ctypes.c_int()
             R.FPDFPath_GetDrawMode(obj, ctypes.byref(fill), ctypes.byref(stroke))
             if fill.value:
-                continue  # săgețile pline rămân (doar acoperite)
+                continue  # filled arrows remain (only covered)
             total = pdfcore.mat_mul(pdfcore._obj_matrix(obj), pm)
             for sp in pdfcore._path_points(obj, total):
                 vis = [g.to_vis(*q) for q in sp["pts"]]
                 for (ax, ay), (bx, by) in zip(vis, vis[1:]):
                     mx, my = (ax + bx) / 2, (ay + by) / 2
                     inside = x0 + eps < mx < x1 - eps and y0 + eps < my < y1 - eps
-                    self.assertFalse(inside, f"segment rămas în zonă: {oid} {(ax, ay)}–{(bx, by)}")
+                    self.assertFalse(inside, f"segment left in the zone: {oid} {(ax, ay)}–{(bx, by)}")
                 if any(abs(px - 180 * MM) < 0.05 and abs(py - 80 * MM) < 0.05 for px, py in vis):
                     corner_kept = True
-        self.assertTrue(corner_kept, "restul conturului trebuie să rămână")
-        # indicatorul (Form XObject) nu se modifică: obiectele lui apar ca blocate
+        self.assertTrue(corner_kept, "the rest of the outline must remain")
+        # the title block (Form XObject) is not modified: its objects show up as locked
         objs = pdfcore.objects_in_rect(src, 0, [240 * MM, 180 * MM, 260 * MM, 195 * MM])
         self.assertTrue(objs and all(o["locked"] for o in objs))
         _pdf, rep2 = pdfcore.apply_removals(src, {0: [{"mode": "zone", "rect": [240 * MM, 180 * MM, 260 * MM, 195 * MM]}]})
@@ -160,15 +160,15 @@ class ApiTest(unittest.TestCase):
     def test_snap_arcs(self):
         d = pdfcore.snap_points(self.sample.read_bytes(), 0)
         arcs = [[round(v / MM, 2) for v in a[:3]] + [round(a[4] * 180 / 3.141592653589793, 1)] for a in d["arcs"]]
-        # cercul Ø40 din vederea laterală și racordările R5 ale plăcii (sferturi de cerc, sens orar pe ecran)
+        # the Ø40 circle of the side view and the R5 fillets of the plate (quarter circles, clockwise on screen)
         self.assertIn([240.0, 95.0, 20.0, 360.0], arcs)
         self.assertIn([165.0, 155.0, 5.0, -90.0], arcs)
         self.assertIn([125.0, 155.0, 5.0, -90.0], arcs)
-        # centrul racordării devine punct de snap
+        # the fillet center becomes a snap point
         self.assertTrue(any(abs(p[0] - 165 * MM) < 0.05 and abs(p[1] - 155 * MM) < 0.05 and p[2] == "c" for p in d["pts"]))
 
     def test_ink_for_print(self):
-        """Liniile și textul colorate devin negre; albul rămâne; blocurile și imaginile la cerere."""
+        """Colored lines and text become black; white stays; blocks and images on request."""
         import pypdfium2 as pdfium
         from PIL import Image
         from reportlab.lib.utils import ImageReader
@@ -206,18 +206,18 @@ class ApiTest(unittest.TestCase):
             return img.getpixel((x, 300 - y))
 
         out = pdfcore.ink_pdf(src, None, "black", True)
-        self.assertEqual(px(out, 100, 250), (0, 0, 0))  # linie
-        self.assertEqual(px(out, 300, 150), (0, 0, 0))  # linie din bloc (Form XObject)
-        self.assertEqual(px(out, 40, 160), (0, 0, 0))  # umplere colorată → neagră
-        self.assertEqual(px(out, 70, 140), (255, 255, 255))  # albul rămâne
-        self.assertEqual(px(out, 260, 70), (0, 0, 0))  # linia verde din imagine
-        self.assertEqual(px(out, 260, 100), (255, 255, 255))  # fundalul imaginii
+        self.assertEqual(px(out, 100, 250), (0, 0, 0))  # line
+        self.assertEqual(px(out, 300, 150), (0, 0, 0))  # a line in a block (Form XObject)
+        self.assertEqual(px(out, 40, 160), (0, 0, 0))  # colored fill → black
+        self.assertEqual(px(out, 70, 140), (255, 255, 255))  # white stays
+        self.assertEqual(px(out, 260, 70), (0, 0, 0))  # the green line in the image
+        self.assertEqual(px(out, 260, 100), (255, 255, 255))  # the image background
         keep = pdfcore.ink_pdf(src, None, "keep", False)
-        self.assertNotEqual(px(keep, 40, 160), (0, 0, 0))  # umplerea rămâne colorată
-        self.assertNotEqual(px(keep, 260, 70), (0, 0, 0))  # imaginea neschimbată
+        self.assertNotEqual(px(keep, 40, 160), (0, 0, 0))  # the fill stays colored
+        self.assertNotEqual(px(keep, 260, 70), (0, 0, 0))  # image unchanged
         text_dark = min(sum(px(keep, x, 200)) for x in range(22, 60))
-        self.assertLess(text_dark, 60)  # textul tot negru
-        # un singur obiect: doar linia de sus (primul obiect de pe pagină)
+        self.assertLess(text_dark, 60)  # text all black
+        # a single object: only the top line (the first object on the page)
         objs = pdfcore.objects_in_rect(src, 0, [50, 40, 150, 60])
         ids = [o["id"] for o in objs if o["type"] == "path"]
         one, rep = pdfcore.apply_removals(src, {0: [{"mode": "black", "ids": ids}]})
@@ -226,7 +226,7 @@ class ApiTest(unittest.TestCase):
         self.assertNotEqual(px(one, 300, 150), (0, 0, 0))
 
     def test_legacy_attachment_names(self):
-        """PDF-urile exportate înainte de redenumire (atașamente cotare.*) se redeschid."""
+        """PDFs exported before the rename (cotare.* attachments) are reopened."""
         import pikepdf
 
         pk = pikepdf.open(self.sample)
@@ -239,14 +239,14 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(got[0], self.sample.read_bytes())
 
     def test_fraction_inside(self):
-        # zona prinde 95% din linia de cotă Ø30 (x = 165, y 80…110) și doar capătul conturului
+        # the zone catches 95% of the Ø30 dimension line (x = 165, y 80…110) and only the end of the outline
         objs = pdfcore.objects_in_rect(self.sample.read_bytes(), 0, [160 * MM, 81.5 * MM, 168 * MM, 113 * MM])
         fr = sorted(round(o["frac"], 2) for o in objs if o["type"] == "path" and not o["inside"])
         self.assertTrue(any(abs(f - 0.95) < 0.01 for f in fr), fr)
         self.assertTrue(all(o["frac"] == 1.0 for o in objs if o["inside"]))
 
     def test_zone_takes_whole_glyphs(self):
-        """Text AutoCAD exportat ca linii: litera cu centrul în zonă se elimină întreagă (codița lui g)."""
+        """AutoCAD text exported as lines: a letter with its center in the zone is removed whole (the tail of g)."""
         from reportlab.pdfgen import canvas
 
         buf = io.BytesIO()
@@ -256,7 +256,7 @@ class ApiTest(unittest.TestCase):
         for i, (gx, gy) in enumerate([(3, 25), (0, 25), (0, 29), (3, 29), (3, 25), (3, 32.5), (0.5, 33.5), (0, 32.5)]):
             (p.lineTo if i else p.moveTo)((37 + gx) * MM, y(gy))
         c.drawPath(p, stroke=1, fill=0)
-        c.line(10 * MM, y(28), 140 * MM, y(28))  # linie lungă prin zonă: se taie, nu dispare
+        c.line(10 * MM, y(28), 140 * MM, y(28))  # long line through the zone: it is cut, it does not disappear
         c.showPage()
         c.save()
         src = buf.getvalue()
@@ -280,12 +280,12 @@ class ApiTest(unittest.TestCase):
         d = pdfium.PdfDocument(pdf)
         self.assertEqual(len(d), 1)
         self.assertIn("PAG2", d[0].get_textpage().get_text_range())
-        # redeschis: o pagină, adnotarea paginii 2 devine pe pagina 1
+        # reopened: one page, the page 2 annotation ends up on page 1
         m2 = self.req("POST", "/api/open", pdf, {"X-Filename": "x.pdf"})
         self.assertEqual(len(m2["pages"]), 1)
         self.assertEqual([a["id"] for a in m2["state"]["annots"]], ["b"])
         self.assertEqual(m2["state"]["annots"][0]["page"], 0)
-        # fiecare pagină separat: arhivă cu câte un PDF editabil
+        # each page separately: an archive with one editable PDF each
         z, h = self.req("POST", f"/api/doc/{doc}/export", {"filename": "x.pdf", "pages": prims, "removals": {}, "state": state, "split": True}, raw=True)
         self.assertEqual(h["X-Export-Kind"], "zip")
         self.assertIn("x.zip", h["Content-Disposition"])
@@ -311,10 +311,10 @@ class ApiTest(unittest.TestCase):
         doc = ezdxf.read(io.StringIO(data.decode("utf-8")))
         self.assertEqual(len(doc.audit().errors), 0)
         msp = doc.modelspace()
-        # la scara 2 cercul Ø40 al vederii laterale are raza 40, centrul la (480, (210 − 95) × 2)
+        # at scale 2 the Ø40 circle of the side view has radius 40, center at (480, (210 − 95) × 2)
         circ = [(round(e.dxf.center.x, 2), round(e.dxf.center.y, 2), round(e.dxf.radius, 3)) for e in msp.query("CIRCLE")]
         self.assertIn((480.0, 230.0, 40.0), circ)
-        # placa: o polilinie închisă, cu racordările R5 ca arce adevărate (bulge = tan(90°/4))
+        # the plate: one closed polyline, with the R5 fillets as true arcs (bulge = tan(90°/4))
         plates = [e for e in msp.query("LWPOLYLINE") if e.closed and any(abs(abs(b) - 0.41421) < 1e-3 for *_xy, b in e.get_points("xyb"))]
         self.assertTrue(plates)
         texts = {t.dxf.text: t for t in msp.query("TEXT")}
@@ -325,7 +325,7 @@ class ApiTest(unittest.TestCase):
         self.assertTrue(any(abs(e.dxf.start.x - 20) < 1e-6 and abs(e.dxf.end.x - 100) < 1e-6 for e in lines))
         self.assertEqual(len(msp.query("WIPEOUT")), 1)
         self.assertEqual(doc.header["$INSUNITS"], 4)
-        # toate paginile → arhivă cu câte un DXF; pagina rotită păstrează orientarea de pe ecran
+        # all pages → an archive with one DXF each; the rotated page keeps its on-screen orientation
         data, h = self.req("POST", f"/api/doc/{meta['id']}/export", {"format": "dxf", "filename": "arbore"}, raw=True)
         self.assertEqual(h["X-Export-Kind"], "zip")
         z = zipfile.ZipFile(io.BytesIO(data))
@@ -345,7 +345,7 @@ class ApiTest(unittest.TestCase):
         got = self.req("GET", f"/api/doc/{meta['id']}/page/0/ocr")
         self.assertIsNone(got["ocr"])
 
-    @unittest.skipUnless(__import__("shutil").which("tesseract"), "Tesseract lipsește")
+    @unittest.skipUnless(__import__("shutil").which("tesseract"), "Tesseract missing")
     def test_ocr_and_searchable_pdf(self):
         import pypdfium2 as pdfium
 
@@ -356,15 +356,15 @@ class ApiTest(unittest.TestCase):
         self.assertIn("118", texts)
         line = next(ln for ln in res["lines"] if ln["text"] == "118")
         self.assertAlmostEqual(line["cap"] / MM, 2.5, delta=0.3)
-        # rezultatul rămâne pe server și apare în metadatele documentului
+        # the result stays on the server and shows up in the document metadata
         self.assertEqual(self.req("GET", f"/api/doc/{meta['id']}")["ocrPages"], [0])
         pdf, _h = self.req("POST", f"/api/doc/{meta['id']}/export", {"filename": "a.pdf", "pageSel": [0], "ocrLayer": True}, raw=True)
         doc = pdfium.PdfDocument(pdf)
         txt = doc[0].get_textpage().get_text_range()
-        self.assertGreaterEqual(txt.count("42CrMo4"), 2)  # textul original și stratul OCR invizibil
+        self.assertGreaterEqual(txt.count("42CrMo4"), 2)  # the original text and the invisible OCR layer
 
     def test_vectorize_scan(self):
-        """Un scan înclinat al desenului: cercurile, racordările și înclinarea se regăsesc."""
+        """A skewed scan of the drawing: circles, fillets and the skew are recovered."""
         import numpy as np
         from PIL import Image
 
@@ -380,16 +380,16 @@ class ApiTest(unittest.TestCase):
         radii = sorted(round(c[2] / MM, 1) for c in res["circles"] if c[2] / MM > 2)
         for r in (5.0, 15.0, 20.0):
             self.assertTrue(any(abs(x - r) <= 0.15 for x in radii), (r, radii))
-        # placa (120…170 × 150…185 mm): un contur închis, cu cele două racordări R5 ca arce
+        # the plate (120…170 × 150…185 mm): one closed outline, with the two R5 fillets as arcs
         plates = [pl for pl in res["polys"] if pl["closed"] and all(115 < x / MM < 175 and 145 < y / MM < 190 for x, y in pl["pts"])]
         self.assertEqual(len(plates), 1)
         plate = plates[0]
         self.assertEqual(sum(1 for b in plate["bulges"] if abs(abs(b) - 0.4142) < 0.02), 2)
-        # colțul de la teșitură (170, 180) rămâne la 0,4 mm, după îndreptarea scanului
+        # the chamfer corner (170, 180) stays within 0.4 mm, after straightening the scan
         self.assertTrue(any(abs(x / MM - 170) < 0.4 and abs(y / MM - 180) < 0.4 for x, y in plate["pts"]))
 
     def test_page_rotate_delete_move(self):
-        """Rotirea, ștergerea și mutarea paginilor se văd peste tot și rămân la export."""
+        """Rotating, deleting and moving pages shows everywhere and is kept on export."""
         import pikepdf
         import pypdfium2 as pdfium
 
@@ -403,7 +403,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(r["lv"], 1)
         self.assertAlmostEqual(r["pages"][0]["w"], h0, places=2)
         self.assertAlmostEqual(r["pages"][0]["h"], w0, places=2)
-        # colțul (90, 75) mm ajunge, după rotirea la dreapta, la (H − 75, 90)
+        # the corner (90, 75) mm ends up, after rotating right, at (H − 75, 90)
         snap = self.req("GET", f"/api/doc/{doc}/page/0/snap?v=1")
         want = (h0 - corner[1], corner[0])
         self.assertTrue(any(abs(p[0] - want[0]) < 0.05 and abs(p[1] - want[1]) < 0.05 for p in snap["pts"]))
@@ -411,19 +411,19 @@ class ApiTest(unittest.TestCase):
         pdf, _h = self.req("POST", f"/api/doc/{doc}/export", {"filename": "r.pdf", "pageSel": [0]}, raw=True)
         with pikepdf.open(io.BytesIO(pdf)) as pk:
             self.assertEqual(int(pk.pages[0].obj.get("/Rotate", 0)), 90)
-        # mutare: pagina 2 (rotită deja în fișier) vine prima; ștergerea o lasă singură
+        # move: page 2 (already rotated in the file) comes first; deleting leaves it alone
         r = self.req("POST", f"/api/doc/{doc}/pages", {"op": "move", "page": 1, "to": 0})
         self.assertEqual(r["pages"][0]["rot"], 90)
         r = self.req("POST", f"/api/doc/{doc}/pages", {"op": "delete", "pages": [1]})
         self.assertEqual(len(r["pages"]), 1)
         pdf, _h = self.req("POST", f"/api/doc/{doc}/export", {"filename": "r.pdf"}, raw=True)
         self.assertEqual(len(pdfium.PdfDocument(pdf)), 1)
-        # nu se pot șterge toate paginile
+        # not all pages can be deleted
         with self.assertRaises(urllib.error.HTTPError):
             self.req("POST", f"/api/doc/{doc}/pages", {"op": "delete", "pages": [0]})
 
     def test_page_scale_and_low_dpi_image(self):
-        """Mărimea foii: pagina și conținutul cresc împreună, obiectele rămân aceleași."""
+        """Sheet size: the page and the content grow together, the objects stay the same."""
         from PIL import Image
 
         meta = self.open_sample()
@@ -435,7 +435,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual([o["id"] for o in objs], [o["id"] for o in objs0])
         a, b = objs0[0]["bbox"], objs[0]["bbox"]
         self.assertTrue(all(abs(2 * x - y) < 0.2 for x, y in zip(a, b)), (a, b))
-        # imagine de 3300 px la 72 DPI: foaia ar avea 1,16 m; se aduce la A3
+        # a 3300 px image at 72 DPI: the sheet would be 1.16 m; it is brought to A3
         im = Image.new("L", (3300, 2300), 255)
         buf = io.BytesIO()
         im.save(buf, format="PNG", dpi=(72, 72))
@@ -443,7 +443,7 @@ class ApiTest(unittest.TestCase):
         self.assertAlmostEqual(max(m2["pages"][0]["w"], m2["pages"][0]["h"]) / MM, 420, delta=1)
 
     def test_render_clip(self):
-        """Zoom mare: doar zona vizibilă, la rezoluție mare."""
+        """High zoom: only the visible area, at high resolution."""
         from PIL import Image
 
         meta = self.open_sample()
@@ -454,7 +454,7 @@ class ApiTest(unittest.TestCase):
     def test_image_open(self):
         from PIL import Image
         import io
-        im = Image.new("L", (2480, 3508), 255)  # A4 la 300 DPI
+        im = Image.new("L", (2480, 3508), 255)  # A4 at 300 DPI
         b = io.BytesIO()
         im.save(b, format="PNG", dpi=(300, 300))
         meta = self.req("POST", "/api/open", b.getvalue(), {"X-Filename": "scan.png"})
@@ -476,7 +476,7 @@ class ApiTest(unittest.TestCase):
         self.assertIn(meta["id"], removed)
         self.assertFalse(d.exists())
         self.assertTrue((Path(TMP) / "docs" / keep["id"]).exists())
-        # deschiderea prelungește durata
+        # opening extends the retention
         got = self.req("GET", f"/api/doc/{keep['id']}")
         self.assertGreater(got["expires"], time.time() + (m.RETENTION_DAYS - 1) * 86400)
 

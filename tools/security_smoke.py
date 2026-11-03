@@ -1,5 +1,5 @@
-"""Verificare de securitate pe containerul pornit: fișiere construite special și cereri de pe alt site.
-Rulare: python tools/security_smoke.py http://127.0.0.1:8080"""
+"""Security check on the running container: crafted files and cross-site requests.
+Run: python tools/security_smoke.py http://127.0.0.1:8080"""
 import io
 import json
 import os
@@ -16,7 +16,7 @@ BASE = sys.argv[1].rstrip("/") if len(sys.argv) > 1 else "http://127.0.0.1:8080"
 
 import http.cookiejar  # noqa: E402
 
-# ca un browser: păstrează cookie-ul spațiului de lucru (modul implicit e „private”)
+# like a browser: keeps the workspace cookie (the default mode is "private")
 _jar = http.cookiejar.CookieJar()
 _opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(_jar))
 
@@ -31,12 +31,12 @@ def call(method, path, data=None, headers=None, opener=None):
 
 
 st, h, _ = call("GET", "/")
-assert st == 200 and "script-src 'self'" in h.get("Content-Security-Policy", ""), "lipsește CSP"
+assert st == 200 and "script-src 'self'" in h.get("Content-Security-Policy", ""), "CSP missing"
 st, _h, body = call("POST", "/api/open", malicious_pdf(), {"X-Filename": "troian.pdf"})
 meta = json.loads(body)
 assert st == 200 and meta.get("removed"), meta
 st, _h, pdf = call("POST", f"/api/doc/{meta['id']}/export", json.dumps({"filename": "e.pdf", "pages": {}, "removals": {}}).encode(), {"Content-Type": "application/json"})
-assert st == 200 and b"/JavaScript" not in pdf and b"cmd.exe" not in pdf, "conținut activ în export"
+assert st == 200 and b"/JavaScript" not in pdf and b"cmd.exe" not in pdf, "active content in the export"
 st, _h, _ = call("POST", "/api/open", b"MZ" + os.urandom(4000), {"X-Filename": "virus.exe"})
 assert st == 400, st
 st, _h, _ = call("POST", "/api/open", b"%PDF-1.7\n" + os.urandom(20000), {"X-Filename": "stricat.pdf"})
@@ -44,21 +44,21 @@ assert st == 400, st
 st, _h, _ = call("POST", "/api/open", malicious_pdf(), {"X-Filename": "a.pdf", "Origin": "http://rau.example"})
 assert st == 403, st
 st, _h, _ = call("GET", "/api/health")
-assert st == 200, "serverul trebuie să meargă în continuare"
+assert st == 200, "the server must keep working"
 mode = json.loads(call("GET", "/api/health")[2]).get("mode")
 if mode in ("private", "session"):
-    # alt browser (fără cookie-ul primului) nu vede și nu poate deschide documentul
+    # another browser (without the first one's cookie) does not see and cannot open the document
     other = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
     st, _h, _ = call("GET", f"/api/doc/{meta['id']}", opener=other)
     assert st == 404, f"document vizibil din alt browser: {st}"
     st, _h, lst = call("GET", "/api/docs", opener=other)
     assert meta["id"] not in lst.decode(), "document listat pentru alt browser"
-    print(f"izolare între browsere ({mode}): OK")
-print("securitate: OK", meta["removed"])
+    print(f"isolation between browsers ({mode}): OK")
+print("security: OK", meta["removed"])
 _ = io
 
-# interfața funcționează cu CSP-ul strict (fără eval, fără scripturi inline): deschide un desen,
-# pune o cotă și verifică să nu apară erori în consolă
+# the interface works with the strict CSP (no eval, no inline scripts): opens a drawing,
+# adds a dimension and checks that no console errors appear
 try:
     from playwright.sync_api import sync_playwright
 except ImportError:
@@ -86,4 +86,4 @@ if sync_playwright:
         pg.wait_for_timeout(500)
         b.close()
     assert not errors, errors
-    print("interfață sub CSP: OK")
+    print("interface under CSP: OK")

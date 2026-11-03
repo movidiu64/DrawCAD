@@ -1,4 +1,4 @@
-// Apeluri către backend.
+// Calls to the backend.
 
 async function jsonOrThrow(r) {
   if (!r.ok) {
@@ -6,7 +6,7 @@ async function jsonOrThrow(r) {
     try {
       const j = await r.json();
       if (j.error) msg = j.error;
-    } catch (_) { /* fără corp JSON */ }
+    } catch (_) { /* no JSON body */ }
     throw new Error(msg);
   }
   return r.json();
@@ -67,14 +67,14 @@ export async function exportPdf(id, payload) {
     let msg = "Export eșuat";
     try {
       msg = (await r.json()).error || msg;
-    } catch (_) { /* ignorat */ }
+    } catch (_) { /* ignored */ }
     throw new Error(msg);
   }
   const report = JSON.parse(r.headers.get("X-Removal-Report") || "{}");
   let stats = null;
   try {
     stats = JSON.parse(r.headers.get("X-Dxf-Stats") || "null");
-  } catch (_) { /* fără statistici */ }
+  } catch (_) { /* no statistics */ }
   return { blob: await r.blob(), report, kind: r.headers.get("X-Export-Kind") || "pdf", stats };
 }
 

@@ -1,13 +1,13 @@
-// ISO 286 — date preluate din TechTools (lib/features/tools/iso286_fits/iso286_data.dart),
-// convertite automat, fără transcriere manuală.
+// ISO 286 — data taken from TechTools (lib/features/tools/iso286_fits/iso286_data.dart),
+// converted automatically, without manual transcription.
 //
-// Proveniența, după TechTools: toleranțele IT1–IT18 din ISO 286-2:2010 Tabelul 1 (reproduse din
-// ISO 286-1:2010) și abaterile fundamentale citite din ISO 286-2:2010 Tabelele 8 și 17–32.
-// Generatorul TechTools a recalculat toate cele 5907 abateri limită tipărite până la 500 mm:
-// 5896 coincid exact, celelalte 11 sunt greșeli de tipar din ISO 286-2 (fiecare încalcă
-// superioară − inferioară = IT). Abaterile fundamentale ale arborilor au fost verificate și față de
-// ISO 286-1:2010 Tabelele 4 și 5. cd/ef/fg între 10 și 50 mm vin din ISO 286-1.
-// Toate valorile în micrometri. BRACKETS: capătul superior (inclusiv) al fiecărui interval.
+// Provenance, per TechTools: tolerances IT1–IT18 from ISO 286-2:2010 Table 1 (reproduced from
+// ISO 286-1:2010) and fundamental deviations read from ISO 286-2:2010 Tables 8 and 17–32.
+// The TechTools generator recomputed all 5907 limit deviations printed up to 500 mm:
+// 5896 match exactly, the other 11 are misprints in ISO 286-2 (each one violates
+// upper − lower = IT). The fundamental shaft deviations were also checked against
+// ISO 286-1:2010 Tables 4 and 5. cd/ef/fg between 10 and 50 mm come from ISO 286-1.
+// All values in micrometers. BRACKETS: the upper end (inclusive) of each range.
 
 export const BRACKETS = [3, 6, 10, 14, 18, 24, 30, 40, 50, 65, 80, 100, 120, 140, 160, 180, 200, 225, 250, 280, 315, 355, 400, 450, 500];
 export const IT = {

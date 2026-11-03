@@ -1,14 +1,14 @@
-"""Vectorizarea unui desen scanat (experimental): imaginea alb-negru devine linii, arce și cercuri.
+"""Vectorization of a scanned drawing (experimental): the black-and-white image becomes lines, arcs and circles.
 
-Pașii: binarizare (prag Otsu) → textul recunoscut prin OCR se maschează (intră în DXF ca text, nu
-ca mâzgălituri) → subțiere la un pixel (Zhang-Suen) → urmărirea scheletului într-un graf de
-lanțuri între capete și noduri → eliminarea cârligelor scurte din noduri, legarea liniilor care
-trec drept prin noduri → simplificare Douglas-Peucker → arce și cercuri potrivite pe pixeli →
-îndreptarea scanului înclinat și alinierea liniilor aproape orizontale / verticale.
+Steps: binarization (Otsu threshold) → text recognized by OCR is masked (it goes into the DXF as text, not
+as scribbles) → thinning to one pixel (Zhang-Suen) → tracing the skeleton into a graph of
+chains between endpoints and nodes → removing short spurs at nodes, joining lines that
+pass straight through nodes → Douglas-Peucker simplification → arcs and circles fitted on pixels →
+straightening a skewed scan and aligning nearly horizontal / vertical lines.
 
-Rezultatul e o bază de lucru, nu un desen CAD curat: liniile întrerupte ies ca segmente scurte,
-hașurile ca linii, săgețile ca mici triunghiuri. Rulează într-un proces separat, limitat
-(python -m app.vectorize imagine.png ieșire.json scară [măști.json]).
+The result is a starting point, not a clean CAD drawing: dashed lines come out as short segments,
+hatches as lines, arrows as small triangles. Runs in a separate, limited process
+(python -m app.vectorize image.png output.json scale [masks.json]).
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ import numpy as np
 PT_MM = 25.4 / 72
 
 
-# ---------------------------------------------------------------- binarizare și subțiere
+# ---------------------------------------------------------------- binarization and thinning
 
 
 def otsu(gray: np.ndarray) -> int:
@@ -29,7 +29,7 @@ def otsu(gray: np.ndarray) -> int:
 
 
 def otsu_hist(hist) -> int:
-    """Pragul Otsu dintr-o histogramă de 256 de valori (se poate aduna pe fâșii)."""
+    """Otsu threshold from a 256-value histogram (can be accumulated over strips)."""
     hist = np.asarray(hist, dtype=np.float64)
     total = hist.sum()
     if total == 0:
@@ -41,16 +41,16 @@ def otsu_hist(hist) -> int:
         between = (mt * w - mu * total) ** 2 / (w * (total - w))
     between[~np.isfinite(between)] = 0
     t = int(np.argmax(between))
-    # desenele sunt mai ales alb: pragul nu coboară sub mijlocul dintre hârtie și cerneală
+    # drawings are mostly white: the threshold does not go below halfway between paper and ink
     return max(60, min(200, t))
 
 
 def _neighbors_code(img: np.ndarray) -> np.ndarray:
-    """Pentru fiecare pixel, vecinii lui ca număr pe 8 biți: N, NE, E, SE, S, SV, V, NV."""
+    """For each pixel, its neighbors as an 8-bit number: N, NE, E, SE, S, SW, W, NW."""
     P = np.pad(img.astype(np.uint8, copy=False), 1)
     h, w = img.shape
     code = np.zeros((h, w), np.uint8)
-    tmp = np.empty((h, w), np.uint8)  # o singură matrice de lucru, refolosită pentru toți vecinii
+    tmp = np.empty((h, w), np.uint8)  # a single work array, reused for all neighbors
     shifts = [(0, 1), (0, 2), (1, 2), (2, 2), (2, 1), (2, 0), (1, 0), (0, 0)]
     for bit, (dy, dx) in enumerate(shifts):
         np.left_shift(P[dy:dy + h, dx:dx + w], bit, out=tmp)
@@ -82,13 +82,13 @@ def thin(b: np.ndarray, max_iter: int = 60) -> np.ndarray:
             code = _neighbors_code(img)
             m = _LUT[step][code]
             del code
-            m &= img.view(bool)  # img are doar 0 / 1
+            m &= img.view(bool)  # img holds only 0 / 1
             if m.any():
                 img[m] = 0
                 changed = True
         if not changed:
             break
-    # „treptele” rămase (un pixel în colțul unui L) se scot, ca fiecare pixel de lanț să aibă 2 vecini
+    # remaining "steps" (a pixel in the corner of an L) are removed, so every chain pixel has 2 neighbors
     N, NE, E, SE, S, SW, W, NW = (1 << i for i in range(8))
     rules = [
         (N | E, S | W | SW),
@@ -103,11 +103,11 @@ def thin(b: np.ndarray, max_iter: int = 60) -> np.ndarray:
     return img
 
 
-# ---------------------------------------------------------------- graful scheletului
+# ---------------------------------------------------------------- the skeleton graph
 
 
 def trace(sk: np.ndarray):
-    """Lanțuri de pixeli între capete / noduri, plus buclele închise. Coordonate în pixeli."""
+    """Pixel chains between endpoints / nodes, plus closed loops. Coordinates in pixels."""
     h, w = sk.shape
     Wp = w + 2
     pad = np.pad(sk, 1).astype(np.uint8)
@@ -123,7 +123,7 @@ def trace(sk: np.ndarray):
     degf = deg_img.ravel()[flat]
     nodes = flat[degf != 2].tolist()
 
-    # nodurile (≥3 vecini) alăturate formează un singur nod
+    # adjacent nodes (≥3 neighbors) form a single node
     cid = {}
     cpts = []
     for n in nodes:
@@ -152,7 +152,7 @@ def trace(sk: np.ndarray):
         return (n % Wp - 1 + 0.5, n // Wp - 1 + 0.5)
 
     visited = bytearray(len(S))
-    edges = []  # (cheie_a, cheie_b, [puncte])
+    edges = []  # (key_a, key_b, [points])
     seen_pairs = set()
     for n in nodes:
         for o in offs:
@@ -191,7 +191,7 @@ def trace(sk: np.ndarray):
             end = chain[-1]
             kb = key(end) if D[end] != 2 else ("e", end)
             edges.append((key(n), kb, chain))
-    # bucle fără noduri (cercuri, contururi închise)
+    # loops without nodes (circles, closed outlines)
     loops = []
     for start in flat[degf == 2].tolist():
         if visited[start]:
@@ -216,7 +216,7 @@ def trace(sk: np.ndarray):
 
     out = []
     for i, (ka, kb, chain) in enumerate(edges):
-        edges[i] = None  # lanțul de indici nu mai trebuie: memoria lui se refolosește pentru puncte
+        edges[i] = None  # the index chain is no longer needed: its memory is reused for the points
         pts = [xy(q) for q in chain]
         if ka[0] == "c":
             pts[0] = cpts[ka[1]]
@@ -231,7 +231,7 @@ def _length(pts):
 
 
 def _dir_from(pts, at_start, span):
-    """Direcția (unitară) cu care un lanț pleacă din capătul dat, măsurată pe ~`span` pixeli."""
+    """The (unit) direction in which a chain leaves the given end, measured over ~`span` pixels."""
     seq = pts if at_start else pts[::-1]
     p0 = seq[0]
     acc = 0.0
@@ -247,8 +247,8 @@ def _dir_from(pts, at_start, span):
 
 
 def clean_graph(edges, px_mm):
-    """Scoate cârligele scurte și bucățile izolate, apoi leagă lanțurile prin nodurile rămase cu
-    două ramuri și prin nodurile unde o linie trece drept (T, X)."""
+    """Removes short spurs and isolated bits, then joins chains through the nodes left with
+    two branches and through nodes where a line passes straight (T, X)."""
     spur = 1.2 * px_mm
     tiny = 0.6 * px_mm
     E = {i: e for i, e in enumerate(edges)}
@@ -278,7 +278,7 @@ def clean_graph(edges, px_mm):
         if not removed:
             break
 
-    # perechi de ramuri opuse într-un nod: aceeași linie care trece prin nod
+    # pairs of opposite branches at a node: the same line passing through the node
     nid = [len(E) + 1000000]
 
     def merge(i, j, k):
@@ -320,7 +320,7 @@ def clean_graph(edges, px_mm):
                         if dot < -0.975 and (best is None or dot < best[0]):
                             best = (dot, a, b)
                 if best:
-                    # nodul se „desface”: ramura trece mai departe, cheia ei devine unică
+                    # the node is "undone": the branch continues, its key becomes unique
                     _d, a, b = best
                     merge(a, b, k)
                     ka, kd, p = E[a]
@@ -330,7 +330,7 @@ def clean_graph(edges, px_mm):
     return list(E.values())
 
 
-# ---------------------------------------------------------------- simplificare și arce
+# ---------------------------------------------------------------- simplification and arcs
 
 
 def douglas_peucker(P: np.ndarray, tol: float) -> list[int]:
@@ -362,7 +362,7 @@ def douglas_peucker(P: np.ndarray, tol: float) -> list[int]:
 
 
 def fit_circle(P: np.ndarray):
-    """Cercul celor mai mici pătrate (Kåsa): (cx, cy, r, rms, max)."""
+    """Least-squares circle (Kåsa): (cx, cy, r, rms, max)."""
     x, y = P[:, 0], P[:, 1]
     A = np.column_stack([x, y, np.ones_like(x)])
     bvec = x * x + y * y
@@ -400,7 +400,7 @@ def _arc_ok(P, px_mm):
     sw = _sweep(P, cx, cy)
     if abs(sw) < math.radians(12):
         return None
-    # arcul trebuie să se depărteze clar de coarda lui (altfel e o linie)
+    # the arc must clearly depart from its chord (otherwise it is a line)
     a, b = P[0], P[-1]
     chord = math.hypot(b[0] - a[0], b[1] - a[1])
     sag = r * (1 - math.cos(min(abs(sw), math.pi) / 2)) if chord > 0 else r
@@ -410,7 +410,7 @@ def _arc_ok(P, px_mm):
 
 
 def to_primitives(pts, closed, px_mm, tol):
-    """Un lanț de pixeli → polilinie cu arce ({pts, bulges, closed}) sau cerc (cx, cy, r)."""
+    """A pixel chain → polyline with arcs ({pts, bulges, closed}) or a circle (cx, cy, r)."""
     P = np.asarray(pts, np.float64)
     if closed or (len(P) > 12 and math.hypot(*(P[0] - P[-1])) < 1.5):
         f = fit_circle(P)
@@ -419,8 +419,8 @@ def to_primitives(pts, closed, px_mm, tol):
             if r >= 0.4 * px_mm and rms < 0.45 + 0.004 * r and mx < 1.3 + 0.012 * r and abs(_sweep(P, cx, cy)) > 1.9 * math.pi:
                 return ("circle", (cx, cy, r))
     V = douglas_peucker(P, tol)
-    # 1. bucăți: linii între vârfuri DP sau arce peste mai multe vârfuri DP la rând
-    pieces = []  # ["L", i0, i1] sau ["A", i0, i1, (cx, cy, r)] cu indici de pixeli
+    # 1. pieces: lines between DP vertices or arcs over several consecutive DP vertices
+    pieces = []  # ["L", i0, i1] or ["A", i0, i1, (cx, cy, r)] with pixel indices
     i = 0
     nseg = len(V) - 1
     while i < nseg:
@@ -433,7 +433,7 @@ def to_primitives(pts, closed, px_mm, tol):
                     u = P[V[k + 1]] - P[V[k]]
                     w = P[V[k + 2]] - P[V[k + 1]]
                     turns.append(math.atan2(u[0] * w[1] - u[1] * w[0], u[0] * w[0] + u[1] * w[1]))
-                # toate cotiturile în același sens și line (fără colțuri ascuțite)
+                # all turns in the same direction and gentle (no sharp corners)
                 if not turns or max(abs(t) for t in turns) > math.radians(55) or (min(turns) < 0 < max(turns)):
                     break
                 arc = _arc_ok(P[V[i]:V[j] + 1], px_mm)
@@ -448,8 +448,8 @@ def to_primitives(pts, closed, px_mm, tol):
         else:
             pieces.append(["L", V[i], V[i + 1]])
             i += 1
-    # 2. arce vecine din același cerc → un singur arc; cercul se recalculează doar pe pixelii
-    #    care chiar sunt pe arc (capetele drepte, din liniile tangente, se taie)
+    # 2. neighboring arcs of the same circle → a single arc; the circle is refit only on the pixels
+    #    that really are on the arc (the straight ends, from the tangent lines, are trimmed)
     merged = []
     for pc in pieces:
         if pc[0] == "A" and merged and merged[-1][0] == "A":
@@ -483,8 +483,8 @@ def to_primitives(pts, closed, px_mm, tol):
             s0, s1 = n0, n1
         if circ:
             pc[3] = circ
-    # 3. vârfurile: capetele DP; la trecerea linie → arc vârful se mută în punctul de tangență
-    #    (piciorul perpendicularei din centru pe linie), ca racordarea să fie tangentă ca în CAD
+    # 3. vertices: the DP endpoints; at a line → arc transition the vertex moves to the tangent point
+    #    (foot of the perpendicular from the center to the line), so the fillet is tangent as in CAD
     verts = [list(P[pieces[0][1]])] + [list(P[pc[2]]) for pc in pieces]
 
     def foot(cx, cy, a, b):
@@ -520,17 +520,17 @@ def to_primitives(pts, closed, px_mm, tol):
             continue
         cx, cy, r = pc[3]
         A, B = verts[k], verts[k + 1]
-        # sensul îl dă lanțul de pixeli; mărimea, unghiul dintre capetele (mutate) ale arcului
+        # the direction comes from the pixel chain; the magnitude from the angle between the (moved) arc ends
         sw_dir = _sweep(P[pc[1]:pc[2] + 1], cx, cy)
         a0 = math.atan2(-(A[1] - cy), A[0] - cx)
         a1 = math.atan2(-(B[1] - cy), B[0] - cx)
         d = (a1 - a0) % (2 * math.pi)
         if sw_dir < 0:
             d -= 2 * math.pi
-        if abs(abs(d) - abs(sw_dir)) > math.pi:  # capetele au trecut unul de altul: se păstrează arcul inițial
+        if abs(abs(d) - abs(sw_dir)) > math.pi:  # the ends passed each other: the initial arc is kept
             d = sw_dir
         bulges.append(math.tan(d / 4))
-    # 4. vârfurile rămase pe o linie dreaptă (între două segmente drepte) se scot
+    # 4. vertices left on a straight line (between two straight segments) are removed
     if closed and len(verts) > 3 and math.hypot(verts[0][0] - verts[-1][0], verts[0][1] - verts[-1][1]) < 1.5:
         verts.pop()
         ring = True
@@ -563,11 +563,11 @@ def to_primitives(pts, closed, px_mm, tol):
     return ("poly", {"pts": out_pts, "bulges": bulges, "closed": False})
 
 
-# ---------------------------------------------------------------- înclinare și aliniere
+# ---------------------------------------------------------------- skew and alignment
 
 
 def estimate_skew(polys) -> float:
-    """Unghiul (grade, sens trigonometric pe ecran) cu care e înclinat scanul, din liniile lungi."""
+    """The angle (degrees, counter-clockwise on screen) by which the scan is skewed, from the long lines."""
     angs, ws = [], []
     for pl in polys:
         pts, bul = pl["pts"], pl["bulges"]
@@ -630,7 +630,7 @@ def snap_ortho(polys, max_deg=0.6, min_len=10.0):
     return polys
 
 
-# ---------------------------------------------------------------- tot procesul
+# ---------------------------------------------------------------- the whole process
 
 
 def vectorize(gray: np.ndarray, px_per_pt: float, masks=(), deskew=True) -> dict:
@@ -670,7 +670,7 @@ def vectorize(gray: np.ndarray, px_per_pt: float, masks=(), deskew=True) -> dict
     return {
         "polys": out_p,
         "circles": [[round(x * k, 3), round(y * k, 3), round(r * k, 3)] for x, y, r in circles],
-        "skew": round(-skew, 4),  # rotația aplicată (grade, sens trigonometric pe ecran)
+        "skew": round(-skew, 4),  # the applied rotation (degrees, counter-clockwise on screen)
         "threshold": thr,
     }
 

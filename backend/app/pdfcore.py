@@ -1,8 +1,8 @@
-"""Operații PDF: randare, geometrie pentru snap, obiecte din zonă, ștergere obiecte, export.
+"""PDF operations: rendering, geometry for snap, objects in a zone, object removal, export.
 
-Coordonate „vizuale”: puncte PDF (1/72"), originea în colțul stânga-sus al paginii
-așa cum se vede (CropBox + /Rotate aplicate), y în jos. Frontend-ul lucrează numai în
-acest sistem; conversia în spațiul PDF se face aici.
+"Visual" coordinates: PDF points (1/72"), origin at the top-left corner of the page
+as displayed (CropBox + /Rotate applied), y down. The frontend works only in
+this system; conversion to PDF space happens here.
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas as rl_canvas
 
-# pdfium nu e thread-safe: toate apelurile trec prin acest lock
+# pdfium is not thread-safe: all calls go through this lock
 PDFIUM_LOCK = threading.RLock()
 
 FONT_NAME = "osifont"
@@ -34,7 +34,7 @@ _font_registered = False
 
 ATTACH_JSON = "drawcad.json"
 ATTACH_ORIGINAL = "drawcad-original.pdf"
-# exporturile făcute înainte de redenumire (Cotare) se redeschid în continuare
+# exports made before the rename (Cotare) can still be reopened
 LEGACY_ATTACH = [("cotare.json", "cotare-original.pdf")]
 
 OBJ_TYPE_NAMES = {
@@ -56,7 +56,7 @@ def _register_font():
 
 
 def mat_mul(m1, m2):
-    """Aplică m1, apoi m2 (convenție PDF, vector-rând)."""
+    """Applies m1, then m2 (PDF convention, row vector)."""
     a1, b1, c1, d1, e1, f1 = m1
     a2, b2, c2, d2, e2, f2 = m2
     return (
@@ -90,7 +90,7 @@ def _obj_bounds(obj):
 
 @dataclass
 class PageGeo:
-    """Conversie între spațiul PDF al paginii și coordonatele vizuale."""
+    """Conversion between the page's PDF space and visual coordinates."""
 
     left: float
     bottom: float
@@ -146,10 +146,10 @@ class PageGeo:
 
 
 def _walk(page_raw):
-    """Parcurge recursiv obiectele paginii (inclusiv din Form XObject).
+    """Walks the page objects recursively (including inside Form XObjects).
 
-    Produce (id, handle, tip, matrice_părinte, container, este_imbricat).
-    id = indici separați prin '.', stabil cât timp fișierul original nu se schimbă.
+    Yields (id, handle, type, parent_matrix, container, is_nested).
+    id = indices separated by '.', stable as long as the original file does not change.
     """
 
     def rec(container, nested, parent_total, prefix):
@@ -184,8 +184,8 @@ def _bbox_page_space(obj, parent_total):
 
 
 def _path_points(obj, total):
-    """Segmentele unui path, în spațiul paginii: listă de subpath-uri (liste de puncte)
-    plus indicatori dacă subpath-ul conține curbe."""
+    """Segments of a path, in page space: a list of subpaths (lists of points)
+    plus flags telling whether the subpath contains curves."""
     n = R.FPDFPath_CountSegments(obj)
     subpaths = []
     cur = None
@@ -215,7 +215,7 @@ def _text_of(obj, textpage_raw):
     return buf.raw[: n - 2].decode("utf-16-le", errors="replace")
 
 
-# ---------------------------------------------------------------- deschidere
+# ---------------------------------------------------------------- opening
 
 
 def open_info(pdf_bytes: bytes) -> dict:
@@ -241,7 +241,7 @@ def open_info(pdf_bytes: bytes) -> dict:
 
 
 def extract_embedded(pdf_bytes: bytes):
-    """Dacă PDF-ul a fost exportat de aplicație cu strat editabil, întoarce (original, json)."""
+    """If the PDF was exported by the app with an editable layer, returns (original, json)."""
     try:
         with pikepdf.open(io.BytesIO(pdf_bytes)) as pk:
             att = pk.attachments
@@ -256,7 +256,7 @@ def extract_embedded(pdf_bytes: bytes):
 
 
 def image_to_pdf(data: bytes, dpi: float | None) -> tuple[bytes, float]:
-    """Convertește o imagine (PNG/JPG/TIFF) într-o pagină PDF la DPI-ul dat sau citit din fișier."""
+    """Converts an image (PNG/JPG/TIFF) to a PDF page at the given DPI or the one read from the file."""
     import img2pdf
     from PIL import Image
 
@@ -269,9 +269,9 @@ def image_to_pdf(data: bytes, dpi: float | None) -> tuple[bytes, float]:
             file_dpi = None
     use_dpi = dpi or (file_dpi if file_dpi and file_dpi > 30 else 300.0)
     if not dpi:
-        # 72 / 96 DPI sunt de obicei valori implicite (poze, capturi), nu rezoluția scanării: foaia ar
-        # ieși uriașă (un desen A3 de 3300 px la 72 DPI = 1,16 m), iar cotele ar părea minuscule.
-        # Peste A1, cu DPI mic, foaia se aduce la A3 (420 mm pe latura lungă).
+        # 72 / 96 DPI are usually default values (photos, screenshots), not the scan resolution: the sheet would
+        # come out huge (an A3 drawing of 3300 px at 72 DPI = 1.16 m), and dimensions would look tiny.
+        # Above A1, with a low DPI, the sheet is brought to A3 (420 mm on the long side).
         long_px = max(im.size)
         if use_dpi <= 96 and long_px / use_dpi * 25.4 > 841:
             use_dpi = long_px / (420 / 25.4)
@@ -279,7 +279,7 @@ def image_to_pdf(data: bytes, dpi: float | None) -> tuple[bytes, float]:
     n_frames = getattr(im, "n_frames", 1)
     for i in range(n_frames):
         im.seek(i)
-        # img2pdf nu acceptă canal alfa: alb-negru/gri rămân gri, restul RGB
+        # img2pdf does not accept an alpha channel: black-and-white/gray stays gray, the rest RGB
         fr = im.convert("L") if im.mode in ("1", "L", "LA", "I", "I;16") else im.convert("RGB")
         b = io.BytesIO()
         fr.save(b, format="PNG")
@@ -288,12 +288,12 @@ def image_to_pdf(data: bytes, dpi: float | None) -> tuple[bytes, float]:
     return img2pdf.convert(frames, layout_fun=layout), use_dpi
 
 
-# ---------------------------------------------------------------- pagini: ordine, rotire, ștergere
+# ---------------------------------------------------------------- pages: order, rotation, deletion
 
 
 def _push_inherited(po):
-    """Atributele moștenite din arborele de pagini (resurse, cutii, rotire) se copiază pe pagină,
-    ca să rămână corecte după ce pagina e mutată direct sub rădăcină."""
+    """Attributes inherited from the page tree (resources, boxes, rotation) are copied onto the page,
+    so they stay correct after the page is moved directly under the root."""
     for key in ("/Resources", "/MediaBox", "/CropBox", "/Rotate"):
         if key in po:
             continue
@@ -308,8 +308,8 @@ def _push_inherited(po):
 
 
 def apply_layout(pdf_bytes: bytes, layout: list[dict]) -> bytes:
-    """PDF-ul cu paginile în ordinea dată, rotite suplimentar (`rot`, grade în sens orar) și fără
-    cele lipsă. Conținutul paginilor nu se atinge, deci id-urile obiectelor rămân aceleași."""
+    """The PDF with the pages in the given order, additionally rotated (`rot`, degrees clockwise) and without
+    the missing ones. Page content is not touched, so object ids stay the same."""
     pk = pikepdf.open(io.BytesIO(pdf_bytes))
     objs = [p.obj for p in pk.pages]
     for po in objs:
@@ -324,8 +324,8 @@ def apply_layout(pdf_bytes: bytes, layout: list[dict]) -> bytes:
         po.Rotate = (base + int(it.get("rot", 0))) % 360
         k = float(it.get("scale", 1) or 1)
         if abs(k - 1) > 1e-9:
-            # mărimea foii: cutiile paginii și conținutul (o transformare la început) cu factorul k;
-            # obiectele paginii rămân aceleași, deci și id-urile lor
+            # sheet size: the page boxes and the content (a transform at the start) by factor k;
+            # the page objects stay the same, and so do their ids
             for box in ("/MediaBox", "/CropBox", "/BleedBox", "/TrimBox", "/ArtBox"):
                 if box in po:
                     po[box] = pikepdf.Array([float(v) * k for v in po[box]])
@@ -347,11 +347,11 @@ def apply_layout(pdf_bytes: bytes, layout: list[dict]) -> bytes:
     return out.getvalue()
 
 
-# ---------------------------------------------------------------- randare
+# ---------------------------------------------------------------- rendering
 
 
 def _to_png(img, out):
-    """PNG rapid din imagine PIL (folosit pentru imaginile mici); gri → un singur canal."""
+    """Fast PNG from a PIL image (used for small images); gray → a single channel."""
     from PIL import ImageChops
 
     if img.mode == "RGB":
@@ -364,11 +364,11 @@ def _to_png(img, out):
     img.save(out, format="PNG", compress_level=1)
 
 
-_PNG_ROWS = 256  # rânduri comprimate deodată: memoria suplimentară e cât o fâșie, nu cât imaginea
+_PNG_ROWS = 256  # rows compressed at a time: the extra memory is one strip, not the whole image
 
 
 def _is_gray(arr) -> bool:
-    """Toate pixelii au R = G = B? Verificat pe fâșii, ca să nu se aloce imaginea de trei ori."""
+    """Do all pixels have R = G = B? Checked in strips, so the image is not allocated three times."""
     if arr.ndim == 2:
         return True
     for i in range(0, arr.shape[0], _PNG_ROWS):
@@ -379,9 +379,9 @@ def _is_gray(arr) -> bool:
 
 
 def png_from_array(arr, level: int = 1) -> bytes:
-    """PNG direct din matricea bitmap-ului (H×W gri sau H×W×3 RGB), comprimat pe fâșii.
-    Fără copii PIL ale întregii imagini: la o pagină de 100 MP vârful de memorie scade de la
-    ~11 la ~3 octeți pe pixel. Desenele alb-negru / gri se scriu pe un singur canal."""
+    """PNG straight from the bitmap array (H×W gray or H×W×3 RGB), compressed in strips.
+    No PIL copies of the whole image: for a 100 MP page the memory peak drops from
+    ~11 to ~3 bytes per pixel. Black-and-white / gray drawings are written as a single channel."""
     import struct
     import zlib
 
@@ -400,8 +400,8 @@ def png_from_array(arr, level: int = 1) -> bytes:
     for i in range(0, h, _PNG_ROWS):
         c = arr[i:i + _PNG_ROWS].reshape(-1, row)
         n = c.shape[0]
-        # filtrul „Up” (2): diferența față de rândul de deasupra (modulo 256). La desene, rândurile
-        # vecine sunt aproape la fel, deci se comprimă de 2–4× mai bine decât fără filtru
+        # the "Up" filter (2): difference from the row above (modulo 256). On drawings, neighboring
+        # rows are nearly identical, so they compress 2–4× better than without a filter
         buf = np.empty((n, row + 1), dtype=np.uint8)
         buf[:, 0] = 2
         buf[0, 1:] = c[0] - prev
@@ -415,7 +415,7 @@ def png_from_array(arr, level: int = 1) -> bytes:
 
 
 def _bitmap_array(bmp):
-    """Vederea numpy peste pixelii bitmap-ului (fără copiere), RGB sau gri."""
+    """Numpy view over the bitmap pixels (no copy), RGB or gray."""
     arr = bmp.to_numpy()
     if arr.ndim == 3 and arr.shape[2] == 4:
         arr = arr[..., :3]
@@ -426,8 +426,8 @@ _LIBC = None
 
 
 def release_memory():
-    """Dă înapoi sistemului memoria liberă rămasă după o randare mare (glibc o păstrează altfel
-    în proces, iar serverul rămâne cu sute de MB ocupați degeaba). Fără efect în afara Linux."""
+    """Returns to the OS the free memory left after a large render (otherwise glibc keeps it
+    in the process, and the server holds hundreds of MB for nothing). No effect outside Linux."""
     global _LIBC
     if _LIBC is None:
         try:
@@ -440,7 +440,7 @@ def release_memory():
 
 
 def to_gray(arr):
-    """RGB → gri pe fâșii, cu aceeași formulă ca PIL convert("L") (rezultat identic, bit cu bit)."""
+    """RGB → gray in strips, with the same formula as PIL convert("L") (bit-identical result)."""
     if arr.ndim == 2:
         return np.array(arr)
     out = np.empty(arr.shape[:2], dtype=np.uint8)
@@ -451,15 +451,15 @@ def to_gray(arr):
 
 
 def render_png(pdf_bytes: bytes, page_index: int, scale: float, removals=None, ink=None, clip=None, gray: bool = False) -> bytes:
-    """Pagina ca PNG. `clip` = (x0, y0, x1, y1) în coordonate vizuale (puncte): doar zona aceea,
-    pentru zoom mare (detaliul vizibil la rezoluție mare, fără toată pagina).
-    `gray`: PNG în tonuri de gri (OCR, vectorizare)."""
+    """The page as PNG. `clip` = (x0, y0, x1, y1) in visual coordinates (points): only that area,
+    for high zoom (the visible detail at high resolution, without the whole page).
+    `gray`: grayscale PNG (OCR, vectorization)."""
     if ink and ink.get("all"):
         pdf_bytes = ink_pdf(pdf_bytes, {page_index}, ink.get("fills", "black"), bool(ink.get("images")))
     bmp = _render_bitmap(pdf_bytes, page_index, scale, removals, clip)
     big = False
     try:
-        # compresia se face în afara lacătului PDFium: altă pagină se poate randa între timp
+        # compression happens outside the PDFium lock: another page can be rendered meanwhile
         arr = _bitmap_array(bmp)
         big = arr.shape[0] * arr.shape[1] > 4e6
         return png_from_array(to_gray(arr) if gray else arr)
@@ -471,8 +471,8 @@ def render_png(pdf_bytes: bytes, page_index: int, scale: float, removals=None, i
 
 
 def render_array(pdf_bytes: bytes, page_index: int, scale: float, gray: bool = True):
-    """Pagina ca matrice numpy (copie proprie), fără PNG intermediar. Randarea e mereu color:
-    modul gri al PDFium netezește altfel marginile, iar OCR-ul și vectorizarea sunt reglate pe asta."""
+    """The page as a numpy array (own copy), without an intermediate PNG. Rendering is always in color:
+    PDFium's gray mode smooths edges differently, and OCR and vectorization are tuned for this."""
     bmp = _render_bitmap(pdf_bytes, page_index, scale, None, None)
     try:
         arr = _bitmap_array(bmp)
@@ -495,7 +495,7 @@ def _render_bitmap(pdf_bytes, page_index, scale, removals, clip):
                 x0, y0, x1, y1 = clip
                 x0, x1 = max(0.0, min(x0, x1)), min(W, max(x0, x1))
                 y0, y1 = max(0.0, min(y0, y1)), min(H, max(y0, y1))
-                # tăietura PDFium e în orientarea afișată: stânga, jos, dreapta, sus
+                # the PDFium crop is in display orientation: left, bottom, right, top
                 crop = (x0, H - y1, W - x1, y0)
             bmp = page.render(scale=scale, rotation=0, crop=crop, may_draw_forms=True, draw_annots=True, rev_byteorder=True)
             page.close()
@@ -504,10 +504,10 @@ def _render_bitmap(pdf_bytes, page_index, scale, removals, clip):
             doc.close()
 
 
-# ---------------------------------------------------------------- înnegrire pentru tipărire
-# Desenele colorate (verde deschis, galben…) ies aproape invizibile la imprimantă. Liniile și textul
-# se fac negre rescriind operatorii de culoare din fluxurile de conținut (pagină și blocuri), deci
-# geometria, fonturile și ordinea obiectelor rămân neatinse. Albul (hârtia, mascările) rămâne alb.
+# ---------------------------------------------------------------- blackening for printing
+# Colored drawings (light green, yellow…) print almost invisible. Lines and text
+# are made black by rewriting the color operators in the content streams (page and blocks), so
+# geometry, fonts and object order stay untouched. White (paper, masks) stays white.
 
 INK_FILLS = ("black", "gray", "keep")
 
@@ -520,7 +520,7 @@ def _num(v):
 
 
 def _cs_kind(name, resources, depth=0):
-    """Tipul unui spațiu de culoare: (familie, nr. componente, extra)."""
+    """Kind of a color space: (family, number of components, extra)."""
     if depth > 6:
         return ("unknown", 0, None)
     if isinstance(name, pikepdf.Array):
@@ -562,7 +562,7 @@ def _cs_kind(name, resources, depth=0):
 
 
 def _color_eval(kind, vals):
-    """(e_alb, luminozitate 0…1) pentru o culoare."""
+    """(is_white, lightness 0…1) for a color."""
     fam, _n, extra = kind
     v = [_num(x) for x in vals if not isinstance(x, pikepdf.Name)]
     if fam == "gray" and v:
@@ -589,7 +589,7 @@ def _color_eval(kind, vals):
 
 
 def _ink_instrs(instrs, resources, fills):
-    """Rescrie operatorii de culoare: contururile și textul devin negre, umplerile după `fills`."""
+    """Rewrites color operators: strokes and text become black, fills according to `fills`."""
     out = []
     st = {"S": ("gray", 1, None), "F": ("gray", 1, None), "fw": False, "last": []}
     stack = []
@@ -643,7 +643,7 @@ def _ink_instrs(instrs, resources, fills):
                 st["F"] = kind
             white, lum = _color_eval(kind, operands)
             if in_text:
-                # textul e întotdeauna negru (sau alb, dacă era alb)
+                # text is always black (or white, if it was white)
                 out.append(([1 if white else 0], pikepdf.Operator("g")))
                 continue
             st["fw"] = white
@@ -673,11 +673,11 @@ def _ink_instrs(instrs, resources, fills):
 
 
 def _ink_image(obj):
-    """Imagine → alb-negru pentru tipărire: tot ce nu e hârtie (închis sau colorat) devine negru."""
+    """Image → black and white for printing: everything that is not paper (dark or colored) becomes black."""
     from PIL import Image, ImageChops  # noqa: PLC0415
 
     if obj.get("/ImageMask", False):
-        return False  # mască: se desenează cu culoarea de umplere, deja înnegrită
+        return False  # mask: drawn with the fill color, already blackened
     try:
         im = pikepdf.PdfImage(obj).as_pil_image()
     except Exception:  # noqa: BLE001
@@ -702,7 +702,7 @@ def _ink_image(obj):
 
 
 def ink_pdf(pdf_bytes: bytes, pages=None, fills: str = "black", images: bool = False) -> bytes:
-    """Face negre liniile și textul originalului (opțional și imaginile) pe paginile date."""
+    """Makes the original's lines and text black (optionally images too) on the given pages."""
     fills = fills if fills in INK_FILLS else "black"
     pk = pikepdf.open(io.BytesIO(pdf_bytes))
     done = set()
@@ -742,7 +742,7 @@ def ink_pdf(pdf_bytes: bytes, pages=None, fills: str = "black", images: bool = F
     return out.getvalue()
 
 
-# ---------------------------------------------------------------- geometrie pentru snap
+# ---------------------------------------------------------------- geometry for snap
 
 
 def _bez_at(p0, c1, c2, p3, t):
@@ -754,7 +754,7 @@ def _bez_at(p0, c1, c2, p3, t):
 
 
 def _circle3(a, b, c):
-    """Cercul prin trei puncte: (cx, cy, r) sau None dacă sunt coliniare."""
+    """The circle through three points: (cx, cy, r) or None if they are collinear."""
     ax, ay = a
     bx, by = b
     cx, cy = c
@@ -775,8 +775,8 @@ def _wrap_pi(a):
 
 
 def _bez_as_arc(p0, c1, c2, p3):
-    """Dacă o curbă Bézier (în coordonate vizuale) e un arc de cerc, întoarce (cx, cy, r, a0, sweep)
-    cu unghiuri pe ecran în sens trigonometric (y în jos), altfel None."""
+    """If a Bézier curve (in visual coordinates) is a circular arc, returns (cx, cy, r, a0, sweep)
+    with on-screen angles, counter-clockwise (y down), otherwise None."""
     m = _bez_at(p0, c1, c2, p3, 0.5)
     circ = _circle3(p0, m, p3)
     if not circ:
@@ -796,9 +796,9 @@ def _bez_as_arc(p0, c1, c2, p3):
 
 
 def snap_points(pdf_bytes: bytes, page_index: int, limit: int = 60000) -> dict:
-    """Puncte caracteristice: capete și mijloace de segmente, centre de cercuri.
+    """Characteristic points: endpoints and midpoints of segments, circle centers.
 
-    Întoarce și segmentele de dreaptă (pentru snap pe linie / perpendicular)."""
+    Also returns the straight segments (for snap on line / perpendicular)."""
     with PDFIUM_LOCK:
         doc = pdfium.PdfDocument(pdf_bytes)
         try:
@@ -826,7 +826,7 @@ def snap_points(pdf_bytes: bytes, page_index: int, limit: int = 60000) -> dict:
                     K = sp["kinds"]
                     if len(P) < 2:
                         continue
-                    # cerc / arc închis aproximat din curbe Bézier → centru
+                    # closed circle / arc approximated by Bézier curves → center
                     geom_closed = sp["closed"] or (
                         (P[0][0] - P[-1][0]) ** 2 + (P[0][1] - P[-1][1]) ** 2 < 1e-4
                     )
@@ -859,14 +859,14 @@ def snap_points(pdf_bytes: bytes, page_index: int, limit: int = 60000) -> dict:
                                 segs.append([round(a[0], 3), round(a[1], 3), round(b[0], 3), round(b[1], 3)])
                             prev = p
                             j += 1
-                        else:  # Bézier: trei puncte, ultimul e capătul
+                        else:  # Bézier: three points, the last one is the endpoint
                             c1, c2 = P[j], P[min(j + 1, len(P) - 1)]
                             end = P[min(j + 2, len(P) - 1)]
                             add(end[0], end[1], "e")
                             vp = [g.to_vis(*q) for q in (prev, c1, c2, end)]
                             arc = _bez_as_arc(*vp)
                             if arc:
-                                # arcele consecutive ale aceluiași cerc (racordări din mai multe curbe) se unesc
+                                # consecutive arcs of the same circle (fillets made of several curves) are merged
                                 last = arcs[-1] if arcs else None
                                 if (
                                     last and abs(last[0] - arc[0]) < 0.05 and abs(last[1] - arc[1]) < 0.05
@@ -877,7 +877,7 @@ def snap_points(pdf_bytes: bytes, page_index: int, limit: int = 60000) -> dict:
                                 else:
                                     arcs.append([round(arc[0], 3), round(arc[1], 3), round(arc[2], 3), round(arc[3], 6), round(arc[4], 6)])
                             else:
-                                # curbă oarecare: aproximată din segmente, pentru „pe obiect” și intersecții
+                                # arbitrary curve: approximated by segments, for "nearest" and intersections
                                 qs = [vp[0]] + [_bez_at(*vp, k / 8) for k in range(1, 9)]
                                 for a, b in zip(qs, qs[1:]):
                                     segs.append([round(a[0], 3), round(a[1], 3), round(b[0], 3), round(b[1], 3), 1])
@@ -895,7 +895,7 @@ def snap_points(pdf_bytes: bytes, page_index: int, limit: int = 60000) -> dict:
                 if len(pts) > limit:
                     break
             page.close()
-            # centrele și mijloacele arcelor (racordări): utile pentru cote de rază și axe
+            # centers and midpoints of arcs (fillets): useful for radius dimensions and center lines
             for cx, cy, r, a0, sw in arcs:
                 if abs(sw) < 2 * math.pi - 1e-3:
                     key = (round(cx, 2), round(cy, 2), "c")
@@ -909,18 +909,18 @@ def snap_points(pdf_bytes: bytes, page_index: int, limit: int = 60000) -> dict:
             doc.close()
 
 
-# ---------------------------------------------------------------- obiecte din zonă / ștergere
+# ---------------------------------------------------------------- objects in a zone / removal
 
 
 GLYPH_MAX = 12 * 72 / 25.4  # 12 mm
 
 
 def _glyph_in(b, r):
-    """Obiect mic (literă) cu centrul casetei în zonă."""
+    """Small object (letter) with the center of its box in the zone."""
     cx = (b[0] + b[2]) / 2
     cy = (b[1] + b[3]) / 2
     w, h = b[2] - b[0], b[3] - b[1]
-    # liniile drepte (o dimensiune ~0) nu sunt litere: acelea se taie la margine
+    # straight lines (one dimension ~0) are not letters: those are cut at the edge
     return max(w, h) <= GLYPH_MAX and min(w, h) >= 2.3 and r[0] <= cx <= r[2] and r[1] <= cy <= r[3]
 
 
@@ -929,7 +929,7 @@ def _area_frac(b, r):
     h = max(b[3] - b[1], 1e-6)
     iw = max(0.0, min(b[2], r[2]) - max(b[0], r[0]))
     ih = max(0.0, min(b[3], r[3]) - max(b[1], r[1]))
-    # obiect foarte subțire (linie orizontală/verticală): contează doar dimensiunea lungă
+    # very thin object (horizontal/vertical line): only the long dimension counts
     if b[2] - b[0] < 0.5:
         return round(ih / h, 3)
     if b[3] - b[1] < 0.5:
@@ -938,7 +938,7 @@ def _area_frac(b, r):
 
 
 def _frac_inside(subpaths, r):
-    """Fracțiunea din lungimea unui path aflată în dreptunghiul r (în spațiul paginii)."""
+    """Fraction of a path's length inside rectangle r (in page space)."""
     tot = 0.0
     out = 0.0
 
@@ -983,7 +983,7 @@ def objects_in_rect(pdf_bytes: bytes, page_index: int, rect_vis) -> list[dict]:
             tp = page.get_textpage()
             for oid, obj, typ, parent_total, _c, _n in _walk(page.raw):
                 if typ == R.FPDF_PAGEOBJ_FORM:
-                    continue  # se listează copiii
+                    continue  # list the children
                 bb = _bbox_page_space(obj, parent_total)
                 if bb is None:
                     continue
@@ -996,9 +996,9 @@ def objects_in_rect(pdf_bytes: bytes, page_index: int, rect_vis) -> list[dict]:
                     "type": OBJ_TYPE_NAMES.get(typ, "other"),
                     "bbox": [round(v, 2) for v in vb],
                     "inside": inside,
-                    "locked": "." in oid,  # în interiorul unui bloc (Form XObject): doar acoperire
+                    "locked": "." in oid,  # inside a block (Form XObject): cover only
                 }
-                # cât din obiect e în zonă (lungimea liniilor, sau aria casetei pentru text și imagini)
+                # how much of the object is in the zone (line length, or box area for text and images)
                 item["frac"] = 1.0 if inside else _area_frac(vb, (rx0, ry0, rx1, ry1))
                 if typ == R.FPDF_PAGEOBJ_TEXT:
                     item["text"] = _text_of(obj, tp.raw)
@@ -1011,7 +1011,7 @@ def objects_in_rect(pdf_bytes: bytes, page_index: int, rect_vis) -> list[dict]:
                         a, b = g.from_vis(rx0, ry0), g.from_vis(rx1, ry1)
                         rpdf = (min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1]))
                         if not _cut_runs(sps, rpdf)[1]:
-                            continue  # doar încadrarea atinge zona (ex. chenarul foii)
+                            continue  # only the bounding box touches the zone (e.g. the sheet border)
                         item["frac"] = round(_frac_inside(sps, rpdf), 3)
                     for sp in sps:
                         nseg += len(sp["pts"])
@@ -1021,7 +1021,7 @@ def objects_in_rect(pdf_bytes: bytes, page_index: int, rect_vis) -> list[dict]:
                     fill = ctypes.c_int()
                     stroke = ctypes.c_int()
                     ok = R.FPDFPath_GetDrawMode(obj, ctypes.byref(fill), ctypes.byref(stroke))
-                    # doar liniile simple (fără umplere) se pot tăia la marginea zonei
+                    # only plain lines (no fill) can be cut at the zone edge
                     item["cuttable"] = bool(ok and fill.value == 0 and stroke.value)
                 out.append(item)
             tp.close()
@@ -1031,18 +1031,18 @@ def objects_in_rect(pdf_bytes: bytes, page_index: int, rect_vis) -> list[dict]:
     return out
 
 
-# ---------------------------------------------------------------- tăiere geometrică
+# ---------------------------------------------------------------- geometric cutting
 
 
 def _clip_outside(p, q, r):
-    """Părțile segmentului p→q aflate în afara dreptunghiului r = (x0, y0, x1, y1)."""
+    """Parts of segment p→q outside the rectangle r = (x0, y0, x1, y1)."""
     x0, y0, x1, y1 = r
     dx, dy = q[0] - p[0], q[1] - p[1]
     t0, t1 = 0.0, 1.0
     for pk, qk in ((-dx, p[0] - x0), (dx, x1 - p[0]), (-dy, p[1] - y0), (dy, y1 - p[1])):
         if abs(pk) < 1e-12:
             if qk < 0:
-                return [(p, q)]  # paralel și în afara benzii: tot segmentul e afară
+                return [(p, q)]  # parallel and outside the band: the whole segment is outside
             continue
         t = qk / pk
         if pk < 0:
@@ -1050,7 +1050,7 @@ def _clip_outside(p, q, r):
         else:
             t1 = min(t1, t)
     if t0 >= t1:
-        return [(p, q)]  # nu intră în dreptunghi
+        return [(p, q)]  # does not enter the rectangle
     at = lambda t: (p[0] + dx * t, p[1] + dy * t)  # noqa: E731
     out = []
     if t0 > 1e-9:
@@ -1079,9 +1079,9 @@ def _boxes_touch(pts, r):
 
 
 def _cut_runs(subpaths, r):
-    """Transformă subpath-urile (în spațiul paginii) în porțiuni continue din afara dreptunghiului.
-    Fiecare porțiune: listă de elemente ('M', p) / ('L', p) / ('B', c1, c2, p).
-    Întoarce (porțiuni, tăiat) — tăiat e False dacă nicio linie nu intră efectiv în zonă."""
+    """Turns subpaths (in page space) into continuous pieces outside the rectangle.
+    Each piece: a list of elements ('M', p) / ('L', p) / ('B', c1, c2, p).
+    Returns (pieces, cut) — cut is False if no line actually enters the zone."""
     runs = []
     cur = None
     last = None
@@ -1125,7 +1125,7 @@ def _cut_runs(subpaths, r):
             if sg[0] == "B":
                 _k, a, c1, c2, b = sg
                 if not _boxes_touch([a, c1, c2, b], r):
-                    # curba e complet în afara zonei: rămâne curbă
+                    # the curve is completely outside the zone: it stays a curve
                     if cur is None or last is None or abs(last[0] - a[0]) > 1e-6 or abs(last[1] - a[1]) > 1e-6:
                         cur = [("M", a)]
                         runs.append(cur)
@@ -1143,7 +1143,7 @@ def _cut_runs(subpaths, r):
 
 
 def _new_cut_path(src, runs, scale):
-    """Obiect path nou, în coordonatele paginii, cu stilul de contur al obiectului sursă."""
+    """New path object, in page coordinates, with the stroke style of the source object."""
     obj = R.FPDFPageObj_CreateNewPath(ctypes.c_float(runs[0][0][1][0]), ctypes.c_float(runs[0][0][1][1]))
     first = True
     for run in runs:
@@ -1185,13 +1185,13 @@ def _new_cut_path(src, runs, scale):
 def _apply_removals_page(page: pdfium.PdfPage, ops: list[dict]) -> dict:
     """ops: [{"mode": "objects", "ids": [...]}, {"mode": "text"|"zone", "rect": [...]}]
 
-    În modul „zone”, liniile care trec doar parțial prin zonă se taie la marginea ei: se înlocuiesc
-    cu un obiect nou care păstrează numai porțiunile din afară (cu același stil de contur).
-    Obiectele pline (săgeți, hașuri) parțial în zonă nu se pot tăia și sunt raportate ca rămase.
+    In "zone" mode, lines that pass only partly through the zone are cut at its edge: they are replaced
+    by a new object that keeps only the parts outside (with the same stroke style).
+    Filled objects (arrows, hatches) partly in the zone cannot be cut and are reported as remaining.
 
-    Obiectele din interiorul unui Form XObject (blocuri) nu se modifică: PDFium rescrie resursele
-    formularului fără conținutul lui, iar textul din bloc își pierde fontul. Ele se raportează ca
-    „locked” și se pot doar acoperi."""
+    Objects inside a Form XObject (blocks) are not modified: PDFium rewrites the form's
+    resources without its content, and text in the block loses its font. They are reported as
+    "locked" and can only be covered."""
     g = PageGeo.of(page)
     targets = {}
     cuts = {}
@@ -1249,7 +1249,7 @@ def _apply_removals_page(page: pdfium.PdfPage, ops: list[dict]) -> dict:
                     hit = vb[0] >= rx0 and vb[2] <= rx1 and vb[1] >= ry0 and vb[3] <= ry1
                     touches = not (vb[2] < rx0 or vb[0] > rx1 or vb[3] < ry0 or vb[1] > ry1)
                     if not hit and touches and mode == "zone" and _glyph_in(vb, (rx0, ry0, rx1, ry1)):
-                        hit = True  # literă (text AutoCAD ca linii) cu centrul în zonă: se ia întreagă
+                        hit = True  # letter (AutoCAD text as lines) with its center in the zone: taken whole
                     if not hit and touches:
                         fill = ctypes.c_int()
                         stroke = ctypes.c_int()
@@ -1266,14 +1266,14 @@ def _apply_removals_page(page: pdfium.PdfPage, ops: list[dict]) -> dict:
                 if hit:
                     targets[oid] = (obj, typ, pm, cont, nested)
                     cuts.pop(oid, None)
-    # obiectele noi (porțiunile din afara zonei) se inserează pe locul obiectului de nivel 1 din care
-    # provin, de la indicele cel mai mare la cel mai mic, ca ordinea de desenare să se păstreze
+    # new objects (the parts outside the zone) are inserted in place of the level-1 object they
+    # come from, from the highest index to the lowest, so the drawing order is preserved
     inserts = []
     for oid, (obj, pm, cont, nested, rpdf) in cuts.items():
         total = mat_mul(_obj_matrix(obj), pm)
         runs, clipped = _cut_runs(_path_points(obj, total), rpdf)
         if not clipped:
-            continue  # doar dreptunghiul încadrator atinge zona; linia rămâne neatinsă
+            continue  # only the bounding rectangle touches the zone; the line stays untouched
         scale = math.sqrt(abs(total[0] * total[3] - total[1] * total[2])) or 1.0
         inserts.append((int(oid.split(".")[0]), oid, runs, scale))
         targets[oid] = (obj, R.FPDF_PAGEOBJ_PATH, pm, cont, nested)
@@ -1282,7 +1282,7 @@ def _apply_removals_page(page: pdfium.PdfPage, ops: list[dict]) -> dict:
             new = _new_cut_path(targets[oid][0], runs, scale)
             R.FPDFPage_InsertObjectAtIndex(page.raw, new, top_idx + 1)
         report["cut"] += 1
-    # se șterg întâi cele mai adânci, ca indicii părinților să nu conteze
+    # the deepest ones are deleted first, so parent indices do not matter
     for oid in sorted(targets, key=lambda s: -s.count(".")):
         obj, _typ, _pm, cont, nested = targets[oid]
         ok = R.FPDFFormObj_RemoveObject(cont, obj) if nested else R.FPDFPage_RemoveObject(page.raw, obj)
@@ -1296,7 +1296,7 @@ def _apply_removals_page(page: pdfium.PdfPage, ops: list[dict]) -> dict:
 
 
 def _blacken_obj(obj, typ) -> bool:
-    """Un obiect de nivel 1 devine negru (contur și umplere); albul rămâne alb."""
+    """A level-1 object becomes black (stroke and fill); white stays white."""
     r, g, b, a = (ctypes.c_uint() for _ in range(4))
 
     def is_white(getter):
@@ -1349,7 +1349,7 @@ def _color(key, mode):
     if key == "white":
         return (1, 1, 1)
     if isinstance(key, str) and _HEX.match(key):
-        # culoare aleasă explicit (acoperiri în culoarea fundalului): rămâne așa în orice mod
+        # explicitly chosen color (covers in the background color): stays that way in any mode
         return tuple(int(key[i:i + 2], 16) / 255 for i in (1, 3, 5))
     if mode == "layers" and key in COLOR_LAYERS:
         return COLOR_LAYERS[key]
@@ -1357,8 +1357,8 @@ def _color(key, mode):
 
 
 def _overlay_pdf(page_specs, color_mode) -> bytes:
-    """page_specs: listă de (PageGeo, mediabox, primitive). Un PDF reportlab cu câte o pagină
-    pentru fiecare pagină țintă; conținutul e desenat direct în coordonatele PDF ale țintei."""
+    """page_specs: list of (PageGeo, mediabox, primitives). A reportlab PDF with one page
+    per target page; content is drawn directly in the target's PDF coordinates."""
     _register_font()
     buf = io.BytesIO()
     c = rl_canvas.Canvas(buf, pageCompression=1)
@@ -1367,7 +1367,7 @@ def _overlay_pdf(page_specs, color_mode) -> bytes:
         c.setPageSize((max(mb[2], 1), max(mb[3], 1)))
         c.setLineJoin(1)
         c.setLineCap(0)
-        # acoperirile albe primele, ca să nu ascundă cotele noi
+        # white covers first, so they do not hide the new dimensions
         ordered = sorted(prims, key=lambda p: 0 if p.get("c") == "white" or p.get("cover") else 1)
         for p in ordered:
             t = p.get("t")
@@ -1410,7 +1410,7 @@ def _overlay_pdf(page_specs, color_mode) -> bytes:
                 c.circle(cx, cy, float(p["r"]), stroke=0 if p.get("fill") and p.get("nostroke") else 1,
                          fill=1 if p.get("fill") else 0)
             elif t == "O":
-                # text recunoscut (OCR), invizibil: face PDF-ul căutabil și permite copierea textului
+                # recognized text (OCR), invisible: makes the PDF searchable and allows copying the text
                 txt = str(p.get("txt", ""))
                 x0, y0, x1, y1 = p["p"]
                 vert = p.get("rot") == 90
@@ -1418,7 +1418,7 @@ def _overlay_pdf(page_specs, color_mode) -> bytes:
                 if not txt or bw <= 0 or bh <= 0:
                     continue
                 cap = float(p.get("cap") or bh * 0.75)
-                size = cap / 0.74  # corpul literei din înălțimea majusculelor (osifont)
+                size = cap / 0.74  # letter body from the cap height (osifont)
                 if p.get("len"):
                     bw = float(p["len"])
                 sw = pdfmetrics.stringWidth(txt, FONT_NAME, size) or 1
@@ -1509,11 +1509,11 @@ def export_pdf(
     return out.getvalue(), reports
 
 
-# ---------------------------------------------------------------- export pe pagini
+# ---------------------------------------------------------------- export by pages
 
 
 def subset_pdf(pdf_bytes: bytes, idxs: list[int]) -> bytes:
-    """Doar paginile date, în ordinea dată (fluxurile de conținut nu se ating)."""
+    """Only the given pages, in the given order (content streams are not touched)."""
     src = pikepdf.open(io.BytesIO(pdf_bytes))
     keep = set(idxs)
     for i in range(len(src.pages) - 1, -1, -1):
@@ -1526,7 +1526,7 @@ def subset_pdf(pdf_bytes: bytes, idxs: list[int]) -> bytes:
 
 
 def _remap_state(state: dict | None, idxs: list[int]) -> dict | None:
-    """Starea editabilă pentru un export parțial: doar adnotările paginilor alese, renumerotate."""
+    """Editable state for a partial export: only the annotations of the chosen pages, renumbered."""
     if not isinstance(state, dict):
         return None
     pos = {p: k for k, p in enumerate(idxs)}
@@ -1553,8 +1553,8 @@ def _attach(pdf_bytes: bytes, state: dict | None, original: bytes | None) -> byt
 
 
 def export_pages(original, primitives, removals, color_mode, state, embed, ink, sel, split, basename="export"):
-    """Export pentru paginile `sel` (None = toate): un PDF, sau câte un PDF pe pagină într-un ZIP.
-    Fiecare fișier poartă stratul editabil pentru paginile lui, ca să se poată redeschide."""
+    """Export for pages `sel` (None = all): one PDF, or one PDF per page in a ZIP.
+    Each file carries the editable layer for its pages, so it can be reopened."""
     import zipfile
 
     n_pages = len(pikepdf.open(io.BytesIO(original)).pages)

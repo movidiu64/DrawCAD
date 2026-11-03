@@ -84,14 +84,14 @@ Download `DrawCAD-<version>-setup.exe` from [Releases](https://github.com/movidi
 | `DRAWCAD_CACHE_MB` | `256` | RAM cache limit (only used as needed). |
 | `PUID` / `PGID` | `99` / `100` | User the app runs as. The data folder is chowned automatically. |
 
-All variables are listed in the [full guide](docs/ghid.md#variabile-de-mediu).
+All variables are listed in the [full guide](docs/guide.md#environment-variables).
 
 > [!IMPORTANT]
 > DrawCAD has no user accounts. Keep it on your local network, or put it behind a reverse proxy with HTTPS and authentication. At minimum, set `DRAWCAD_PASSWORD`.
 
 ## Documentation
 
-The complete guide (in Romanian) is in [`docs/ghid.md`](docs/ghid.md). It covers every tool, the snap modes, keyboard shortcuts and commands, OCR, DXF export, the desktop app and known limitations. The app interface itself is available in English and Romanian.
+The complete guide is in [`docs/guide.md`](docs/guide.md). It covers every tool, the snap modes, keyboard shortcuts and commands, OCR, DXF export, the desktop app and known limitations. The app interface itself is available in English and Romanian.
 
 ## Development
 
@@ -105,7 +105,7 @@ cd frontend && npm test                                 # ISO 286 tables, geomet
 python tools/e2e_smoke.py http://127.0.0.1:8080 out     # end-to-end in Chromium (Playwright)
 ```
 
-Built with [PDFium](https://pdfium.googlesource.com/pdfium/) (pypdfium2), [pikepdf](https://github.com/pikepdf/pikepdf), [ReportLab](https://www.reportlab.com/), [ezdxf](https://github.com/mozman/ezdxf), [Tesseract](https://github.com/tesseract-ocr/tesseract) and the [osifont](https://github.com/hikikomori82/osifont) ISO 3098 font. Third-party licenses are listed in the [guide](docs/ghid.md#arhitectură).
+Built with [PDFium](https://pdfium.googlesource.com/pdfium/) (pypdfium2), [pikepdf](https://github.com/pikepdf/pikepdf), [ReportLab](https://www.reportlab.com/), [ezdxf](https://github.com/mozman/ezdxf), [Tesseract](https://github.com/tesseract-ocr/tesseract) and the [osifont](https://github.com/hikikomori82/osifont) ISO 3098 font. Third-party licenses are listed in the [guide](docs/guide.md#architecture).
 
 ## License
 

@@ -1,12 +1,12 @@
-"""Primirea unui fișier încărcat, într-un proces separat și limitat.
+"""Receiving an uploaded file, in a separate, limited process.
 
-Tot ce citește prima dată un fișier necunoscut (decodarea imaginii, parsarea PDF-ului, randarea și
-extragerea geometriei) rulează aici, nu în serverul web: dacă un fișier construit special face
-biblioteca să se blocheze, să consume toată memoria sau să cadă, se oprește doar acest proces,
-iar serverul răspunde „fișier respins”. Rezultatul (PDF-ul curățat) e scris în folderul primit.
+Everything that reads an unknown file for the first time (image decoding, PDF parsing, rendering and
+geometry extraction) runs here, not in the web server: if a crafted file makes
+the library hang, eat all the memory or crash, only this process stops,
+and the server answers "file rejected". The result (the cleaned PDF) is written to the given folder.
 
-Rulare: python -m app.ingest <intrare> <folder_ieșire> [dpi]
-Ieșire pe stdout: un singur obiect JSON.
+Usage: python -m app.ingest <input> <output_folder> [dpi]
+Output on stdout: a single JSON object.
 """
 from __future__ import annotations
 
@@ -20,10 +20,10 @@ def _env(name, default):
 
 
 MAX_PAGES = int(_env("MAX_PAGES", "300"))
-MAX_IMAGE_MPX = float(_env("MAX_IMAGE_MPX", "400"))  # megapixeli pe imagine (scan A0 la 600 DPI ≈ 550)
+MAX_IMAGE_MPX = float(_env("MAX_IMAGE_MPX", "400"))  # megapixels per image (A0 scan at 600 DPI ≈ 550)
 MEM_MB = int(_env("WORKER_MEM_MB", "3072"))
 CPU_S = int(_env("WORKER_CPU_S", "120"))
-MAX_PAGE_PT = 14400  # 200 țoli, limita din specificația PDF
+MAX_PAGE_PT = 14400  # 200 inches, the limit of the PDF specification
 MAX_STATE = 8 * 1024 * 1024
 
 
@@ -43,7 +43,7 @@ def _limit_self():
 
 
 def _clean_state(state):
-    """Starea editabilă dintr-un export: doar structura așteptată, fără nimic executabil."""
+    """The editable state from an export: only the expected structure, nothing executable."""
     if not isinstance(state, dict):
         return None
     annots = state.get("annots")
@@ -113,8 +113,8 @@ def process(path: str, out_dir: str, dpi: float | None) -> dict:
     for p in pages:
         if not (0 < p["w"] <= MAX_PAGE_PT and 0 < p["h"] <= MAX_PAGE_PT):
             raise Rejected("Dimensiune de pagină invalidă")
-    # fiecare pagină se randează o dată la rezoluție mică și se extrage geometria primelor pagini:
-    # dacă fișierul blochează sau dărâmă biblioteca, se întâmplă aici, nu în server
+    # each page is rendered once at low resolution and the geometry of the first pages is extracted:
+    # if the file hangs or crashes the library, it happens here, not in the server
     for i, p in enumerate(pages[:60]):
         pdfcore.render_png(data, i, min(0.25, 900 / max(p["w"], p["h"])))
         if i < 4:
@@ -125,8 +125,8 @@ def process(path: str, out_dir: str, dpi: float | None) -> dict:
 
 
 def _emit(out_dir, obj):
-    """Rezultatul: pe ieșirea standard și în out_dir/result.json (pe Windows, o aplicație
-    împachetată fără consolă poate să nu aibă ieșire standard)."""
+    """The result: on standard output and in out_dir/result.json (on Windows, a packaged
+    app without a console may have no standard output)."""
     txt = json.dumps(obj)
     try:
         with open(os.path.join(out_dir, "result.json"), "w", encoding="utf-8") as f:

@@ -1,12 +1,12 @@
-// Operații pe pagini (rotire, ștergere, mutare): adnotările se transformă odată cu pagina, ca să
-// rămână pe desen. Coordonatele sunt vizuale (puncte, y în jos); rotirea e în sens orar, ca /Rotate.
+// Page operations (rotate, delete, move): annotations are transformed with the page so they
+// stay on the drawing. Coordinates are visual (points, y down); rotation is clockwise, like /Rotate.
 import { build, moveAnnot } from "./annots.js";
 
 const POINT_KEYS = ["p1", "p2", "p3", "c", "p", "v", "target", "pos", "vp", "tp", "elbow"];
-// adnotări care rămân mereu orizontale (tabele): se mută întregi, nu se rotesc punct cu punct
+// annotations that always stay horizontal (tables): moved whole, not rotated point by point
 const UPRIGHT = new Set(["revtab", "bom"]);
 
-/** Un punct al paginii W×H după rotirea paginii cu `deg` (90, 180, 270) în sens orar. */
+/** A point of the W×H page after rotating the page by `deg` (90, 180, 270) clockwise. */
 export function rotatePoint(p, deg, W, H) {
   const [x, y] = p;
   if (deg === 90) return [H - y, x];
@@ -23,14 +23,14 @@ const wrap180 = (a) => {
   return v;
 };
 
-/** Rotește o adnotare odată cu pagina (deg în sens orar). Unghiurile din adnotări sunt
- *  trigonometrice pe ecran, deci scad cu deg. */
+/** Rotates an annotation with the page (deg clockwise). Annotation angles are
+ *  counter-clockwise on screen, so they decrease by deg. */
 export function rotateAnnot(a, deg, W, H, S = null, measure = null) {
   deg = normDeg(deg);
   if (!deg) return a;
   const R = (p) => (Array.isArray(p) && p.length >= 2 ? rotatePoint(p, deg, W, H) : p);
   if (UPRIGHT.has(a.type) && S) {
-    // tabelul ajunge cu centrul unde ajunge centrul lui, dar rămâne orizontal
+    // the table's center goes where its center goes, but it stays horizontal
     const b = build(a, S, measure).bbox;
     if (b) {
       const c = [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
@@ -59,7 +59,7 @@ export function rotateAnnot(a, deg, W, H, S = null, measure = null) {
   return a;
 }
 
-/** Mărimea foii schimbată cu factorul k: punctele se înmulțesc (textele și săgețile rămân în mm). */
+/** Sheet size changed by factor k: points are multiplied (texts and arrows stay in mm). */
 export function scaleAnnot(a, k) {
   const M = (p) => (Array.isArray(p) && p.length >= 2 ? [p[0] * k, p[1] * k] : p);
   for (const key of POINT_KEYS) if (a[key]) a[key] = M(a[key]);
@@ -69,12 +69,12 @@ export function scaleAnnot(a, k) {
   return a;
 }
 
-/** Formatele de foaie ISO (latura lungă, mm). */
+/** ISO sheet formats (long side, mm). */
 export const SHEETS = [["A4", 297], ["A3", 420], ["A2", 594], ["A1", 841], ["A0", 1189]];
 
 /**
- * Aplică o operație pe pagini unei liste de adnotări (o copie nouă).
- *  - {op:"rotate", pages:[n…], delta, sizes:[[W,H]…]} — sizes = dimensiunile vizuale înainte
+ * Applies a page operation to a list of annotations (a new copy).
+ *  - {op:"rotate", pages:[n…], delta, sizes:[[W,H]…]} — sizes = visual dimensions before
  *  - {op:"delete", pages:[n…]}
  *  - {op:"move", page, to}
  */

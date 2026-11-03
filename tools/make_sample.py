@@ -1,5 +1,5 @@
-"""Generează un PDF de test asemănător cu un export CAD: arbore în trepte, cote, cartuș
-într-un Form XObject, un cerc (curbe Bézier) și o a doua pagină cu /Rotate 90."""
+"""Generates a test PDF similar to a CAD export: a stepped shaft, dimensions, a title block
+in a Form XObject, a circle (Bézier curves) and a second page with /Rotate 90."""
 import io
 import sys
 
@@ -19,7 +19,7 @@ def build(path):
     W, H = landscape(A4)
     c = canvas.Canvas(buf, pagesize=(W, H))
 
-    def Y(y):  # coordonate desen cu y în jos, ca pe hârtie
+    def Y(y):  # drawing coordinates with y down, as on paper
         return H - mm(y)
 
     def line(x1, y1, x2, y2, w=0.25):
@@ -41,11 +41,11 @@ def build(path):
         p.close()
         c.drawPath(p, stroke=0, fill=1)
 
-    # chenar
+    # border
     c.setLineWidth(mm(0.5))
     c.rect(mm(20), Y(200), mm(267), mm(190))
 
-    # cartuș ca Form XObject (ca la multe exporturi CAD)
+    # title block as a Form XObject (as in many CAD exports)
     c.beginForm("cartus")
     c.setLineWidth(mm(0.35))
     c.rect(mm(207), Y(200), mm(80), mm(30))
@@ -62,7 +62,7 @@ def build(path):
     c.endForm()
     c.doForm("cartus")
 
-    # contur arbore: un singur path închis
+    # shaft outline: a single closed path
     c.setLineWidth(mm(0.5))
     p = c.beginPath()
     pts = [(60, 83.5), (61, 82.5), (90, 82.5), (90, 75), (140, 75), (140, 80), (180, 80), (180, 110),
@@ -72,16 +72,16 @@ def build(path):
         p.lineTo(mm(x), Y(y))
     p.close()
     c.drawPath(p, stroke=1, fill=0)
-    # muchii interioare: linii separate
+    # inner edges: separate lines
     line(61, 82.5, 61, 107.5, 0.5)
     line(90, 82.5, 90, 107.5, 0.5)
     line(140, 80, 140, 110, 0.5)
-    # axa
+    # the axis
     c.setDash([mm(8), mm(1.5), mm(1), mm(1.5)])
     line(52, 95, 188, 95, 0.18)
     c.setDash([])
 
-    # cote originale: linii + săgeți pline + text
+    # original dimensions: lines + filled arrows + text
     c.setFont("Helvetica", 10)
     line(115, 75, 115, 115)
     arrow(115, 75, -90)
@@ -115,11 +115,11 @@ def build(path):
     arrow(180, 50, 0)
     c.drawCentredString(mm(120), Y(48.8), "118")
 
-    # detaliu cu unghi de 30° (pentru cota unghiulară)
+    # detail with a 30° angle (for the angular dimension)
     line(30, 150, 70, 150, 0.5)
     line(30, 150, 64.641, 130, 0.5)
 
-    # placă cu racordări R5, o teșitură 5×45° și o gaură Ø10 (pentru snap pe arce și intersecții aparente)
+    # plate with R5 fillets, a 5×45° chamfer and a Ø10 hole (for snapping to arcs and apparent intersections)
     c.setLineWidth(mm(0.5))
     p = c.beginPath()
     p.moveTo(mm(125), Y(150))
@@ -134,13 +134,13 @@ def build(path):
     c.drawPath(p, stroke=1, fill=0)
     c.circle(mm(145), Y(167.5), mm(5))
 
-    # vedere laterală: cerc Ø40 (Bézier)
+    # side view: Ø40 circle (Bézier)
     c.setLineWidth(mm(0.5))
     c.circle(mm(240), Y(95), mm(20))
     c.circle(mm(240), Y(95), mm(15))
     c.showPage()
 
-    # pagina 2: portret, va primi /Rotate 90
+    # page 2: portrait, will get /Rotate 90
     c.setPageSize(A4)
     c.setLineWidth(mm(0.5))
     c.rect(mm(30), mm(30), mm(100), mm(60))

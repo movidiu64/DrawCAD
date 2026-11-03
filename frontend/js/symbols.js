@@ -1,5 +1,5 @@
-// Simboluri de desen: plan de secționare, detaliu, reper de poziție.
-// Coordonate în puncte PDF vizuale (y în jos). S = setările derivate (S.h = înălțimea majusculelor).
+// Drawing symbols: section plane, detail, item balloon.
+// Coordinates in visual PDF points (y down). S = derived settings (S.h = cap height).
 import { fitDash, K } from "./shapes.js";
 
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
@@ -12,7 +12,7 @@ const norm = (a) => {
   return l > 1e-9 ? [a[0] / l, a[1] / l] : null;
 };
 
-/** Litere de identificare (ISO 128-44 folosește majuscule; I, O, Q se evită ca la baze). */
+/** Identification letters (ISO 128-44 uses capitals; I, O, Q are avoided, as for datums). */
 export const VIEW_LETTERS = "ABCDEFGHJKLMNPRSTUVWXYZ";
 
 function arrow(tip, d, S, c, k = 1) {
@@ -26,13 +26,13 @@ function arrow(tip, d, S, c, k = 1) {
 
 function centeredText(txt, center, s, measure, c) {
   const tw = measure(txt, s);
-  // linia de bază: centrul casetei majusculelor (CAP ≈ 0,74 em)
+  // baseline: center of the capital-letter box (CAP ≈ 0.74 em)
   return { t: "T", p: [center[0] - tw / 2, center[1] + s * 0.37], s, a: 0, txt, tw, c };
 }
 
 /**
- * Plan de secționare (ISO 128-44): linie-punct subțire, îngroșată la capete, săgeți în direcția
- * de privire, cu vârful pe linie, și litera lângă coada săgeții.
+ * Section plane (ISO 128-44): thin chain line, thick at the ends, arrows in the viewing
+ * direction with the tip on the line, and the letter next to the arrow tail.
  */
 export function buildSection(a, S, measure) {
   const c = a.layer || "add";
@@ -40,11 +40,11 @@ export function buildSection(a, S, measure) {
   const u = norm(sub(P1, P0)) || [1, 0];
   let n = [-u[1], u[0]];
   const mid = mul(add(P0, P1), 0.5);
-  if (a.vp && dot(sub(a.vp, mid), n) < 0) n = mul(n, -1); // n = direcția de privire
+  if (a.vp && dot(sub(a.vp, mid), n) < 0) n = mul(n, -1); // n = viewing direction
   const L = len(sub(P1, P0));
   const thin = 0.25;
   const thick = 0.5;
-  const tl = Math.min(5 * K, L / 3); // lungimea porțiunii groase
+  const tl = Math.min(5 * K, L / 3); // length of the thick part
   const prims = [];
   if (L > 2 * tl) {
     const A = add(P0, mul(u, tl));
@@ -53,7 +53,7 @@ export function buildSection(a, S, measure) {
   }
   prims.push({ t: "L", p: [...P0, ...add(P0, mul(u, tl))], w: thick * K, c });
   prims.push({ t: "L", p: [...sub(P1, mul(u, tl)), ...P1], w: thick * K, c });
-  const al = 7 * K * (a.scale || 1); // lungimea săgeții, cu tot cu vârf
+  const al = 7 * K * (a.scale || 1); // arrow length, tip included
   const h = S.h * 1.4;
   const F = S.F * 1.4;
   const letter = a.letter || "A";
@@ -62,7 +62,7 @@ export function buildSection(a, S, measure) {
     const tail = sub(tip, mul(n, al));
     prims.push({ t: "L", p: [...tail, ...tip], w: S.lw, c });
     prims.push(arrow(tip, n, S, c, 1.15));
-    // litera: lângă coadă, spre exterior
+    // the letter: next to the tail, outwards
     const tc = add(add(tail, mul(n, al * 0.25)), mul(out, h * 1.1));
     prims.push(centeredText(letter, tc, F, measure, c));
   }
@@ -72,7 +72,7 @@ export function buildSection(a, S, measure) {
   };
 }
 
-/** Detaliu (ISO 128-44): cerc subțire continuu în jurul zonei și litera lângă el. */
+/** Detail (ISO 128-44): thin continuous circle around the area and the letter next to it. */
 export function buildDetail(a, S, measure) {
   const c = a.layer || "add";
   const [C, R] = a.pts;
@@ -85,8 +85,8 @@ export function buildDetail(a, S, measure) {
 }
 
 /**
- * Reper de poziție (ISO 6433): linie de indicație terminată cu punct pe piesă (sau săgeată pe
- * contur) și numărul, încercuit sau nu. Numărul e mai mare decât cotele.
+ * Item balloon (ISO 6433): leader ending in a dot on the part (or an arrow on the
+ * outline) and the number, circled or not. The number is larger than dimension text.
  */
 export function buildBalloon(a, S, measure) {
   const c = a.layer || "add";
@@ -105,7 +105,7 @@ export function buildBalloon(a, S, measure) {
   else if (a.end !== "none") prims.push({ t: "C", p: [...T], r: S.aw * 0.2, fill: true, nostroke: true, w: S.lw, c });
   if (circled) prims.push({ t: "C", p: [...Pc], r: R, w: S.lw, c });
   else {
-    // fără cerc: numărul stă deasupra unui scurt umăr orizontal
+    // no circle: the number sits above a short horizontal shoulder
     const side = T[0] >= Pc[0] ? -1 : 1;
     const end = [Pc[0] + side * (tw + h * 0.6), Pc[1]];
     prims.push({ t: "L", p: [...Pc, ...end], w: S.lw, c });

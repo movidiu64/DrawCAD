@@ -1,6 +1,6 @@
-# DrawCAD — stack pentru Dockhand / docker compose
-# Imaginea e construită și testată de GitHub Actions la fiecare push pe main.
-# Toate valorile ${...} se pot suprascrie din variabilele stack-ului (vezi .env.example).
+# DrawCAD — stack for Dockhand / docker compose
+# The image is built and tested by GitHub Actions on every push to main.
+# All ${...} values can be overridden from the stack variables (see .env.example).
 
 name: drawcad
 
@@ -13,7 +13,7 @@ services:
     ports:
       - "${DRAWCAD_PORT:-${COTARE_PORT:-8478}}:8080"
     volumes:
-      # documentele încărcate și starea lor (cotele, setările)
+      # uploaded documents and their state (dimensions, settings)
       - ${DRAWCAD_DATA_DIR:-${COTARE_DATA_DIR:-/mnt/user/appdata/drawcad}}:/data
     environment:
       PUID: ${PUID:-99}
@@ -21,16 +21,16 @@ services:
       DRAWCAD_MAX_UPLOAD_MB: ${DRAWCAD_MAX_UPLOAD_MB:-${COTARE_MAX_UPLOAD_MB:-200}}
       DRAWCAD_MAX_RENDER_PX: ${DRAWCAD_MAX_RENDER_PX:-${COTARE_MAX_RENDER_PX:-12000}}
       DRAWCAD_RETENTION_DAYS: ${DRAWCAD_RETENTION_DAYS:-${COTARE_RETENTION_DAYS:-30}}
-      # private = fiecare browser are documentele lui (implicit); personal = un singur utilizator,
-      # documentele se văd din orice browser; session = ca private, doar până la închiderea browserului
+      # private = each browser has its own documents (default); personal = a single user,
+      # documents are visible from any browser; session = like private, only until the browser closes
       DRAWCAD_MODE: ${DRAWCAD_MODE:-private}
       DRAWCAD_MAX_PAGES: ${DRAWCAD_MAX_PAGES:-300}
       DRAWCAD_MAX_IMAGE_MPX: ${DRAWCAD_MAX_IMAGE_MPX:-400}
-      # parolă opțională (utilizator „drawcad”); goală = fără parolă, ca în rețeaua de acasă
+      # optional password (user "drawcad"); empty = no password, as on a home network
       DRAWCAD_PASSWORD: ${DRAWCAD_PASSWORD:-}
       DRAWCAD_OCR_LANG: ${DRAWCAD_OCR_LANG:-ron+eng}
-    # întărire: fără privilegii în plus, sistem de fișiere doar-citire (se scrie doar în /data și /tmp),
-    # număr limitat de procese; capabilitățile rămase servesc doar la pregătirea folderului /data
+    # hardening: no extra privileges, read-only filesystem (writes only to /data and /tmp),
+    # limited number of processes; the remaining capabilities only serve to prepare the /data folder
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -57,5 +57,5 @@ services:
         max-size: "10m"
         max-file: "3"
     labels:
-      # butonul WebUI din pagina Docker a Unraid
+      # the WebUI button on the Unraid Docker page
       net.unraid.docker.webui: "http://[IP]:[PORT:8080]/"

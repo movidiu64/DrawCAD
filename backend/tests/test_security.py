@@ -1,5 +1,5 @@
-"""Teste de securitate: fișiere construite special, limite, cereri de pe alt site.
-Rulează: python -m unittest discover -s tests (din backend/)."""
+"""Security tests: crafted files, limits, cross-site requests.
+Run: python -m unittest discover -s tests (from backend/)."""
 import io
 import json
 import os
@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 if "DRAWCAD_DATA" not in os.environ:
     os.environ["DRAWCAD_DATA"] = tempfile.mkdtemp(prefix="drawcad-sec-")
-os.environ.setdefault("DRAWCAD_MODE", "personal")  # testele generale folosesc un singur spațiu
+os.environ.setdefault("DRAWCAD_MODE", "personal")  # the general tests use a single space
 sys.path.insert(0, str(ROOT / "backend"))
 sys.path.insert(0, str(ROOT / "tools"))
 
@@ -39,8 +39,8 @@ def free_port():
 
 
 def malicious_pdf() -> bytes:
-    """PDF cu JavaScript la deschidere, acțiuni automate, un link care pornește un program și un
-    fișier atașat — tot ce poate face un PDF „troian” într-un cititor obișnuit."""
+    """A PDF with JavaScript on open, automatic actions, a link that starts a program and an
+    attached file — everything a "trojan" PDF can do in an ordinary reader."""
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=(300, 200))
     c.line(20, 20, 280, 180)
@@ -116,10 +116,10 @@ class SecurityTest(unittest.TestCase):
         page = pk.pages[0].obj
         self.assertNotIn("/AA", page)
         subtypes = [str(a.Subtype) for a in page.Annots]
-        self.assertEqual(subtypes, ["/Link", "/Link"])  # atașamentul a dispărut
-        self.assertNotIn("/A", page.Annots[0])  # Launch eliminat
-        self.assertEqual(str(page.Annots[1].A.S), "/URI")  # linkul web rămâne
-        # exportul nu reintroduce nimic
+        self.assertEqual(subtypes, ["/Link", "/Link"])  # the attachment is gone
+        self.assertNotIn("/A", page.Annots[0])  # Launch removed
+        self.assertEqual(str(page.Annots[1].A.S), "/URI")  # the web link stays
+        # the export does not reintroduce anything
         st, _h, pdf = self.call("POST", f"/api/doc/{meta['id']}/export", {"filename": "e.pdf", "pages": {}, "removals": {}, "state": {"v": 1, "annots": []}})
         self.assertEqual(st, 200)
         self.assertNotIn(b"/JavaScript", pdf)
@@ -137,7 +137,7 @@ class SecurityTest(unittest.TestCase):
         self.assertIn("error", res)
         st, res = self.upload(b"%PDF-1.7\n" + os.urandom(5000), "stricat.pdf")
         self.assertEqual(st, 400)
-        # imagine peste limita de megapixeli (bombă de decompresie): respinsă fără decodare
+        # image over the megapixel limit (decompression bomb): rejected without decoding
         os.environ["DRAWCAD_MAX_IMAGE_MPX"] = "1"
         try:
             b = io.BytesIO()
@@ -164,7 +164,7 @@ class SecurityTest(unittest.TestCase):
             self.assertIn("durat", res["error"])
         finally:
             appmain.INGEST_TIMEOUT = old_t
-        # nimic rămas în folderul de încărcări
+        # nothing left in the upload folder
         inc = Path(os.environ["DRAWCAD_DATA"]) / "incoming"
         time.sleep(0.2)
         self.assertEqual([p for p in inc.iterdir()] if inc.exists() else [], [])
@@ -198,12 +198,12 @@ class SecurityTest(unittest.TestCase):
             self.assertEqual(self.call("GET", "/api/docs", headers={"Authorization": f"Basic {bad}"})[0], 401)
             good = base64.b64encode(b"drawcad:secret").decode()
             self.assertEqual(self.call("GET", "/api/docs", headers={"Authorization": f"Basic {good}"})[0], 200)
-            self.assertEqual(self.call("GET", "/api/health")[0], 200)  # verificarea de sănătate a containerului
+            self.assertEqual(self.call("GET", "/api/health")[0], 200)  # the container health check
         finally:
             appmain.AUTH_PASSWORD = old
 
     def test_allowed_hosts_block_dns_rebinding(self):
-        """Aplicația desktop: un site al cărui nume indică spre 127.0.0.1 nu ajunge la server."""
+        """The desktop app: a site whose name points to 127.0.0.1 does not reach the server."""
         old = appmain.ALLOWED_HOSTS
         appmain.ALLOWED_HOSTS = {"127.0.0.1", "localhost"}
         try:
@@ -214,7 +214,7 @@ class SecurityTest(unittest.TestCase):
             appmain.ALLOWED_HOSTS = old
 
     def test_private_mode_isolates_browsers(self):
-        """În modul private, fiecare browser își vede doar documentele lui."""
+        """In private mode, each browser sees only its own documents."""
         old = appmain.MODE
         appmain.MODE = "private"
         try:
@@ -232,12 +232,12 @@ class SecurityTest(unittest.TestCase):
             st, h, _b = self.call("GET", "/api/docs")
             cb = cookie_of(h)
             self.assertNotEqual(ca, cb)
-            # A încarcă un document
+            # A uploads a document
             st, _h, body = self.call("POST", "/api/open", self.sample.read_bytes(), {"X-Filename": "al-lui-A.pdf", "Cookie": ca})
             self.assertEqual(st, 200)
             doc = json.loads(body)
             self.assertNotIn("owner", doc)
-            # A îl vede, B nu
+            # A sees it, B does not
             names_a = [d["name"] for d in json.loads(self.call("GET", "/api/docs", headers={"Cookie": ca})[2])]
             names_b = [d["name"] for d in json.loads(self.call("GET", "/api/docs", headers={"Cookie": cb})[2])]
             self.assertIn("al-lui-A.pdf", names_a)
@@ -247,9 +247,9 @@ class SecurityTest(unittest.TestCase):
                 self.assertEqual(self.call("GET", path, headers={"Cookie": ca})[0], 200, path)
             self.assertEqual(self.call("DELETE", f"/api/doc/{doc['id']}", headers={"Cookie": cb})[0], 404)
             self.assertEqual(self.call("GET", f"/api/doc/{doc['id']}", headers={"Cookie": ca})[0], 200)
-            # fără cookie (alt browser nou): nici atât
+            # without a cookie (another new browser): not even that
             self.assertEqual(self.call("GET", f"/api/doc/{doc['id']}")[0], 404)
-            # codul spațiului se poate muta în alt browser, la cerere
+            # the space code can be moved to another browser, on request
             code = json.loads(self.call("GET", "/api/workspace", headers={"Cookie": ca})[2])["code"]
             st, h, _b = self.call("POST", "/api/workspace", {"code": code}, {"Cookie": cb})
             self.assertEqual(st, 200)

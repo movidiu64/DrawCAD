@@ -1,7 +1,7 @@
-"""Test de fum în browser (Playwright + Chromium): deschide PDF-ul de test, cotează,
-adaugă toleranțe, GD&T, bază, revizie, ștergere, exportă și randează rezultatul.
+"""Browser smoke test (Playwright + Chromium): opens the test PDF, adds dimensions,
+tolerances, GD&T, a datum, a revision, a removal, exports and renders the result.
 
-Rulare (cu serverul pornit):  python tools/e2e_smoke.py http://127.0.0.1:8765 out_dir
+Run (with the server started):  python tools/e2e_smoke.py http://127.0.0.1:8765 out_dir
 """
 import io
 import os
@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import make_sample  # noqa: E402
 
 MM = 72 / 25.4
-_STATE = {}  # pagina și erorile din consolă, pentru raportul de eșec
+_STATE = {}  # the page and the console errors, for the failure report
 
 
 def main(url, out):
@@ -25,15 +25,15 @@ def main(url, out):
     errors = []
     with sync_playwright() as p:
         b = p.chromium.launch()
-        # CSP-ul aplicației interzice eval; Playwright îl folosește pentru wait_for_function, deci aici e ocolit
+        # the app's CSP forbids eval; Playwright uses it for wait_for_function, so it is bypassed here
         page = b.new_page(viewport={"width": 1600, "height": 1000}, accept_downloads=True, bypass_csp=True)
-        page.set_default_timeout(60000)  # CI poate fi lent (citirea izolată a fișierului durează câteva secunde)
+        page.set_default_timeout(60000)  # CI can be slow (the isolated file read takes a few seconds)
         page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
         page.on("pageerror", lambda e: errors.append(str(e)))
         _STATE.update(page=page, errors=errors, out=out)
         page.goto(url)
         page.evaluate("localStorage.clear()")
-        # interfața în română (implicit ar urma limba browserului, care în CI e engleza)
+        # Romanian interface (by default it would follow the browser language, which in CI is English)
         page.evaluate("localStorage.setItem('drawcad.lang', 'ro')")
         page.goto(url)
         page.set_input_files("#fileInput", str(sample))
@@ -53,11 +53,11 @@ def main(url, out):
             page.mouse.click(x, y)
             page.wait_for_timeout(60)
 
-        # zoom pe zona arborelui, ca snap-ul să fie precis
+        # zoom on the shaft area, so snapping is precise
         page.evaluate("() => { const v = window.cotare.view; v.zoom = 2.2; v.panX = -25*72/25.4*2.2; v.panY = -38*72/25.4*2.2; v.afterZoom(); }")
         page.wait_for_timeout(500)
 
-        # 1. cotă Ø25 cu k6
+        # 1. Ø25 dimension with k6
         page.keyboard.press("o")
         click(75, 82.6)
         click(75, 107.4)
@@ -69,23 +69,23 @@ def main(url, out):
         kv = page.inner_text(".kv")
         assert "+0,015" in kv and "+0,002" in kv, kv
 
-        # 2. cotă liniară 40 sub treapta Ø30
+        # 2. linear dimension 40 below the Ø30 step
         page.keyboard.press("d")
         click(140, 110)
         click(180, 110)
         click(160, 127)
 
-        # 3. GD&T coaxialitate spre linia de cotă Ø25
+        # 3. GD&T coaxiality towards the Ø25 dimension line
         page.keyboard.press("g")
         click(75, 107.5)
         click(36, 122)
 
-        # 4. bază A pe Ø40
+        # 4. datum A on Ø40
         page.keyboard.press("b")
         click(115, 115)
         click(115, 127)
 
-        # 5. revizie: 118 → 120
+        # 5. revision: 118 → 120
         page.keyboard.press("s")
         x0, y0 = scr(116.2, 45.8)
         x1, y1 = scr(123.8, 49.6)
@@ -97,13 +97,13 @@ def main(url, out):
         page.fill("#sNew", "120")
         page.press("#sNew", "Escape")
 
-        # 6. teșitură
+        # 6. chamfer
         page.keyboard.press("Escape")
         page.keyboard.press("c")
         click(60.5, 83)
         click(48, 72)
 
-        # 7. cotă unghiulară de 30°
+        # 7. 30° angular dimension
         page.keyboard.press("Escape")
         page.keyboard.press("u")
         click(30, 150)
@@ -113,7 +113,7 @@ def main(url, out):
         ang = page.evaluate("(() => { const a = window.cotare.selected(); return window.cotare.builtOf(a).measured; })()")
         assert abs(ang - 30) < 0.01, ang
 
-        # 8. rugozitate Ra 1,6 pe suprafața de sus a treptei Ø40, direct pe contur
+        # 8. roughness Ra 1.6 on the top surface of the Ø40 step, directly on the outline
         page.keyboard.press("Escape")
         page.keyboard.press("q")
         click(125, 75)
@@ -121,8 +121,8 @@ def main(url, out):
         page.click("[data-act=rval][data-v='Ra 1,6']")
         page.click("[data-act=scale][data-v='0.7']")
         assert page.evaluate("window.cotare.selected().scale") == 0.7
-        # 9. copiere + lipire: a doua rugozitate pe treapta Ø30
-        page.keyboard.press("v")  # rugozitatea nou creată rămâne selectată
+        # 9. copy + paste: a second roughness on the Ø30 step
+        page.keyboard.press("v")  # the newly created roughness stays selected
         page.keyboard.press("Control+c")
         x, y = scr(160, 80)
         page.mouse.move(x, y)
@@ -130,14 +130,14 @@ def main(url, out):
         page.wait_for_timeout(100)
         n_rough = page.evaluate("window.cotare.annots.filter(a => a.type === 'rough').length")
         assert n_rough == 2, n_rough
-        # 10. snap pe intersecție: axa cu muchia de la x = 90
+        # 10. intersection snap: the axis with the edge at x = 90
         snap = page.evaluate("(() => { const s = window.cotare.snapper.snap([90*72/25.4 + 0.6, 95*72/25.4 + 0.6], { tol: 3, modes: new Set(['e','m','c','q','x','n']) }); return s && [s.kind, s.p]; })()")
         assert snap and snap[0] == "x" and abs(snap[1][0] - 90 * MM) < 0.05, snap
-        # 10b. intersecție aparentă: colțul teoretic al teșiturii plăcii (170, 185)
+        # 10b. apparent intersection: the theoretical corner of the plate chamfer (170, 185)
         snap = page.evaluate("(() => { const s = window.cotare.snapper.snap([169.6*72/25.4, 184.6*72/25.4], { tol: 3, modes: new Set(['e','x','ax']) }); return s && [s.kind, s.p]; })()")
         assert snap and snap[0] == "ax" and abs(snap[1][0] - 170 * MM) < 0.05 and abs(snap[1][1] - 185 * MM) < 0.05, snap
 
-        # 11. note tehnice
+        # 11. technical notes
         page.keyboard.press("Escape")
         page.keyboard.press("n")
         click(95, 135)
@@ -145,7 +145,7 @@ def main(url, out):
         page.click("[data-act=ntpl][data-v='Călire + revenire 48–52 HRC']")
         page.press("#nTxt", "Escape")
 
-        # 12. tabel de revizii deasupra cartușului, completat din cota tăiată
+        # 12. revision table above the title block, filled in from the struck dimension
         page.keyboard.press("f")
         page.wait_for_timeout(300)
         page.keyboard.press("e")
@@ -154,7 +154,7 @@ def main(url, out):
         assert rows and rows[0]["rev"] == "1" and "120" in rows[0]["desc"], rows
         page.fill("[data-row='0'][data-col='name']", "OV")
         page.press("[data-row='0'][data-col='name']", "Escape")
-        # micșorare prin tragere de pătrățelul din colț, spre ancoră (colțul cartușului)
+        # shrink by dragging the corner handle towards the anchor (the title block corner)
         hx, hy, ax, ay = page.evaluate("""(() => { const app = window.cotare, a = app.selected();
             const h = app.builtOf(a).handles.find(q => q.k === 'sc'); const r = document.getElementById('canvas').getBoundingClientRect();
             const s1 = app.view.toScreen(h.p), s2 = app.view.toScreen(a.p);
@@ -166,7 +166,7 @@ def main(url, out):
         sc = page.evaluate("window.cotare.selected().scale")
         assert 0.4 <= sc <= 0.6, sc
         page.keyboard.press("Escape")
-        # text pe două rânduri
+        # two-line text
         page.keyboard.press("t")
         click(25, 112)
         page.fill("#tTxt", "Text pe\ndouă rânduri")
@@ -176,7 +176,7 @@ def main(url, out):
         page.evaluate("() => { const v = window.cotare.view; v.zoom = 2.2; v.panX = -25*72/25.4*2.2; v.panY = -38*72/25.4*2.2; v.afterZoom(); }")
         page.wait_for_timeout(300)
 
-        # selecție multiplă: Ctrl+A, apoi dreptunghi peste detaliul cu unghi și deplasare cu săgeata
+        # multiple selection: Ctrl+A, then a rectangle over the angle detail and a nudge with the arrow key
         page.keyboard.press("v")
         page.keyboard.press("Control+a")
         n_all = page.evaluate("window.cotare.sel.size")
@@ -197,7 +197,7 @@ def main(url, out):
         page.keyboard.press("Control+z")
         page.keyboard.press("Escape")
 
-        # 13. ștergere reală: textul Ø30 și linia lui de cotă
+        # 13. real removal: the Ø30 text and its dimension line
         page.keyboard.press("x")
         x0, y0 = scr(160, 77)
         x1, y1 = scr(167.5, 113)
@@ -208,13 +208,13 @@ def main(url, out):
         page.wait_for_selector("#rOk")
         page.wait_for_timeout(600)
         assert page.evaluate("document.querySelector('[data-mode].on').dataset.mode") == "cover"
-        page.click("[data-mode=objects]")  # eliminare reală a obiectelor bifate (≥ 90% în zonă)
+        page.click("[data-mode=objects]")  # real removal of the checked objects (≥ 90% in the zone)
         page.wait_for_timeout(700)
         page.screenshot(path=str(out / "dialog_stergere.png"))
         page.click("#rOk")
         page.wait_for_timeout(200)
 
-        # 14. desen: o linie întreruptă și axele cercului din vederea laterală
+        # 14. drawing: a dashed line and the center lines of the side-view circle
         page.keyboard.press("Escape")
         page.keyboard.press("f")
         page.wait_for_timeout(300)
@@ -230,7 +230,7 @@ def main(url, out):
         shapes = page.evaluate("window.cotare.annots.filter(a => a.type === 'shape').map(a => a.kind + ':' + a.ltype)")
         assert shapes == ["line:dash", "cross:chain"], shapes
 
-        # selectează cota Ø25 pentru captură
+        # select the Ø25 dimension for the screenshot
         page.keyboard.press("v")
         click(75, 90)
         page.wait_for_timeout(300)
@@ -248,7 +248,7 @@ def main(url, out):
         dl.value.save_as(str(path))
         page.wait_for_timeout(300)
 
-        # export DXF al paginii curente: cotele ajung pe stratul lor
+        # DXF export of the current page: dimensions land on their layer
         page.click("#btnExport")
         page.wait_for_selector("#eGo")
         page.click("[data-fmt=dxf]")
@@ -263,14 +263,14 @@ def main(url, out):
         assert dxf.startswith("  0\nSECTION") and "DRAWCAD-COTE" in dxf and "PDF-GEOMETRIE" in dxf
         page.wait_for_timeout(300)
 
-        # căutare text (Ctrl+F) pe textele PDF
+        # text search (Ctrl+F) on the PDF texts
         page.keyboard.press("Control+f")
         page.wait_for_selector("#tQ")
         page.fill("#tQ", "42crmo")
         page.wait_for_selector("#tList [data-i]")
         page.click("#tList [data-i]")
         page.wait_for_function("window.cotare.hit !== null")
-        # OCR pe pagina curentă, dacă serverul are Tesseract (în imaginea Docker: da)
+        # OCR on the current page, if the server has Tesseract (in the Docker image: yes)
         if page.evaluate("!!window.cotare.ocrLang"):
             page.click("#tRun")
             page.wait_for_function("document.querySelector('#tStat').textContent.includes('recunoscute')", timeout=120000)
@@ -278,16 +278,16 @@ def main(url, out):
             assert any("42CrMo4" in t for t in got), got
         page.keyboard.press("Escape")
 
-        # redeschidere: cotele revin editabile
+        # reopen: dimensions come back editable
         prev_id = page.evaluate("window.cotare.doc.id")
         page.set_input_files("#fileInput", str(path))
-        # așteaptă documentul nou (încărcarea durează), nu cel vechi care avea deja 15 adnotări
+        # wait for the new document (loading takes time), not the old one which already had 15 annotations
         page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 15")
-        # închidere fără modificări: direct la pagina de start
+        # closing without changes: straight to the start page
         page.click("#btnClose")
         page.wait_for_function("window.cotare.doc === null && !document.getElementById('emptyState').hidden")
         page.wait_for_function("document.querySelectorAll('#recentList [data-doc]').length >= 1", timeout=5000)
-        # redeschidere din Recente, o modificare, apoi închidere cu întrebare
+        # reopen from Recent, one change, then close with the prompt
         page.click("#recentList [data-doc]")
         page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 15")
         page.wait_for_timeout(300)
@@ -299,7 +299,7 @@ def main(url, out):
         page.click("#cClose")
         page.wait_for_function("window.cotare.doc === null")
 
-        # interfața în engleză
+        # English interface
         page.evaluate("localStorage.setItem('drawcad.lang', 'en')")
         page.goto(url)
         page.wait_for_function("document.querySelector('[data-tool=dimLin] span') && document.querySelector('[data-tool=dimLin] span').textContent === 'Linear'")
@@ -311,33 +311,33 @@ def main(url, out):
     doc = pdfium.PdfDocument(str(path))
     img = doc[0].render(scale=3).to_pil()
     img.save(out / "export_p1.png")
-    # decupaj pe zona arborelui
+    # crop on the shaft area
     img.crop((int(20 * MM * 3), int(38 * MM * 3), int(195 * MM * 3), int(160 * MM * 3))).save(out / "export_zoom.png")
     img.crop((int(80 * MM * 3), int(115 * MM * 3), int(292 * MM * 3), int(205 * MM * 3))).save(out / "export_note_cartus.png")
     txt = doc[0].get_textpage().get_text_range()
     print("TEXT:", " | ".join(t for t in txt.split() if t))
-    assert "Ø30" not in txt.split(), "textul Ø30 trebuia eliminat din original"
-    print("ERORI CONSOLĂ:", errors or "niciuna")
+    assert "Ø30" not in txt.split(), "the Ø30 text should have been removed from the original"
+    print("CONSOLE ERRORS:", errors or "none")
 
 
 def _report_failure(exc):
-    """Un rând clar despre ce pas a picat (linia din acest fișier și mesajul), plus o captură."""
+    """One clear line about which step failed (the line in this file and the message), plus a screenshot."""
     import traceback
 
     tb = traceback.extract_tb(exc.__traceback__)
     here = [f for f in tb if f.filename.endswith("e2e_smoke.py")]
     where = f"e2e_smoke.py:{here[-1].lineno} `{(here[-1].line or '').strip()}`" if here else "?"
     msg = str(exc).strip().splitlines()
-    print(f"E2E EȘUAT la {where}: {type(exc).__name__}: {msg[0] if msg else ''}", flush=True)
+    print(f"E2E FAILED at {where}: {type(exc).__name__}: {msg[0] if msg else ''}", flush=True)
     for ln in msg[1:8]:
         print(f"  » {ln}", flush=True)
     if _STATE.get("errors"):
-        print("ERORI CONSOLĂ:", " | ".join(_STATE["errors"][-10:]), flush=True)
+        print("CONSOLE ERRORS:", " | ".join(_STATE["errors"][-10:]), flush=True)
     page = _STATE.get("page")
     if page is not None:
         try:
-            page.screenshot(path=str(Path(_STATE["out"]) / "esec.png"))
-            print("captură: esec.png", flush=True)
+            page.screenshot(path=str(Path(_STATE["out"]) / "failure.png"))
+            print("screenshot: failure.png", flush=True)
         except Exception:  # noqa: BLE001
             pass
 

@@ -1,5 +1,5 @@
-﻿; Installer DrawCAD pentru Windows (Inno Setup 6). Instalare per utilizator, fără drepturi de
-; administrator, în %LOCALAPPDATA%\Programs\DrawCAD.
+﻿; DrawCAD installer for Windows (Inno Setup 6). Per-user install, without administrator
+; rights, into %LOCALAPPDATA%\Programs\DrawCAD.
 ; Compilare: ISCC /DAppVersion=1.2.3 /DSrcDir=dist\DrawCAD desktop\drawcad.iss
 
 #ifndef AppVersion
@@ -33,12 +33,12 @@ ChangesAssociations=yes
 CloseApplications=yes
 
 [Languages]
-; Inno Setup nu are traducere oficială în română: textele generale rămân în engleză
+; Inno Setup has no official Romanian translation: the installer is in English
 Name: "en"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
-Name: "openwith"; Description: "„Deschide cu DrawCAD” pentru PDF-uri și imagini (nu devine aplicația implicită)"; GroupDescription: "Integrare:"
+Name: "openwith"; Description: """Open with DrawCAD"" for PDFs and images (does not become the default app)"; GroupDescription: "Integration:"
 
 [Files]
 Source: "{#SrcDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -50,7 +50,7 @@ Name: "{group}\{cm:UninstallProgram,DrawCAD}"; Filename: "{uninstallexe}"
 Name: "{userdesktop}\DrawCAD"; Filename: "{app}\DrawCAD.exe"; Tasks: desktopicon
 
 [Registry]
-Root: HKCU; Subkey: "Software\Classes\DrawCAD.Document"; ValueType: string; ValueData: "Desen DrawCAD"; Flags: uninsdeletekey; Tasks: openwith
+Root: HKCU; Subkey: "Software\Classes\DrawCAD.Document"; ValueType: string; ValueData: "DrawCAD drawing"; Flags: uninsdeletekey; Tasks: openwith
 Root: HKCU; Subkey: "Software\Classes\DrawCAD.Document\DefaultIcon"; ValueType: string; ValueData: "{app}\DrawCAD.exe,0"; Tasks: openwith
 Root: HKCU; Subkey: "Software\Classes\DrawCAD.Document\shell\open\command"; ValueType: string; ValueData: """{app}\DrawCAD.exe"" ""%1"""; Tasks: openwith
 Root: HKCU; Subkey: "Software\Classes\.pdf\OpenWithProgids"; ValueType: string; ValueName: "DrawCAD.Document"; ValueData: ""; Flags: uninsdeletevalue; Tasks: openwith
@@ -63,8 +63,8 @@ Root: HKCU; Subkey: "Software\Classes\.jpg\OpenWithProgids"; ValueType: string; 
 Filename: "{app}\DrawCAD.exe"; Description: "{cm:LaunchProgram,DrawCAD}"; Flags: nowait postinstall skipifsilent
 
 [Code]
-// WebView2 (motorul ferestrei) vine cu Windows 11 și cu Edge pe Windows 10. Dacă lipsește,
-// aplicația se deschide în browser; aici doar avertizăm.
+// WebView2 (the window engine) ships with Windows 11 and with Edge on Windows 10. If it is missing,
+// the app opens in the browser; here we only warn.
 function WebView2Present(): Boolean;
 var v: String;
 begin
@@ -78,7 +78,7 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if (CurStep = ssPostInstall) and (not WebView2Present()) and (not WizardSilent()) then
-    MsgBox('Pe acest calculator lipsește Microsoft Edge WebView2 Runtime. DrawCAD va porni în browser.' + #13#10 +
-           'Pentru fereastra proprie, instalează WebView2 de la https://developer.microsoft.com/microsoft-edge/webview2/',
+    MsgBox('Microsoft Edge WebView2 Runtime is missing on this computer. DrawCAD will start in the browser.' + #13#10 +
+           'For its own window, install WebView2 from https://developer.microsoft.com/microsoft-edge/webview2/',
            mbInformation, MB_OK);
 end;

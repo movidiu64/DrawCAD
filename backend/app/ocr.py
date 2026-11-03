@@ -1,10 +1,10 @@
-"""Recunoașterea textului (OCR) pe desene, cu Tesseract.
+"""Text recognition (OCR) on drawings, with Tesseract.
 
-Desenele tehnice sunt dificile pentru OCR: liniile lungi se lipesc de litere, iar cotele de pe
-verticală sunt rotite. De aceea pagina se randează în tonuri de gri la ~300 DPI, liniile drepte
-lungi se șterg înainte de recunoaștere, iar recunoașterea se face de două ori: o dată normal și
-o dată cu pagina rotită, pentru textul scris de jos în sus. Rezultatul e în coordonate vizuale
-(puncte PDF, y în jos), ca restul aplicației.
+Technical drawings are hard for OCR: long lines touch the letters, and vertical
+dimensions are rotated. So the page is rendered in grayscale at ~300 DPI, long straight
+lines are removed before recognition, and recognition runs twice: once normally and
+once with the page rotated, for text written bottom to top. The result is in visual coordinates
+(PDF points, y down), like the rest of the app.
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from PIL import Image
 from . import pdfcore
 
 DPI = 300
-MAX_PX = 60e6  # A0 la 300 DPI ≈ 140 MP: se reduce rezoluția ca să nu dureze minute
+MAX_PX = 60e6  # A0 at 300 DPI ≈ 140 MP: the resolution is reduced so it does not take minutes
 
 
 def _env(name, default):
@@ -36,11 +36,11 @@ def _env(name, default):
 OCR_LANG = _env("OCR_LANG", "ron+eng")
 OCR_TIMEOUT = int(_env("OCR_TIMEOUT", "150"))
 _LANGS = None
-RAGGED = None  # None = automat (scan → da)
+RAGGED = None  # None = automatic (scan → yes)
 
 
 def _exe():
-    """Tesseract: calea dată explicit (aplicația desktop îl are în pachet) sau cel din PATH."""
+    """Tesseract: the explicitly given path (the desktop app bundles it) or the one on PATH."""
     p = os.environ.get("DRAWCAD_TESSERACT")
     if p and os.path.isfile(p):
         return p
@@ -48,7 +48,7 @@ def _exe():
 
 
 def _run_kw() -> dict:
-    # ieșirea Tesseract e UTF-8 (diacriticele); pe Windows, fără fereastră de consolă
+    # Tesseract output is UTF-8 (diacritics); on Windows, no console window
     kw = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
     if sys.platform == "win32":
         kw["creationflags"] = subprocess.CREATE_NO_WINDOW
@@ -56,12 +56,12 @@ def _run_kw() -> dict:
 
 
 _LANGS_LOCK = threading.Lock()
-_LANGS_FAIL = 0.0  # momentul ultimei detectări eșuate: se reîncearcă după un minut
+_LANGS_FAIL = 0.0  # time of the last failed detection: retried after a minute
 
 
 def available_langs() -> list[str]:
-    """Limbile Tesseract instalate. Prima rulare poate dura (pe Windows, antivirusul verifică
-    executabilul la prima pornire): rezultatul bun se ține minte, un eșec se reîncearcă mai târziu."""
+    """Installed Tesseract languages. The first run may take a while (on Windows, the antivirus checks
+    the executable on first start): a good result is remembered, a failure is retried later."""
     global _LANGS, _LANGS_FAIL
     if _LANGS is not None:
         return _LANGS
@@ -88,7 +88,7 @@ def available_langs() -> list[str]:
 
 
 def langs_known() -> bool:
-    """Detectarea limbilor s-a terminat (cu sau fără Tesseract)."""
+    """Language detection has finished (with or without Tesseract)."""
     return _LANGS is not None
 
 
@@ -105,26 +105,26 @@ def available() -> bool:
 
 
 def render_gray(pdf_bytes: bytes, n: int, page_wh) -> tuple[np.ndarray, float]:
-    """Pagina în tonuri de gri, ca matrice numpy; întoarce și scara (pixeli pe punct)."""
+    """The page in grayscale, as a numpy array; also returns the scale (pixels per point)."""
     w, h = page_wh
     scale = DPI / 72
     if w * h * scale * scale > MAX_PX:
         scale = (MAX_PX / (w * h)) ** 0.5
-    # direct ca matrice gri, fără PNG intermediar (la 60 MP: ~60 MB în loc de câteva sute)
+    # straight to a gray array, without an intermediate PNG (at 60 MP: ~60 MB instead of a few hundred)
     return pdfcore.render_array(pdf_bytes, n, scale, gray=True), scale
 
 
 def remove_long_lines(gray: np.ndarray, px_mm: float, min_mm: float = 7.0, dark: int = 150, ragged: bool = True,
                       inplace: bool = False) -> np.ndarray:
-    """Șterge liniile orizontale și verticale mai lungi de `min_mm` (cadre, linii de cotă, chenare),
-    ca literele să rămână libere pentru OCR. Textul rămâne aproape intact."""
+    """Removes horizontal and vertical lines longer than `min_mm` (frames, dimension lines, borders),
+    so letters are free for OCR. Text stays almost intact."""
     b = gray < dark
     L = max(8, int(min_mm * px_mm))
 
-    def runs(mask, L=L):  # pe rânduri: pixelii aflați în secvențe continue mai lungi de L
+    def runs(mask, L=L):  # per row: the pixels in continuous runs longer than L
         out = np.zeros_like(mask)
         for r in np.nonzero(mask.any(axis=1))[0]:
-            # rând cu rând: fără copii int8 ale întregii imagini (la 60 MP, 2 × 60 MB)
+            # row by row: no int8 copies of the whole image (at 60 MP, 2 × 60 MB)
             d = np.diff(mask[r].view(np.int8), prepend=np.int8(0), append=np.int8(0))
             st = np.nonzero(d == 1)[0]
             en = np.nonzero(d == -1)[0]
@@ -133,8 +133,8 @@ def remove_long_lines(gray: np.ndarray, px_mm: float, min_mm: float = 7.0, dark:
                     out[r, s:e] = True
         return out
 
-    def close(mask, r=1):  # închidere pe rânduri: golurile de până la 2r pixeli (zgomot de scanare) se umplu
-        # deplasările se fac pe loc, pe felii, nu cu matrici noi pentru fiecare
+    def close(mask, r=1):  # closing along rows: gaps of up to 2r pixels (scan noise) are filled
+        # shifts are done in place, on slices, not with new arrays for each one
         d = mask.copy()
         for k in range(1, r + 1):
             d[:, k:] |= mask[:, :-k]
@@ -149,19 +149,19 @@ def remove_long_lines(gray: np.ndarray, px_mm: float, min_mm: float = 7.0, dark:
         return e
 
     def edges(core, mask):
-        """Marginile zdrențuite ale liniei: pixelii lipiți de ea (până la 3 rânduri deasupra /
-        dedesubt) care formează doar pete subțiri (≤ 3 pixeli pe verticală). Literele lipite de
-        linie au trăsături verticale mai lungi și rămân."""
+        """Ragged edges of the line: pixels touching it (up to 3 rows above /
+        below) that form only thin blots (≤ 3 pixels vertically). Letters touching the
+        line have longer vertical strokes and stay."""
         near = core.copy()
         for k in (1, 2, 3):
             near[k:] |= core[:-k]
             near[:-k] |= core[k:]
-        thin = runs(mask.T, 4).T  # trăsăturile verticale lungi…
-        np.logical_not(thin, out=thin)  # …nu; restul pixelilor negri da
+        thin = runs(mask.T, 4).T  # long vertical strokes…
+        np.logical_not(thin, out=thin)  # …no; the remaining black pixels yes
         thin &= mask
         near &= thin
         del thin
-        np.greater(near, core, out=near)  # near și nu core (pe loc, fără ~core)
+        np.greater(near, core, out=near)  # near and not core (in place, without ~core)
         return near
 
     hk = runs(close(b))
@@ -189,14 +189,14 @@ def remove_long_lines(gray: np.ndarray, px_mm: float, min_mm: float = 7.0, dark:
 
 
 def _denoise(gray: np.ndarray) -> np.ndarray:
-    """Scanurile au „purici” și fond neuniform: filtru median 3×3 și prag Otsu → alb-negru curat.
-    Randările curate din PDF vectorial trec practic neschimbate."""
+    """Scans have specks and an uneven background: 3×3 median filter and Otsu threshold → clean black and white.
+    Clean renders of vector PDFs pass practically unchanged."""
     from PIL import ImageFilter
 
     from .vectorize import otsu_hist
 
-    # pe fâșii (cu un rând de margine pentru filtru): memoria suplimentară e cât o fâșie;
-    # pragul Otsu se ia din histograma întregii imagini filtrate
+    # in strips (with a one-row margin for the filter): the extra memory is one strip;
+    # the Otsu threshold comes from the histogram of the whole filtered image
     h = gray.shape[0]
     out = np.empty_like(gray)
     hist = np.zeros(256, dtype=np.int64)
@@ -253,19 +253,19 @@ _TECH = re.compile(
 
 
 def _fix(txt: str) -> str:
-    """Corecturi tipice pe desene: Ø citit ca O, 0, @ sau © în fața unui număr; liniuțe lungi."""
+    """Typical corrections on drawings: Ø read as O, 0, @ or © before a number; long dashes."""
     txt = re.sub(r"(?<![\w,.])[OQ0@©](?=\d{2,}(?:[.,]\d+)?(?:\b|[a-zA-Z]))", "Ø", txt)
     txt = re.sub(r"(?<![\w,.])[@©](?=\d)", "Ø", txt)
     return txt.replace("—", "-").replace("–", "-")
 
 
 def _accept(w, min_conf):
-    """Cuvintele „tehnice” (cote, toleranțe, filete) se acceptă și la încredere mai mică:
-    Tesseract nu cunoaște Ø și scade încrederea pentru tot cuvântul."""
+    """"Technical" words (dimensions, tolerances, threads) are accepted at lower confidence too:
+    Tesseract does not know Ø and lowers the confidence for the whole word."""
     if not any(ch.isalnum() for ch in w["t"]):
         return False
     if len(w["t"]) <= 3 and not w["t"].strip("lI|!ij.,'"):
-        return False  # bucăți de linie citite ca litere
+        return False  # pieces of line read as letters
     if w["conf"] >= min_conf:
         return True
     return w["conf"] >= 38 and bool(_TECH.match(w["t"]))
@@ -283,7 +283,7 @@ def _lines(words, px_mm, min_conf):
     out = []
     for ws in groups.values():
         ws.sort(key=lambda w: w["x"])
-        # cuvinte prea depărtate pe același „rând” Tesseract sunt texte diferite (coloane de tabel)
+        # words too far apart on the same Tesseract "line" are different texts (table columns)
         cur = [ws[0]]
         for w in ws[1:]:
             prev = cur[-1]
@@ -298,7 +298,7 @@ def _lines(words, px_mm, min_conf):
     for ws in out:
         compact = "".join(w["t"] for w in ws)
         conf_l = sum(w["conf"] for w in ws) / len(ws)
-        # bucățele de 1–2 caractere: doar dacă sunt cifre sau citite foarte sigur
+        # 1–2 character bits: only if they are digits or read with high confidence
         if len(compact) <= 2 and not (compact.isdigit() and conf_l >= 60) and conf_l < 80:
             continue
         x0 = min(w["x"] for w in ws)
@@ -307,20 +307,20 @@ def _lines(words, px_mm, min_conf):
         y1 = max(w["y"] + w["h"] for w in ws)
         txt = _fix(" ".join(w["t"] for w in ws))
         conf = sum(w["conf"] for w in ws) / len(ws)
-        # înălțimea majusculelor și linia de bază: mediana pe cuvinte (caseta întregului rând se
-        # umflă ușor din cauza unui singur cuvânt cu codițe sau a unei pete lipite de text)
+        # cap height and baseline: the median over words (the box of the whole line
+        # grows slightly because of a single word with descenders or a blot touching the text)
         caps, bases = [], []
         for w in ws:
             t = w["t"]
             desc = any(ch in "gjpqyQ,;()[]{}|" for ch in t)
             tall = any(ch.isupper() or ch.isdigit() or ch in "bdfhklt/Ø" for ch in t)
             h = w["h"] / 1.3 if desc else w["h"]
-            caps.append(h if tall else h / 0.72)  # doar litere mici fără codițe: înălțimea lui „x”
+            caps.append(h if tall else h / 0.72)  # only lowercase letters without ascenders/descenders: the height of "x"
             bases.append(w["y"] + w["h"] - (w["h"] * 0.23 / 1.3 if desc else 0))
         caps.sort()
         bases.sort()
         med = caps[(len(caps) - 1) // 2]
-        # o pată lipită de un cuvânt îi umflă caseta, niciodată nu o micșorează: contează cel mai mic
+        # a blot touching a word enlarges its box, never shrinks it: the smallest one counts
         cap = min(c for c in caps if c >= 0.6 * med)
         res.append({"text": txt, "conf": round(conf, 1), "px": [x0, y0, x1, y1],
                     "cap": cap, "base": bases[(len(bases) - 1) // 2]})
@@ -333,14 +333,14 @@ def _iou(a, b):
     inter = ix * iy
     if not inter:
         return 0.0
-    # raportat la caseta mai mică: o bucată falsă din interiorul unui text citit corect se elimină
+    # relative to the smaller box: a false piece inside a correctly read text is dropped
     ar = min((a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1]))
     return inter / ar if ar > 0 else 0.0
 
 
 def estimate_skew(gray: np.ndarray) -> float:
-    """Înclinarea scanului (grade, sens trigonometric pe ecran), din profilul de proiecție: la
-    unghiul corect, liniile orizontale ale desenului cad pe cât mai puține rânduri."""
+    """Scan skew (degrees, counter-clockwise on screen), from the projection profile: at
+    the right angle, the drawing's horizontal lines fall on as few rows as possible."""
     im = Image.fromarray(np.where(gray < 150, np.uint8(255), np.uint8(0)))
     f = 1000 / max(im.size)
     if f < 1:
@@ -352,12 +352,12 @@ def estimate_skew(gray: np.ndarray) -> float:
 
     best = max(np.arange(-2.0, 2.01, 0.1), key=score)
     best = max(np.arange(best - 0.1, best + 0.101, 0.02), key=score)
-    # rotirea care îndreaptă e `best`; înclinarea scanului e opusul ei
+    # the straightening rotation is `best`; the scan skew is its opposite
     return 0.0 if abs(best) < 0.05 else float(-best)
 
 
 def _rot(p, deg, c):
-    """Rotește punctul p (coordonate imagine, y în jos) cu `deg` grade în sens trigonometric pe ecran."""
+    """Rotates point p (image coordinates, y down) by `deg` degrees counter-clockwise on screen."""
     t = math.radians(deg)
     dx, dy = p[0] - c[0], p[1] - c[1]
     return (c[0] + dx * math.cos(t) + dy * math.sin(t), c[1] - dx * math.sin(t) + dy * math.cos(t))
@@ -371,19 +371,19 @@ def ocr_page(pdf_bytes: bytes, n: int, page_wh, rotated: bool = True, scan: bool
     gray, scale = render_gray(pdf_bytes, n, page_wh)
     px_mm = scale * 72 / 25.4
     den = _denoise(gray)
-    del gray  # matricile paginii sunt mari (zeci de MB): se eliberează pe măsură ce nu mai trebuie
-    # scanul înclinat se îndreaptă întâi: liniile lungi devin exact orizontale / verticale și se pot
-    # șterge fără să atingă literele; coordonatele se întorc la final în pagina originală
+    del gray  # page arrays are large (tens of MB): released as soon as they are no longer needed
+    # a skewed scan is straightened first: long lines become exactly horizontal / vertical and can be
+    # removed without touching the letters; coordinates are mapped back to the original page at the end
     skew = estimate_skew(den)
     work = den
     if skew:
         work = np.asarray(Image.fromarray(den).rotate(-skew, resample=Image.NEAREST, fillcolor=255))
-    # pe scanuri liniile au margini zdrențuite care trebuie șterse și ele; pe randările curate
-    # ale unui PDF vectorial ștergerea marginilor ar ciunti literele lipite de linii
+    # on scans lines have ragged edges that must be removed too; on clean renders
+    # of a vector PDF removing the edges would clip letters touching the lines
     ragged = RAGGED if scan is None else scan
     if scan is None and RAGGED is None:
         ragged = bool(skew)
-    clean = remove_long_lines(work, px_mm, ragged=ragged, inplace=True)  # `work` nu mai trebuie după
+    clean = remove_long_lines(work, px_mm, ragged=ragged, inplace=True)  # `work` is not needed afterwards
     del work, den
     img = Image.fromarray(clean)
     dpi = scale * 72
@@ -393,14 +393,14 @@ def ocr_page(pdf_bytes: bytes, n: int, page_wh, rotated: bool = True, scan: bool
         lines.append(ln)
     if rotated:
         H = clean.shape[0]
-        rimg = img.rotate(-90, expand=True)  # textul scris de jos în sus devine orizontal
+        rimg = img.rotate(-90, expand=True)  # text written bottom to top becomes horizontal
         for ln in _lines(_tesseract(rimg, lng, dpi), px_mm, 60):
             u0, v0, u1, v1 = ln["px"]
             ln["px"] = [v0, H - u1, v1, H - u0]
-            # linia de bază orizontală din imaginea rotită devine verticală (x = v) în pagină
+            # the horizontal baseline in the rotated image becomes vertical (x = v) on the page
             ln["rot"] = 90
             lines.append(ln)
-        # aceeași zonă citită în ambele orientări: rămâne citirea mai sigură
+        # the same area read in both orientations: the more confident reading stays
         lines.sort(key=lambda l: -l["conf"] * min(len(l["text"]), 8))
         keep = []
         for ln in lines:
@@ -430,7 +430,7 @@ def ocr_page(pdf_bytes: bytes, n: int, page_wh, rotated: bool = True, scan: bool
 
 
 def native_text(pdf_bytes: bytes, n: int) -> list[dict]:
-    """Textele reale din PDF (nu din imagine), cu încadrarea lor: pentru căutare."""
+    """Real texts of the PDF (not from the image), with their bounding boxes: for search."""
     import ctypes  # noqa: F401
 
     from .pdfcore import PDFIUM_LOCK, PageGeo, R, _bbox_page_space, _text_of, _walk, pdfium

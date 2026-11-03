@@ -1,11 +1,11 @@
-// Taste și comenzi: o tastă = o unealtă („taste directe”) sau comenzi scrise ca în AutoCAD
-// (L, C, PL, REC, DLI… + Spațiu / Enter). Prescurtările implicite urmează AutoCAD acolo unde
-// există o comandă echivalentă; restul au nume scurte în română sau engleză.
+// Keys and commands: one key = one tool ("direct keys") or commands typed as in AutoCAD
+// (L, C, PL, REC, DLI… + Space / Enter). Default aliases follow AutoCAD where an
+// equivalent command exists; the rest have short Romanian or English names.
 import { TOOLS, TOOL_BY_ID } from "./tools.js";
 
 const STORE = "drawcad.keys";
 
-/** Prescurtările implicite ale uneltelor (prima e cea afișată). */
+/** Default tool aliases (the first one is the one shown). */
 export const DEFAULT_ALIASES = {
   select: ["SEL", "SELECT"],
   pan: ["P", "PAN"],
@@ -44,7 +44,7 @@ export const DEFAULT_ALIASES = {
   calib: ["CALIB", "SCALA", "K"],
 };
 
-/** Comenzi care nu sunt unelte. */
+/** Commands that are not tools. */
 export const ACTIONS = [
   { id: "undo", label: "Anulează acțiunea", aliases: ["U", "UNDO"] },
   { id: "redo", label: "Refă", aliases: ["REDO", "MREDO"] },
@@ -67,7 +67,7 @@ export const ACTIONS = [
   { id: "pages", label: "Pagini (rotire, ordine, ștergere)", aliases: ["PAGES", "PAGINI"] },
 ];
 
-// tastele cu rol fix, care nu se pot da uneltelor
+// keys with a fixed role, which cannot be assigned to tools
 export const RESERVED_KEYS = new Set(["f", "+", "-", "=", " "]);
 
 const norm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
@@ -86,17 +86,17 @@ export function keyConfig() {
         aliases: c.aliases && typeof c.aliases === "object" ? c.aliases : {},
       };
     }
-  } catch (_) { /* stocare indisponibilă */ }
+  } catch (_) { /* storage unavailable */ }
   return defaultKeyConfig();
 }
 
 export function saveKeyConfig(cfg) {
   try {
     localStorage.setItem(STORE, JSON.stringify(cfg));
-  } catch (_) { /* stocare indisponibilă */ }
+  } catch (_) { /* storage unavailable */ }
 }
 
-/** Toate comenzile (unelte + acțiuni), cu tasta directă și prescurtările valabile acum. */
+/** All commands (tools + actions), with the direct key and the aliases currently valid. */
 export function commandList(cfg = defaultKeyConfig()) {
   const out = [];
   for (const t of TOOLS) {
@@ -111,14 +111,14 @@ export function commandList(cfg = defaultKeyConfig()) {
   return out;
 }
 
-/** Tasta directă (literă mică) → id-ul uneltei. */
+/** Direct key (lowercase letter) → tool id. */
 export function directKeyMap(cfg) {
   const map = {};
   for (const c of commandList(cfg)) if (c.kind === "tool" && c.key) map[c.key.toLowerCase()] = c.id;
   return map;
 }
 
-/** Comanda scrisă: prescurtare exactă, apoi numele uneltei (fără diacritice și spații). */
+/** The typed command: exact alias first, then the tool name (without diacritics and spaces). */
 export function resolveCommand(input, cfg) {
   const q = String(input || "").trim().toUpperCase();
   if (!q) return null;
@@ -129,7 +129,7 @@ export function resolveCommand(input, cfg) {
   return list.find((c) => norm(c.label) === n) || null;
 }
 
-/** Sugestii pentru ce s-a scris până acum, ca la completarea automată din AutoCAD. */
+/** Suggestions for what has been typed so far, like AutoCAD autocomplete. */
 export function suggest(input, cfg, max = 8) {
   const q = String(input || "").trim().toUpperCase();
   if (!q) return [];
@@ -155,7 +155,7 @@ export function suggest(input, cfg, max = 8) {
   return scored.slice(0, max);
 }
 
-/** Dubluri: aceeași tastă la două unelte sau aceeași prescurtare la două comenzi. */
+/** Duplicates: the same key on two tools or the same alias on two commands. */
 export function conflicts(cfg) {
   const keys = {};
   const aliases = {};

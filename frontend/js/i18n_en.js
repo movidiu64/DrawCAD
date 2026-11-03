@@ -1,5 +1,5 @@
-// Traducerea în engleză a interfeței. Cheia e textul românesc exact (un nod de text sau un
-// atribut title / placeholder / aria-label); `{}` ține locul unei valori. Ce lipsește rămâne în română.
+// English translation of the interface. The key is the exact Romanian text (a text node or a
+// title / placeholder / aria-label attribute); `{}` stands for a value. Anything missing stays in Romanian.
 export const EN = {
   "(parțial · {}% în zonă)": "(partial · {}% in area)",
   "(scanul e o imagine)": "(the scan is an image)",
@@ -802,7 +802,7 @@ export const EN = {
   "Mărimea foii…": "Sheet size…",
   "Factor invalid": "Invalid factor",
   "Foaie prea mică sau prea mare": "Sheet too small or too large",
-  // fragmente frecvente din texte compuse
+  // frequent fragments of composed texts
   "Ctrl+C / Ctrl+V": "Ctrl+C / Ctrl+V",
   "Ctrl+Z / Ctrl+Y": "Ctrl+Z / Ctrl+Y",
   "Prefix": "Prefix",

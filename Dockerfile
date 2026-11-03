@@ -10,7 +10,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     MALLOC_ARENA_MAX=2 \
     PGID=100
 
-# Tesseract pentru recunoașterea textului (OCR) pe desene scanate: română + engleză
+# Tesseract for text recognition (OCR) on scanned drawings: Romanian + English
 RUN apt-get update \
  && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-ron tesseract-ocr-eng \
  && rm -rf /var/lib/apt/lists/*
@@ -36,6 +36,6 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=4)"
 
-# entrypoint-ul pregătește /data ca root, apoi rulează aplicația ca PUID:PGID
+# the entrypoint prepares /data as root, then runs the app as PUID:PGID
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1", "--proxy-headers", "--forwarded-allow-ips", "*"]

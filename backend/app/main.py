@@ -1,4 +1,4 @@
-"""Server HTTP: API pentru documente + frontend static."""
+"""HTTP server: document API + static frontend."""
 from __future__ import annotations
 
 import asyncio
@@ -29,7 +29,7 @@ from starlette.staticfiles import StaticFiles
 from . import pdfcore
 
 def _env(name, default):
-    """DRAWCAD_<nume>, cu COTARE_<nume> acceptat în continuare (numele vechi al aplicației)."""
+    """DRAWCAD_<name>, with COTARE_<name> still accepted (the app's old name)."""
     return os.environ.get(f"DRAWCAD_{name}") or os.environ.get(f"COTARE_{name}") or default
 
 
@@ -37,16 +37,16 @@ DATA_DIR = Path(_env("DATA", "/data"))
 FRONTEND_DIR = Path(_env("FRONTEND", Path(__file__).resolve().parents[2] / "frontend"))
 MAX_UPLOAD = int(_env("MAX_UPLOAD_MB", "200")) * 1024 * 1024
 MAX_RENDER_PX = int(_env("MAX_RENDER_PX", "12000"))
-# o randare de pagină întreagă: cel mult atâția megapixeli (bitmap-ul are 3 octeți pe pixel);
-# interfața cere cel mult ~20 MP, detaliile de la zoom mare vin separat, pe zone
+# a whole-page render: at most this many megapixels (the bitmap has 3 bytes per pixel);
+# the interface asks for at most ~20 MP, high-zoom details come separately, as tiles
 MAX_RENDER_MP = float(_env("MAX_RENDER_MP", "40"))
-# documentele nefolosite atâtea zile se șterg automat (0 = niciodată)
+# documents unused for this many days are deleted automatically (0 = never)
 RETENTION_DAYS = float(_env("RETENTION_DAYS", "30"))
 
-# mod de lucru:
-#   private  — fiecare browser are spațiul lui de documente (cookie permanent, 1 an) (implicit)
-#   personal — un singur utilizator: toate documentele se văd din orice browser
-#   session  — ca private, dar spațiul ține doar până la închiderea browserului
+# mode:
+#   private  — each browser has its own document space (permanent cookie, 1 year) (default)
+#   personal — a single user: all documents are visible from any browser
+#   session  — like private, but the space lasts only until the browser is closed
 MODE = str(_env("MODE", "private")).strip().lower()
 if MODE not in ("personal", "private", "session"):
     MODE = "private"
@@ -54,14 +54,14 @@ WS_COOKIE = "drawcad_ws"
 _WS_RE = re.compile(r"^[A-Za-z0-9_-]{24,64}$")
 
 DOCS = DATA_DIR / "docs"
-# aplicația desktop (Windows): servește doar local și răspunde doar pe aceste nume de gazdă
+# the desktop app (Windows): serves locally only and answers only to these host names
 DESKTOP = str(_env("DESKTOP", "")).strip() == "1"
 ALLOWED_HOSTS = {h.strip().lower() for h in _env("ALLOWED_HOSTS", "").split(",") if h.strip()}
 
 
 def _child_cmd(module: str, *args) -> list[str]:
-    """Comanda pentru un proces-copil Python (citirea fișierelor, vectorizarea). În aplicația
-    împachetată (PyInstaller) nu există `python -m`: executabilul primește `--run-module`."""
+    """Command for a Python child process (file reading, vectorization). In the packaged
+    app (PyInstaller) there is no `python -m`: the executable gets `--run-module`."""
     if getattr(sys, "frozen", False):
         return [sys.executable, "--run-module", module, *map(str, args)]
     return [sys.executable, "-m", module, *map(str, args)]
@@ -72,14 +72,14 @@ def _child_kw() -> dict:
     if sys.platform == "win32":
         import subprocess as _sp
 
-        kw["creationflags"] = _sp.CREATE_NO_WINDOW  # fără fereastră de consolă care clipește
+        kw["creationflags"] = _sp.CREATE_NO_WINDOW  # no console window flashing
     return kw
 _ID_RE = re.compile(r"^[a-f0-9]{32}$")
-_OID_RE = re.compile(r"^\d{1,6}(\.\d{1,6}){0,8}$")  # id-ul unui obiect din pagină: „12” sau „3.4.1”
+_OID_RE = re.compile(r"^\d{1,6}(\.\d{1,6}){0,8}$")  # id of an object on the page: "12" or "3.4.1"
 
 
 class LRU(OrderedDict):
-    """Cache LRU limitat la număr de intrări și, opțional, la memorie (octeți)."""
+    """LRU cache limited by number of entries and, optionally, by memory (bytes)."""
 
     def __init__(self, size, max_bytes=None):
         super().__init__()
@@ -97,7 +97,7 @@ class LRU(OrderedDict):
             return self[key]
         val = fn()
         if self.max_bytes and self._sz(val) > self.max_bytes // 2:
-            return val  # prea mare pentru cache
+            return val  # too big for the cache
         self[key] = val
         self.nbytes += self._sz(val)
         while len(self) > self.size or (self.max_bytes and self.nbytes > self.max_bytes and len(self) > 1):
@@ -112,19 +112,19 @@ class LRU(OrderedDict):
         return val
 
 
-# memoria totală a cache-urilor din RAM (PDF-uri de lucru, randări, pagini înnegrite); e o limită,
-# nu o rezervare: se umple doar cu ce se folosește
+# total memory of the in-RAM caches (working PDFs, renders, blackened pages); it is a limit,
+# not a reservation: it only fills up with what is used
 CACHE_MB = int(_env("CACHE_MB", "256"))
 _bytes_cache = LRU(8, CACHE_MB * 1024 * 1024 * 2 // 5)
 _render_cache = LRU(64, CACHE_MB * 1024 * 1024 * 2 // 5)
-# geometria de snap / textele paginii: ținute ca JSON gata serializat (un obiect Python cu zeci de mii
-# de puncte ocupă de ~10× mai mult decât textul lui), cu buget de memorie
+# snap geometry / page texts: kept as ready-serialized JSON (a Python object with tens of thousands
+# of points takes ~10× more than its text), with a memory budget
 _snap_cache = LRU(32, 64 * 1024 * 1024)
 _ink_cache = LRU(8, CACHE_MB * 1024 * 1024 // 5)
 
 
 def _source(doc_id, n, ink):
-    """PDF-ul de randat: originalul, sau originalul cu pagina n înnegrită (rezultat ținut în cache)."""
+    """The PDF to render: the original, or the original with page n blackened (result kept in cache)."""
     if not (ink and ink.get("all")):
         return _original(doc_id)
     key = (doc_id, n, str(ink.get("fills", "black")), bool(ink.get("images")))
@@ -138,7 +138,7 @@ def _owner_of(token: str) -> str:
 
 
 def _req_owner(request: Request):
-    """Proprietarul cererii în modurile private (hash al codului spațiului de lucru), altfel None."""
+    """Owner of the request in the private modes (hash of the workspace code), otherwise None."""
     return request.scope.get("state", {}).get("owner") if MODE != "personal" else None
 
 
@@ -155,7 +155,7 @@ def _doc_dir(doc_id: str) -> Path:
     return d
 
 
-_LAYOUTS: dict = {}  # doc_id → ordinea / rotirea paginilor (None = ca în fișier)
+_LAYOUTS: dict = {}  # doc_id → page order / rotation (None = as in the file)
 
 
 def _layout(doc_id: str):
@@ -166,8 +166,8 @@ def _layout(doc_id: str):
 
 
 def _original(doc_id: str) -> bytes:
-    """PDF-ul de lucru: fișierul încărcat, cu paginile rotite / reordonate / șterse din editor.
-    Tot restul (randare, snap, ștergeri, OCR, export) lucrează pe el, deci rotirea rămâne și la export."""
+    """The working PDF: the uploaded file, with pages rotated / reordered / deleted in the editor.
+    Everything else (render, snap, removals, OCR, export) works on it, so rotation is kept on export too."""
     raw = lambda: (_doc_dir(doc_id) / "original.pdf").read_bytes()  # noqa: E731
     lay = _layout(doc_id)
     if not lay:
@@ -176,7 +176,7 @@ def _original(doc_id: str) -> bytes:
 
 
 def _purge(doc_id: str):
-    """Uită tot ce s-a calculat pentru document (după ștergere sau după rotirea paginilor)."""
+    """Forgets everything computed for the document (after deletion or after rotating pages)."""
     _bytes_cache.pop(doc_id, None)
     _bytes_cache.pop((doc_id, "L"), None)
     _LAYOUTS.pop(doc_id, None)
@@ -186,8 +186,8 @@ def _purge(doc_id: str):
 
 
 def _pkey(doc_id: str, n: int) -> str:
-    """Numele fișierelor de cache (OCR, vectorizare) ale paginii: legat de pagina din fișierul
-    încărcat și de rotirea ei, nu de poziția curentă (care se schimbă la reordonare)."""
+    """Cache file names (OCR, vectorization) of a page: tied to the page in the uploaded
+    file and to its rotation, not to its current position (which changes on reordering)."""
     lay = _layout(doc_id)
     if not lay or n >= len(lay):
         return f"p{n}"
@@ -218,7 +218,7 @@ def _page_index(doc_id, n):
     return n, meta
 
 
-# ------------------------------------------------------------------ validarea datelor primite
+# ------------------------------------------------------------------ validation of incoming data
 
 def _finite(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool) and abs(v) < 1e7
@@ -228,7 +228,7 @@ PRIM_TYPES = {"L", "P", "R", "C", "T"}
 
 
 def _clean_prims(prims):
-    """Primitivele de desenat la export: doar tipurile cunoscute, numere finite, dimensiuni rezonabile."""
+    """Primitives to draw on export: only known types, finite numbers, reasonable sizes."""
     if not isinstance(prims, list) or len(prims) > 200000:
         raise ValueError("prea multe primitive")
     out = []
@@ -255,7 +255,7 @@ def _clean_prims(prims):
 
 
 def _clean_ops(ops):
-    """Operațiile de ștergere / înnegrire: moduri cunoscute, id-uri și dreptunghiuri valide."""
+    """Removal / blackening operations: known modes, valid ids and rectangles."""
     if not isinstance(ops, list) or len(ops) > 2000:
         raise ValueError("prea multe operații")
     out = []
@@ -281,8 +281,8 @@ INCOMING = DATA_DIR / "incoming"
 
 
 async def _read_limited(request: Request, limit: int, dest: Path | None = None):
-    """Citește corpul cererii în flux, oprindu-se la `limit` octeți (fără să-l țină tot în memorie
-    când merge într-un fișier). Întoarce octeții sau numărul de octeți scriși."""
+    """Reads the request body as a stream, stopping at `limit` bytes (without keeping it all in memory
+    when it goes to a file). Returns the bytes or the number of bytes written."""
     cl = request.headers.get("content-length")
     if cl and cl.isdigit() and int(cl) > limit:
         raise OverflowError
@@ -335,7 +335,7 @@ async def api_open(request: Request):
         if not size:
             return _err("Fișier gol")
         out_dir.mkdir()
-        # fișierul necunoscut se citește prima dată într-un proces separat, limitat în memorie și timp
+        # an unknown file is first read in a separate process, limited in memory and time
         proc = await asyncio.create_subprocess_exec(
             *_child_cmd("app.ingest", upload, out_dir, dpi_v or ""),
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
@@ -352,8 +352,8 @@ async def api_open(request: Request):
         except Exception:  # noqa: BLE001
             res = {}
         if not res:
-            # copilul scrie rezultatul și în fișier (pe Windows, o aplicație fără consolă poate
-            # pierde ieșirea standard)
+            # the child also writes the result to a file (on Windows, an app without a console may
+            # lose its standard output)
             res = _read_json(out_dir / "result.json", {}) or {}
         if not res.get("ok"):
             if not res and proc.returncode:
@@ -411,7 +411,7 @@ def _expires(meta: dict):
 
 
 def cleanup_expired(now: float | None = None) -> list[str]:
-    """Șterge documentele nefolosite de mai mult de RETENTION_DAYS zile."""
+    """Deletes documents unused for more than RETENTION_DAYS days."""
     if RETENTION_DAYS <= 0 or not DOCS.is_dir():
         return []
     now = now or time.time()
@@ -421,7 +421,7 @@ def cleanup_expired(now: float | None = None) -> list[str]:
             continue
         meta = _read_json(d / "meta.json")
         if meta is None:
-            # document incomplet (încărcare întreruptă): după o zi se curăță
+            # incomplete document (interrupted upload): cleaned up after a day
             last = d.stat().st_mtime
             if now - last < 86400:
                 continue
@@ -431,7 +431,7 @@ def cleanup_expired(now: float | None = None) -> list[str]:
         _bytes_cache.pop(d.name, None)
         removed.append(d.name)
     if removed:
-        logging.getLogger("drawcad").info("curățare: %d documente expirate șterse", len(removed))
+        logging.getLogger("drawcad").info("cleanup: %d expired documents deleted", len(removed))
     return removed
 
 
@@ -486,7 +486,7 @@ async def api_render(request: Request):
         return _err("Scară invalidă")
     p = meta["pages"][n]
     scale = round(max(0.1, _cap_scale(p, scale)), 3)
-    # înnegrire pentru tipărire: tot desenul (ink) și/sau obiecte anume (bk = id-uri separate prin virgulă)
+    # blackening for printing: the whole drawing (ink) and/or specific objects (bk = comma-separated ids)
     ink = None
     if request.query_params.get("ink"):
         ink = {"all": True, "fills": request.query_params.get("fills", "black"), "images": request.query_params.get("img") == "1"}
@@ -506,16 +506,16 @@ async def api_render(request: Request):
     return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=3600", "X-Scale": str(scale)})
 
 
-CLIP_MAX_PX = 24e6  # o zonă de detaliu: cât un ecran 4K de câteva ori
+CLIP_MAX_PX = 24e6  # a detail area: a few times a 4K screen
 
 
 def _json_bytes(obj) -> bytes:
-    """JSON compact, ca la JSONResponse (pentru cache-uri ținute ca octeți)."""
+    """Compact JSON, as produced by JSONResponse (for caches kept as bytes)."""
     return json.dumps(obj, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
 
 
 def _cap_scale(p, scale):
-    """Scara unei randări de pagină întreagă, limitată la latura și la numărul de pixeli maxim."""
+    """Scale of a whole-page render, limited to the maximum side and pixel count."""
     if max(p["w"], p["h"]) * scale > MAX_RENDER_PX:
         scale = MAX_RENDER_PX / max(p["w"], p["h"])
     if p["w"] * p["h"] * scale * scale > MAX_RENDER_MP * 1e6:
@@ -524,7 +524,7 @@ def _cap_scale(p, scale):
 
 
 def _clip(raw, page):
-    """Zona de randat „x0,y0,x1,y1” în puncte vizuale (detaliu la zoom mare) sau None."""
+    """Area to render "x0,y0,x1,y1" in visual points (detail at high zoom) or None."""
     if not raw or not page:
         return None
     try:
@@ -547,7 +547,7 @@ def _meta_page(doc_id, n):
 
 
 async def api_preview(request: Request):
-    """Randare cu ștergerile aplicate (pentru dialogul de ștergere)."""
+    """Render with removals applied (for the removal dialog)."""
     doc_id = request.path_params["doc_id"]
     try:
         n, _meta = _page_index(doc_id, request.path_params["n"])
@@ -588,9 +588,9 @@ async def api_preview(request: Request):
 
 
 async def api_pages(request: Request):
-    """Operații pe pagini: rotire (90° stânga / dreapta, 180°), ștergere, mutare. Fișierul încărcat
-    rămâne neschimbat; ordinea și rotirea stau în metadate și se aplică la randare și la export.
-    Odată cu operația vine și starea adnotărilor, deja transformată în pagina nouă."""
+    """Page operations: rotate (90° left / right, 180°), delete, move. The uploaded file
+    stays unchanged; order and rotation live in the metadata and are applied on render and export.
+    The operation comes with the annotation state, already transformed to the new page."""
     doc_id = request.path_params["doc_id"]
     try:
         d = _doc_dir(doc_id)
@@ -673,7 +673,7 @@ async def api_snap(request: Request):
     def work():
         return _snap_cache.get_or((doc_id, n), lambda: _json_bytes(pdfcore.snap_points(_original(doc_id), n)))
 
-    # geometria vine doar din original, care nu se schimbă: browserul o poate păstra
+    # geometry comes only from the original, which does not change: the browser may keep it
     return Response(await run_in_threadpool(work), media_type="application/json", headers={"Cache-Control": "private, max-age=3600"})
 
 
@@ -696,13 +696,13 @@ async def api_objects(request: Request):
     return JSONResponse({"objects": res})
 
 
-# ------------------------------------------------------------------ OCR, text, vectorizare
+# ------------------------------------------------------------------ OCR, text, vectorization
 
-# OCR-ul și vectorizarea țin procesorul ocupat zeci de secunde: câte una pe rând
+# OCR and vectorization keep the CPU busy for tens of seconds: one at a time
 _HEAVY = asyncio.Semaphore(1)
 _text_cache = LRU(32, 32 * 1024 * 1024)
 VECTOR_TIMEOUT = float(_env("VECTOR_TIMEOUT", "240"))
-VECTOR_PX_MM = 8.0  # rezoluția vectorizării (≈ 200 DPI): destul pentru linii de 0,25 mm
+VECTOR_PX_MM = 8.0  # vectorization resolution (≈ 200 DPI): enough for 0.25 mm lines
 
 
 def _cache_dir(doc_id, sub):
@@ -729,15 +729,15 @@ async def _ocr_run(doc_id, n, meta_page):
         cached = _ocr_cached(doc_id, n)
         if cached is not None:
             return cached
-        scan = True if meta_page.get("paths", 1) == 0 else None  # fără linii vectoriale = imagine
+        scan = True if meta_page.get("paths", 1) == 0 else None  # no vector lines = image
         res = await run_in_threadpool(lambda: ocrmod.ocr_page(_original(doc_id), n, (meta_page["w"], meta_page["h"]), scan=scan))
-        await run_in_threadpool(pdfcore.release_memory)  # matricile OCR au zeci–sute de MB
+        await run_in_threadpool(pdfcore.release_memory)  # OCR arrays are tens to hundreds of MB
         _write_json(_cache_dir(doc_id, "ocr") / f"{_pkey(doc_id, n)}.json", res)
         return res
 
 
 async def api_ocr(request: Request):
-    """GET: textul recunoscut deja (sau null); POST: recunoaște pagina (rezultatul rămâne pe server)."""
+    """GET: the text already recognized (or null); POST: recognizes the page (the result stays on the server)."""
     from . import ocr as ocrmod
 
     doc_id = request.path_params["doc_id"]
@@ -766,7 +766,7 @@ async def api_ocr(request: Request):
 
 
 async def api_text(request: Request):
-    """Textele reale ale paginii (pentru căutare), cu încadrarea lor."""
+    """Real texts of the page (for search), with their bounding boxes."""
     from . import ocr as ocrmod
 
     doc_id = request.path_params["doc_id"]
@@ -779,7 +779,7 @@ async def api_text(request: Request):
 
 
 async def _vectorize(doc_id, n, pdf_bytes, masks, key):
-    """Vectorizarea unei pagini scanate, într-un proces separat; rezultatul rămâne în cache."""
+    """Vectorization of a scanned page, in a separate process; the result stays in cache."""
     import hashlib
     import tempfile
 
@@ -850,13 +850,13 @@ def _overlaps(box, boxes):
 
 
 async def _export_dxf(doc_id, prims, rem, sel, opts, color, base_name):
-    """DXF pentru paginile alese: un fișier, sau ZIP când sunt mai multe pagini ori imagini de fundal."""
+    """DXF for the chosen pages: one file, or a ZIP when there are several pages or background images."""
     import io
     import zipfile
 
     from . import dxfout, ocr as ocrmod
 
-    original = await run_in_threadpool(_original, doc_id)  # prima dată: citire + aranjarea paginilor
+    original = await run_in_threadpool(_original, doc_id)  # first time: read + page arrangement
     meta = _read_json(_doc_dir(doc_id) / "meta.json", {})
     n_pages = len(meta.get("pages", []))
     idxs = sorted({i for i in (sel or range(n_pages)) if 0 <= i < n_pages})
@@ -886,7 +886,7 @@ async def _export_dxf(doc_id, prims, rem, sel, opts, color, base_name):
             native = [t for t in content["texts"]]
             nboxes = []
             for t in native:
-                # caseta aproximativă a textului PDF, pentru a nu-l dubla cu OCR
+                # approximate box of the PDF text, so it is not duplicated by OCR
                 hh = t["h"]
                 nboxes.append([t["p"][0], t["p"][1] - hh, t["p"][0] + hh * 0.6 * len(t["txt"]), t["p"][1] + hh * 0.25])
             for ln in (cached or {}).get("lines", []):
@@ -895,7 +895,7 @@ async def _export_dxf(doc_id, prims, rem, sel, opts, color, base_name):
                 lines.append(ln)
         vec = None
         if scan and want["vectorize"]:
-            # doar textul citit sigur se scoate din imagine; restul rămâne și ca linii
+            # only confidently read text is removed from the image; the rest also stays as lines
             masks = [ln["box"] for ln in lines
                      if (ln.get("conf", 0) >= 60 and len(ln["text"].replace(" ", "")) >= 2) or ln.get("conf", 0) >= 85]
             masks += [list(c) for c in covers]
@@ -975,7 +975,7 @@ async def api_export(request: Request):
     base = re.sub(r"\.(pdf|dxf)$", "", filename, flags=re.I)
     stats = None
     if fmt == "pdf" and body.get("ocrLayer"):
-        # PDF căutabil: textul recunoscut, invizibil, peste imagine
+        # searchable PDF: the recognized text, invisible, over the image
         for i in range(len(_read_json(d / "meta.json", {}).get("pages", []))):
             if sel is not None and i not in sel:
                 continue
@@ -1018,8 +1018,8 @@ async def api_export(request: Request):
 
 
 async def _ocr_lang(wait: float | None = None):
-    """Limbile OCR fără să blocheze serverul: detectarea rulează Tesseract (la prima pornire pe
-    Windows poate dura zeci de secunde). Cu `wait`, după atâtea secunde se întoarce „încă nu știu”."""
+    """OCR languages without blocking the server: detection runs Tesseract (on first start on
+    Windows it may take tens of seconds). With `wait`, after that many seconds it returns "don't know yet"."""
     from . import ocr as ocrmod
 
     fut = run_in_threadpool(ocrmod.lang)
@@ -1034,15 +1034,15 @@ async def _ocr_lang(wait: float | None = None):
 async def api_health(request: Request):
     from . import ocr as ocrmod
 
-    # interfața așteaptă răspunsul la pornire: nu mai mult de o secundă pentru OCR
+    # the interface waits for this answer at startup: no more than one second for OCR
     lang = await _ocr_lang(wait=1.0)
     return JSONResponse({"ok": True, "retentionDays": RETENTION_DAYS, "mode": MODE, "ocr": lang,
                          "ocrPending": lang is None and not ocrmod.langs_known(), "dxf": True, "desktop": DESKTOP})
 
 
 async def api_workspace(request: Request):
-    """Codul spațiului de lucru (doar în modurile private): îl poți copia ca să continui în alt
-    browser; POST cu alt cod mută browserul acesta în spațiul acela."""
+    """Workspace code (private modes only): copy it to continue in another
+    browser; POST with another code moves this browser to that space."""
     if MODE == "personal":
         return JSONResponse({"mode": MODE})
     if request.method == "POST":
@@ -1070,7 +1070,7 @@ routes = [
     Route("/api/docs", api_docs),
     Route("/api/workspace", api_workspace, methods=["GET", "POST"]),
     Route("/api/doc/{doc_id}", api_doc, methods=["GET", "DELETE"]),
-    Route("/api/doc/{doc_id}/state", api_state, methods=["PUT", "POST"]),  # POST pentru sendBeacon
+    Route("/api/doc/{doc_id}/state", api_state, methods=["PUT", "POST"]),  # POST for sendBeacon
     Route("/api/doc/{doc_id}/page/{n:int}/render", api_render),
     Route("/api/doc/{doc_id}/page/{n:int}/preview", api_preview, methods=["POST"]),
     Route("/api/doc/{doc_id}/page/{n:int}/snap", api_snap),
@@ -1084,11 +1084,11 @@ routes = [
 
 @contextlib.asynccontextmanager
 async def lifespan(_app):
-    # încărcări întrerupte la o oprire anterioară
+    # uploads interrupted by a previous shutdown
     shutil.rmtree(INCOMING, ignore_errors=True)
 
     def warm():
-        # detectarea limbilor OCR (rulează Tesseract) se face din start, nu la prima cerere
+        # OCR language detection (runs Tesseract) happens right at startup, not on the first request
         with contextlib.suppress(Exception):
             from . import ocr as ocrmod
 
@@ -1109,7 +1109,7 @@ async def lifespan(_app):
         task.cancel()
 
 
-# ------------------------------------------------------------------ securitate HTTP
+# ------------------------------------------------------------------ HTTP security
 CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
     "font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; "
@@ -1125,7 +1125,7 @@ SECURITY_HEADERS = [
     (b"permissions-policy", b"camera=(), microphone=(), geolocation=(), payment=(), usb=()"),
 ]
 ALLOWED_ORIGINS = {o.strip().rstrip("/") for o in _env("ALLOWED_ORIGINS", "").split(",") if o.strip()}
-# parolă opțională (HTTP Basic), pentru cazul în care aplicația e accesibilă din afara rețelei locale
+# optional password (HTTP Basic), for when the app is reachable from outside the local network
 AUTH_USER = _env("USER", "drawcad")
 AUTH_PASSWORD = _env("PASSWORD", "")
 
@@ -1147,8 +1147,8 @@ _DOC_PATH = re.compile(r"^/api/doc/([a-f0-9]{32})(/|$)")
 
 
 class SecurityMiddleware:
-    """Antete de securitate pe toate răspunsurile și refuzul cererilor care modifică date venite
-    de pe alt site (o pagină străină deschisă în browser nu poate încărca sau șterge documente)."""
+    """Security headers on all responses and rejection of data-changing requests coming
+    from another site (a foreign page open in the browser cannot upload or delete documents)."""
 
     def __init__(self, app):
         self.app = app
@@ -1158,8 +1158,8 @@ class SecurityMiddleware:
             return await self.app(scope, receive, send)
         hdr = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers", [])}
         if ALLOWED_HOSTS:
-            # apără serverul local de „DNS rebinding”: un site străin al cărui nume indică spre
-            # 127.0.0.1 ar trece de verificarea originii, dar nu și de cea a numelui gazdei
+            # protects the local server from "DNS rebinding": a foreign site whose name points to
+            # 127.0.0.1 would pass the origin check, but not the host name check
             hname = hdr.get("host", "").rsplit(":", 1)[0].strip("[]").lower()
             if hname not in ALLOWED_HOSTS:
                 resp = Response("Gazdă nepermisă", status_code=421)
@@ -1177,7 +1177,7 @@ class SecurityMiddleware:
 
         new_cookie = None
         if MODE != "personal":
-            # fiecare browser are un cod secret (cookie HttpOnly); documentele lui poartă hash-ul codului
+            # each browser has a secret code (HttpOnly cookie); its documents carry the hash of the code
             token = None
             for part in hdr.get("cookie", "").split(";"):
                 k, _, v = part.strip().partition("=")
@@ -1195,7 +1195,7 @@ class SecurityMiddleware:
             if m:
                 meta = _read_json(DOCS / m.group(1) / "meta.json") or {}
                 if meta.get("owner") != st["owner"]:
-                    # documentul altcuiva (sau din modul personal): pentru acest browser nu există
+                    # someone else's document (or one from personal mode): for this browser it does not exist
                     resp = JSONResponse({"error": "Document inexistent"}, status_code=404)
                     return await resp(scope, receive, send)
 
@@ -1217,14 +1217,14 @@ class SecurityMiddleware:
 
         if not DESKTOP:
             return await self.app(scope, receive, send_wrapped)
-        # aplicația desktop: cererile lente ajung în jurnal (%LOCALAPPDATA%\\DrawCAD\\drawcad.log)
+        # desktop app: slow requests are logged (%LOCALAPPDATA%\\DrawCAD\\drawcad.log)
         t0 = time.monotonic()
         try:
             return await self.app(scope, receive, send_wrapped)
         finally:
             dt = time.monotonic() - t0
             if dt > 3:
-                logging.getLogger("drawcad").warning("cerere lentă: %s %s %.1f s", scope["method"], scope.get("path"), dt)
+                logging.getLogger("drawcad").warning("slow request: %s %s %.1f s", scope["method"], scope.get("path"), dt)
 
 
 DOCS.mkdir(parents=True, exist_ok=True)
@@ -1233,7 +1233,7 @@ app = Starlette(
     lifespan=lifespan,
     middleware=[
         Middleware(SecurityMiddleware),
-        # JSON-ul de snap și modulele JS se comprimă bine; PNG-urile și PDF-urile nu
+        # snap JSON and JS modules compress well; PNGs and PDFs do not
         Middleware(GZipMiddleware, minimum_size=1024, exclude_content_types=("image/png", "application/pdf", "text/event-stream")),
     ],
 )

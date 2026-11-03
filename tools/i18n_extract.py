@@ -1,8 +1,8 @@
-"""Extrage textele de interfață din frontend (literali JS și HTML), pentru dicționarul de traduceri.
+"""Extracts the interface texts from the frontend (JS and HTML literals), for the translation dictionary.
 
-Rulare: python tools/i18n_extract.py > /tmp/strings.json
-Fiecare intrare: textul exact al unui nod de text (sau al unui atribut title/placeholder/aria-label),
-cu `{}` în locul expresiilor ${…} din șabloane.
+Run: python tools/i18n_extract.py > /tmp/strings.json
+Each entry: the exact text of a text node (or of a title/placeholder/aria-label attribute),
+with `{}` in place of the ${…} expressions in templates.
 """
 import json
 import re
@@ -14,12 +14,12 @@ SKIP_FILES = {"iso286_data.js", "i18n.js", "i18n_en.js"}
 
 
 def literals(src):
-    """Literalii de text din JS: "…", '…' și `…` (cu ${…} înlocuite de \\x00, șabloanele imbricate separat)."""
+    """Text literals in JS: "…", '…' and `…` (with ${…} replaced by \\x00, nested templates separately)."""
     out = []
     i, n = 0, len(src)
 
     def read_template(i):
-        # i: după backtick; întoarce (text_cu_marcaje, poziție_după_backtick)
+        # i: after the backtick; returns (text_with_markers, position_after_backtick)
         buf = []
         while i < n:
             c = src[i]
@@ -79,7 +79,7 @@ def literals(src):
             i = k + 1
             continue
         if c == "/" and re.match(r"[=(,:!&|?{};\[]\s*$", src[max(0, i - 3):i].rstrip()[-1:] or "("):
-            # literal regex: îl sărim
+            # regex literal: skip it
             k = i + 1
             while k < n and src[k] not in "/\n":
                 k += 2 if src[k] == "\\" else 1
@@ -94,7 +94,7 @@ CODEY = re.compile(r"^[\w.#:\-/\[\]=*>+~^$|()'\" ,%]*$")
 
 
 def segments(text):
-    """Textele vizibile dintr-un literal: părțile dintre etichetele HTML + atributele de interfață."""
+    """The visible texts of a literal: the parts between HTML tags + the interface attributes."""
     segs = []
     for m in re.finditer(r'(?:title|placeholder|aria-label|alt)="([^"]*)"', text):
         segs.append(m.group(1))
@@ -112,7 +112,7 @@ def is_ui(s):
         return True
     if " " in t.strip() and not re.match(r"^[a-z\-]+( [a-z\-]+)*$", t):  # clase CSS: „mini on”
         return True
-    if re.match(r"^[A-ZĂÂÎȘȚ][a-zăâîșț]+[.:…]?$", t):  # un cuvânt cu majusculă: „Gata”, „Setări”
+    if re.match(r"^[A-ZĂÂÎȘȚ][a-zăâîșț]+[.:…]?$", t):  # a capitalized word: "Gata", "Setări"
         return True
     return False
 

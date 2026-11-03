@@ -1,4 +1,4 @@
-// Definiția uneltelor: pictogramă, tastă, pași și ce adnotare produc.
+// Tool definitions: icon, key, steps and the annotation they produce.
 import { newId, K } from "./annots.js";
 import { trackSweep } from "./shapes.js";
 

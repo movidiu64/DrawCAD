@@ -1,5 +1,5 @@
-// Meniul radial (click dreapta ținut): comenzile din cele 8 poziții, alese de utilizator în Setări.
-// ------------------------------------------------------------------ meniul radial: configurare
+// Radial menu (right button held): the commands in the 8 positions, chosen by the user in Settings.
+// ------------------------------------------------------------------ radial menu: configuration
 export const MM_POSITIONS = ["Dreapta", "Dreapta-sus", "Sus", "Stânga-sus", "Stânga", "Stânga-jos", "Jos", "Dreapta-jos"];
 export const MM_DEFAULT = ["dimRad", "dimDia", "last", "measure", "undo", "lead", "seldel", "text"];
 export const MM_SPECIAL = [
@@ -24,7 +24,7 @@ export function markingConfig() {
   try {
     const v = JSON.parse(localStorage.getItem("cotare.mmenu") || "null");
     if (Array.isArray(v) && v.length === 8) return v;
-  } catch (_) { /* implicit */ }
+  } catch (_) { /* default */ }
   return [...MM_DEFAULT];
 }
 

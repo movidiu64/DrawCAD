@@ -6,7 +6,7 @@ node_modules/
 .DS_Store
 .env
 
-# build aplicație desktop
+# desktop app build
 /dist/
 /build/
 *.spec.bak

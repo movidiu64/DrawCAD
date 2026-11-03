@@ -1,4 +1,4 @@
-// Aplicația: stare, unelte, evenimente, salvare, export.
+// The application: state, tools, events, saving, export.
 import * as api from "./api.js";
 import { build, derive, hit, setHandle, moveAnnot, annotSnapPoints, exportPrims, K, fmtNum, newId, scaleAnchor, typeName, SCALE_MIN, SCALE_MAX } from "./annots.js";
 import { View, COLORS } from "./view.js";
@@ -13,7 +13,7 @@ import { applyPageOp } from "./pages.js";
 import { startI18n, lang as uiLang, tr } from "./i18n.js";
 
 const $ = (id) => document.getElementById(id);
-/** Hash scurt (FNV-1a) pentru cheile de randare. */
+/** Short hash (FNV-1a) for render keys. */
 function hashStr(str) {
   let h = 0x811c9dc5;
   for (let i = 0; i < str.length; i++) {
@@ -23,7 +23,7 @@ function hashStr(str) {
   return (h >>> 0).toString(36);
 }
 
-const DATUM_LETTERS = "ABCDEFGHJKLMNPRSTUVWXYZ"; // ISO 5459: fără I, O, Q
+const DATUM_LETTERS = "ABCDEFGHJKLMNPRSTUVWXYZ"; // ISO 5459: no I, O, Q
 
 class App {
   constructor() {
@@ -43,7 +43,7 @@ class App {
     this.snapCfg = { modes: [...DEFAULT_MODES], polar: true, polarInc: 15, tracking: true, ortho: false, on: true };
     try {
       Object.assign(this.snapCfg, JSON.parse(localStorage.getItem("cotare.snap") || "{}"));
-    } catch (_) { /* implicit */ }
+    } catch (_) { /* default */ }
     this.acq = [];
     this.parDir = null;
     this.parSeg = null;
@@ -58,7 +58,7 @@ class App {
       if (w == null) {
         this.measureCtx.font = `${size}px osifont`;
         w = this.measureCtx.measureText(txt).width;
-        if (this.mcache.size > 20000) this.mcache.clear(); // textele scrise literă cu literă se adună
+        if (this.mcache.size > 20000) this.mcache.clear(); // texts typed letter by letter pile up
         this.mcache.set(key, w);
       }
       return w;
@@ -72,22 +72,22 @@ class App {
     this.hidden = new Set();
     try {
       for (const k of JSON.parse(localStorage.getItem("cotare.hidden") || "[]")) this.hidden.add(k);
-    } catch (_) { /* implicit */ }
+    } catch (_) { /* default */ }
     try {
       Object.assign(this.drawStyle, JSON.parse(localStorage.getItem("cotare.drawStyle") || "{}"));
-    } catch (_) { /* implicit */ }
+    } catch (_) { /* default */ }
   }
 
   setDrawStyle(patch) {
     Object.assign(this.drawStyle, patch);
     try {
       localStorage.setItem("cotare.drawStyle", JSON.stringify(this.drawStyle));
-    } catch (_) { /* fără memorare */ }
+    } catch (_) { /* not remembered */ }
   }
 
   /**
-   * Esc, Enter cu o comandă în curs sau click dreapta: termină polilinia, oprește lanțul de linii,
-   * renunță la punctele date; fără comandă în curs deselectează, apoi revine la Selecție.
+   * Esc, Enter with a command in progress or right click: finishes the polyline, stops the line chain,
+   * drops the picked points; with no command in progress it deselects, then returns to Select.
    */
   escape() {
     const t = TOOL_BY_ID[this.tool];
@@ -108,8 +108,8 @@ class App {
     else if (this.tool !== "select") this.setTool("select");
   }
 
-  // ------------------------------------------------------------ meniu radial (ca la Inventor)
-  /** Comenzile din meniul radial, în ordinea E, NE, N, NV, V, SV, S, SE (alese din Setări). */
+  // ------------------------------------------------------------ radial menu (as in Inventor)
+  /** Radial menu commands, in the order E, NE, N, NW, W, SW, S, SE (chosen in Settings). */
   markingItems() {
     return markingConfig().map((id) => this.markingAction(id)).map((it) => it || this.markingAction("dimLin"));
   }
@@ -160,7 +160,7 @@ class App {
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="${it.icon}"/></svg><span>${it.label}</span></button>`;
     }).join("")}`;
     vp.appendChild(el);
-    // ține meniul în ecran
+    // keep the menu on screen
     const r = el.getBoundingClientRect();
     const vr = vp.getBoundingClientRect();
     const pad = 150;
@@ -174,7 +174,7 @@ class App {
     this.mmenu = { el, items, cx: parseFloat(el.style.left), cy: parseFloat(el.style.top), hi: -1 };
   }
 
-  /** Cu butonul încă apăsat, direcția față de centru alege comanda (marking menu). */
+  /** With the button still pressed, the direction from the center picks the command (marking menu). */
   hoverMarking(sx, sy) {
     const m = this.mmenu;
     if (!m) return;
@@ -212,7 +212,7 @@ class App {
     return { cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2, d0: Math.hypot(a[0] - b[0], a[1] - b[1]) };
   }
 
-  /** Un click al uneltei active (puncte de cotă, vârfuri de polilinie…). */
+  /** One click of the active tool (dimension points, polyline vertices…). */
   toolClick(pt) {
     const t = TOOL_BY_ID[this.tool];
     if (this.dyn) this.dynReset();
@@ -224,7 +224,7 @@ class App {
         return Math.hypot(ax - bx, ay - by);
       };
       const n = this.clicks.length;
-      // click pe primul punct: contur închis · al doilea click în același loc (dublu-click): gata
+      // click on the first point: closed outline · second click at the same spot (double click): done
       if (n >= Math.max(3, t.min || 2) && near(this.clicks[0]) < 8) return this.finishPoly(true);
       if (n && near(this.clicks[n - 1]) < 3) return this.finishPoly(false);
       this.clicks.push(pt);
@@ -249,7 +249,7 @@ class App {
         this.addAnnot(finalize(t.make(pts, this)));
         if (!t.chain) this.clearAcq();
         if (t.chain) {
-          // ca LINE din CAD: următorul segment pornește din capătul celui desenat
+          // like LINE in CAD: the next segment starts at the end of the one just drawn
           this.clicks = [pts[pts.length - 1]];
           this.updateOverlay(pt, null);
         }
@@ -259,7 +259,7 @@ class App {
     }
   }
 
-  /** Termină polilinia sau hașura în curs. */
+  /** Finishes the polyline or hatch in progress. */
   finishPoly(close) {
     const t = TOOL_BY_ID[this.tool];
     const pts = this.clicks;
@@ -284,7 +284,7 @@ class App {
   }
 
   async init() {
-    startI18n(); // în engleză, textele apar traduse pe măsură ce se construiește interfața
+    startI18n(); // in English, texts are translated as the interface is built
     await document.fonts.load("16px osifont").catch(() => {});
     try {
       const h = await (await fetch("api/health")).json();
@@ -292,7 +292,7 @@ class App {
       this.mode = h.mode || "personal";
       this.ocrLang = h.ocr || null;
       this.desktop = !!h.desktop;
-      // la prima pornire Tesseract poate răspunde greu: interfața pornește oricum, OCR-ul apare după
+      // on first start Tesseract may answer slowly: the interface starts anyway, OCR shows up later
       if (h.ocrPending) this.pollOcrLang();
     } catch (_) {
       this.retentionDays = 0;
@@ -307,12 +307,12 @@ class App {
     let dynOn = true;
     try {
       dynOn = localStorage.getItem("drawcad.dyn") !== "0";
-    } catch (_) { /* implicit pornit */ }
+    } catch (_) { /* on by default */ }
     this.dyn = { on: dynOn, vals: {}, active: null, text: "" };
     this.panel.render();
     this.refreshRecent();
     this.setTool("select");
-    // aplicația desktop deschide un fișier dat din Explorer („Deschide cu DrawCAD”) ca #doc=<id>
+    // the desktop app opens a file passed from Explorer ("Open with DrawCAD") as #doc=<id>
     const m = /^#doc=([a-f0-9]{32})$/.exec(location.hash);
     if (m) {
       history.replaceState(null, "", location.pathname);
@@ -323,7 +323,7 @@ class App {
     if (last) this.loadDoc(last, true);
   }
 
-  // ------------------------------------------------------------ interfață
+  // ------------------------------------------------------------ interface
   buildToolbar() {
     const groups = [];
     for (const t of TOOLS) {
@@ -334,7 +334,7 @@ class App {
     let collapsed = new Set();
     try {
       collapsed = new Set(JSON.parse(localStorage.getItem("cotare.toolGroups") || "[]"));
-    } catch (_) { /* implicit */ }
+    } catch (_) { /* default */ }
     this.collapsedGroups = collapsed;
     $("tools").innerHTML = groups.map((g) => `<button class="grp" data-grp="${g.name}" aria-expanded="${!collapsed.has(g.name)}">
         <span>${g.name}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
@@ -344,7 +344,7 @@ class App {
     $("tools").querySelectorAll("[data-grp]").forEach((b) => b.addEventListener("click", () => this.toggleGroup(b.dataset.grp)));
   }
 
-  /** Grupurile din bara de unelte se pliază; starea se ține minte în browser. */
+  /** Toolbar groups collapse; the state is remembered in the browser. */
   toggleGroup(name, open) {
     const c = this.collapsedGroups;
     const willOpen = open ?? c.has(name);
@@ -356,14 +356,14 @@ class App {
     if (btn) btn.setAttribute("aria-expanded", String(willOpen));
     try {
       localStorage.setItem("cotare.toolGroups", JSON.stringify([...c]));
-    } catch (_) { /* fără memorare */ }
+    } catch (_) { /* not remembered */ }
   }
 
   bindUi() {
     $("btnOpen").addEventListener("click", () => dlg.openDialog(this));
     $("btnOpen2").addEventListener("click", () => $("fileInput").click());
     $("fileInput").addEventListener("change", (e) => {
-      // fișierul vine din dialogul „Deschide desen”: dialogul se închide
+      // the file comes from the "Open drawing" dialog: close the dialog
       if (e.target.files[0] && dlg.isModalOpen()) dlg.closeModal();
       const f = e.target.files[0];
       e.target.value = "";
@@ -374,7 +374,7 @@ class App {
     $("btnClose").addEventListener("click", () => this.closeDoc());
     $("btnPanel").addEventListener("click", () => this.setPanelOpen(!$("app").classList.contains("panel-open")));
     $("btnPanelClose").addEventListener("click", () => this.setPanelOpen(false));
-    // salvarea în așteptare nu se pierde la închiderea tab-ului
+    // a pending save is not lost when the tab closes
     window.addEventListener("pagehide", () => this.flushSaveBeacon());
     $("btnSettings").addEventListener("click", () => this.doc && dlg.settingsDialog(this));
     $("btnText").addEventListener("click", () => this.doc && dlg.textDialog(this));
@@ -384,7 +384,7 @@ class App {
         if (b.dataset.uilang === uiLang()) return;
         try {
           localStorage.setItem("drawcad.lang", b.dataset.uilang);
-        } catch (_) { /* stocare indisponibilă */ }
+        } catch (_) { /* storage unavailable */ }
         location.reload();
       });
     });
@@ -413,7 +413,7 @@ class App {
       const docs = await api.listDocs();
       $("recentList").innerHTML = dlg.recentHtml(docs, this.retentionDays, this.mode);
       dlg.bindRecent($("recentList"), this);
-    } catch (_) { /* fără listă */ }
+    } catch (_) { /* no list */ }
   }
 
   updateButtons() {
@@ -457,7 +457,7 @@ class App {
     if (!TOOL_BY_ID[id]) return;
     if (id !== "select" && id !== "pan") {
       this.lastTool = id;
-      this.lastCmd = id; // Enter / Spațiu (în modul AutoCAD) o repornește
+      this.lastCmd = id; // Enter / Space (in AutoCAD mode) restarts it
       this.recordCmd(id, this._typedCmd);
       this._typedCmd = null;
     }
@@ -479,7 +479,7 @@ class App {
     this.view.redraw();
   }
 
-  // ------------------------------------------------------------ documente
+  // ------------------------------------------------------------ documents
   async openFile(file, dpi) {
     dlg.toast(`Se deschide ${file.name}…`, 15000);
     try {
@@ -510,7 +510,7 @@ class App {
     localStorage.setItem("cotare.lastDoc", meta.id);
     this.annots = (state && state.annots) || [];
     this.settings = { ...dlg.storedDefaults(), ...((state && state.settings) || {}) };
-    this.ocr = new Map(); // pagină → rezultat OCR (null = nerecunoscută încă)
+    this.ocr = new Map(); // page → OCR result (null = not recognized yet)
     this.ocrPages = new Set(meta.ocrPages || []);
     this.hit = null;
     this.undo = [];
@@ -545,8 +545,8 @@ class App {
     if (this.showOcr && this.ocrPages.has(n)) this.loadOcr(n).catch(() => {});
   }
 
-  /** Formele desenate se scalează față de primul lor punct (la calibrare, „își păstrează
-   *  dimensiunile reale”); cotele nu se ating, ele măsoară desenul. */
+  /** Drawn shapes are scaled about their first point (on calibration, "keep their real
+   *  dimensions"); dimensions are left alone, they measure the drawing. */
   rescaleShapes(f) {
     if (!(f > 0) || Math.abs(f - 1) < 1e-9) return;
     this.pushHistory();
@@ -558,8 +558,8 @@ class App {
     this.changed();
   }
 
-  // ------------------------------------------------------------ text și OCR
-  /** Textul recunoscut al paginii n (din cache, de pe server, sau — cu run — recunoscut acum). */
+  // ------------------------------------------------------------ text and OCR
+  /** Recognized text of page n (from cache, from the server, or — with run — recognized now). */
   async loadOcr(n, run = false, force = false) {
     if (!run && this.ocr.has(n)) return this.ocr.get(n);
     const r = run ? await api.runOcr(this.doc.id, n, force) : await api.getOcr(this.doc.id, n);
@@ -576,7 +576,7 @@ class App {
     this.view.redraw();
   }
 
-  /** Arată un text găsit: pagina lui, mărit pe el, cu un chenar care se stinge. */
+  /** Shows a found text: its page, zoomed on it, with a frame that fades out. */
   gotoText(page, box) {
     if (page !== this.page) this.setPage(page);
     const pad = 30;
@@ -606,8 +606,8 @@ class App {
     }));
   }
 
-  /** Rotire / ștergere / mutare de pagini: adnotările (și istoricul de anulare) se transformă odată
-   *  cu pagina, iar serverul primește starea nouă împreună cu operația. */
+  /** Rotating / deleting / moving pages: annotations (and the undo history) are transformed along
+   *  with the page, and the server receives the new state together with the operation. */
   async pageOp(op) {
     if (!this.doc || this._pageBusy) return;
     const n = this.doc.pages.length;
@@ -619,7 +619,7 @@ class App {
     clearTimeout(this.saveTimer);
     this.saveTimer = null;
     try {
-      // foaia mărită de k ori: aceeași cotă reală înseamnă de k ori mai mulți mm de hârtie
+      // sheet enlarged k times: the same real dimension means k times more paper mm
       let settings = this.settings;
       if (op.op === "scale" && (op.pages == null || n === 1)) settings = { ...settings, scale: (Number(settings.scale) || 1) / op.factor };
       const res = await api.pageOp(this.doc.id, { ...op, state: { ...this.stateJson(), settings, annots } });
@@ -654,7 +654,7 @@ class App {
     }
   }
 
-  // ------------------------------------------------------------ stare și istoric
+  // ------------------------------------------------------------ state and history
   stateJson() {
     return { v: 1, settings: this.settings, annots: this.annots };
   }
@@ -709,7 +709,7 @@ class App {
     document.title = "DrawCAD — editor PDF pentru desene tehnice";
     try {
       localStorage.removeItem("cotare.lastDoc");
-    } catch (_) { /* stocare indisponibilă */ }
+    } catch (_) { /* storage unavailable */ }
     this.setTool("select");
     this.panel.render();
     this.updateButtons();
@@ -727,7 +727,7 @@ class App {
       api.saveState(id, this.stateJson()).then(() => {
         if (!this.saveTimer) this.setSaveState("saved");
       }).catch((e) => {
-        // fără rețea / server oprit: se reîncearcă singur, fără să se piardă nimic din browser
+        // no network / server down: retried automatically, nothing is lost in the browser
         this.setSaveState("error", e.message);
         clearTimeout(this.retryTimer);
         this.retryTimer = setTimeout(() => this.doc && this.doc.id === id && this.scheduleSave(), 5000);
@@ -744,7 +744,7 @@ class App {
     el.title = st === "error" ? `Salvarea automată a eșuat (${msg || "eroare"}); se reîncearcă la 5 s.` : st === "saved" ? "Cotele sunt salvate pe server; le regăsești și după închiderea browserului." : "";
   }
 
-  /** Descriere scurtă pentru lista de adnotări. */
+  /** Short description for the annotation list. */
   annotLabel(a) {
     const b = this.builtOf(a);
     const first = (t) => String(t || "").split("\n")[0].slice(0, 40);
@@ -788,7 +788,7 @@ class App {
     return null;
   }
 
-  /** Selectează adnotarea și o aduce în centrul ecranului. */
+  /** Selects the annotation and brings it to the center of the screen. */
   focusAnnot(id) {
     const a = this.annots.find((x) => x.id === id);
     if (!a) return;
@@ -800,7 +800,7 @@ class App {
   }
 
   pushHistory(key) {
-    this.frame = (this.frame || 0) + 1; // adnotările se pot schimba: cache-ul de cadru nu mai e valabil
+    this.frame = (this.frame || 0) + 1; // annotations may change: the per-frame cache is no longer valid
     const now = Date.now();
     if (key && this.lastHistKey === key && now - this.lastHistTime < 1500) {
       this.lastHistTime = now;
@@ -809,7 +809,7 @@ class App {
     this.lastHistKey = key;
     this.lastHistTime = now;
     this.undo.push(JSON.stringify(this.annots));
-    // cel mult 200 de pași și ~20 milioane de caractere (la desene cu mii de adnotări fiecare pas e mare)
+    // at most 200 steps and ~20 million characters (with thousands of annotations every step is large)
     let chars = this.undo.reduce((n, st) => n + st.length, 0);
     while (this.undo.length > 1 && (this.undo.length > 200 || chars > 20e6)) chars -= this.undo.shift().length;
     this.redo = [];
@@ -817,10 +817,10 @@ class App {
   }
 
   changed() {
-    this.frame = (this.frame || 0) + 1; // adnotările se pot schimba: cache-ul de cadru nu mai e valabil
+    this.frame = (this.frame || 0) + 1; // annotations may change: the per-frame cache is no longer valid
     this.unexported = true;
     this.view.redraw();
-    this.view.loadImage(false); // se reîncarcă doar dacă s-a schimbat înnegrirea originalului
+    this.view.loadImage(false); // reload only if the original's blackening changed
     this.scheduleSave();
     this.updateButtons();
   }
@@ -848,7 +848,7 @@ class App {
   }
 
   setSettings(patch) {
-    this.frame = (this.frame || 0) + 1; // adnotările se pot schimba: cache-ul de cadru nu mai e valabil
+    this.frame = (this.frame || 0) + 1; // annotations may change: the per-frame cache is no longer valid
     const inkBefore = JSON.stringify(this.settings.ink || null);
     this.settings = { ...this.settings, ...patch };
     this.cache.clear();
@@ -857,8 +857,8 @@ class App {
     if (JSON.stringify(this.settings.ink || null) !== inkBefore) this.view.loadImage(true);
   }
 
-  /** Parametrii de randare ai paginii: înnegrirea originalului (tot desenul sau obiecte alese). */
-  /** Ștergerile reale de pe pagina n, ca operații pentru randare (editorul arată rezultatul exportului). */
+  /** Render parameters of the page: blackening of the original (whole drawing or chosen objects). */
+  /** Real removals on page n, as render operations (the editor shows the export result). */
   removalOps(n) {
     const ops = [];
     for (const a of this.annots) {
@@ -878,7 +878,7 @@ class App {
 
   renderQueryBase(n) {
     const ink = this.settings.ink;
-    // versiunea paginilor (rotire, ordine): randările vechi din cache-ul browserului nu se mai folosesc
+    // page version (rotation, order): old renders from the browser cache are no longer used
     let q = this.doc && this.doc.lv ? `&v=${this.doc.lv}` : "";
     if (ink && ink.all) q += `&ink=1&fills=${ink.fills || "black"}${ink.images ? "&img=1" : ""}`;
     else {
@@ -888,7 +888,7 @@ class App {
     return q;
   }
 
-  // ------------------------------------------------------------ adnotări
+  // ------------------------------------------------------------ annotations
   S() {
     if (!this._S || this._Skey !== JSON.stringify(this.settings)) {
       this._Skey = JSON.stringify(this.settings);
@@ -900,7 +900,7 @@ class App {
   builtOf(a) {
     const S = this.S();
     const c = this.cache.get(a.id);
-    // în același eveniment (o mișcare de mouse, un cadru) geometria nu se schimbă: fără JSON.stringify
+    // within the same event (one mouse move, one frame) geometry does not change: no JSON.stringify
     if (c && c.frame === this.frame && c.obj === a) return c.built;
     const stamp = JSON.stringify(a) + this._Skey;
     if (c && c.stamp === stamp) {
@@ -918,7 +918,7 @@ class App {
     return a.layer === "rev" ? "rev" : "add";
   }
 
-  /** Adnotările paginii curente, fără straturile ascunse pe ecran. */
+  /** Annotations of the current page, without layers hidden on screen. */
   visibleBuilt() {
     return this.annots
       .filter((a) => a.page === this.page && !this.hidden.has(this.layerOf(a)))
@@ -930,7 +930,7 @@ class App {
     else this.hidden.add(k);
     try {
       localStorage.setItem("cotare.hidden", JSON.stringify([...this.hidden]));
-    } catch (_) { /* fără memorare */ }
+    } catch (_) { /* not remembered */ }
     const keep = [...this.sel].filter((id) => {
       const a = this.annots.find((x) => x.id === id);
       return a && !this.hidden.has(this.layerOf(a));
@@ -943,7 +943,7 @@ class App {
     return this.annots.find((a) => a.id === this.selectedId) || null;
   }
 
-  /** Adnotările selectate (una sau mai multe), în ordinea din document. */
+  /** Selected annotations (one or more), in document order. */
   selectedAll() {
     return this.annots.filter((a) => this.sel.has(a.id));
   }
@@ -958,7 +958,7 @@ class App {
     this.panel.render();
     this.view.redraw();
     if (this.compact()) {
-      // pe ecran mic panoul se deschide singur doar când e de scris ceva sau ai ales o adnotare
+      // on small screens the panel opens by itself only when there is something to type or an annotation is picked
       const a = id && this.annots.find((x) => x.id === id);
       const typing = a && ["text", "note", "lead", "strike", "revtab", "bom", "gdt", "rough", "balloon", "datum"].includes(a.type);
       if (!id) this.setPanelOpen(false);
@@ -986,7 +986,7 @@ class App {
   }
 
   updateSel(fn, key) {
-    this.frame = (this.frame || 0) + 1; // adnotările se pot schimba: cache-ul de cadru nu mai e valabil
+    this.frame = (this.frame || 0) + 1; // annotations may change: the per-frame cache is no longer valid
     const a = this.selected();
     if (!a) return;
     this.pushHistory(key ? `${a.id}:${key}` : null);
@@ -994,9 +994,9 @@ class App {
     this.changed();
   }
 
-  /** Aceeași modificare pe toate adnotările selectate (un singur pas de anulare). */
+  /** The same change on all selected annotations (a single undo step). */
   updateMany(fn) {
-    this.frame = (this.frame || 0) + 1; // adnotările se pot schimba: cache-ul de cadru nu mai e valabil
+    this.frame = (this.frame || 0) + 1; // annotations may change: the per-frame cache is no longer valid
     const list = this.selectedAll();
     if (!list.length) return;
     this.pushHistory();
@@ -1034,7 +1034,7 @@ class App {
     this.changed();
   }
 
-  // ------------------------------------------------------------ copiere / lipire
+  // ------------------------------------------------------------ copy / paste
   copySelected(silent) {
     const list = this.selectedAll();
     if (!list.length) return false;
@@ -1044,7 +1044,7 @@ class App {
     this.clip = JSON.stringify(keep);
     try {
       localStorage.setItem("cotare.clip", this.clip);
-    } catch (_) { /* stocare indisponibilă */ }
+    } catch (_) { /* storage unavailable */ }
     if (!silent) dlg.toast(`${keep.length === 1 ? "Copiat" : `Copiate ${keep.length} adnotări`} · Ctrl+V lipește la cursor`);
     return true;
   }
@@ -1055,7 +1055,7 @@ class App {
     if (!raw) {
       try {
         raw = localStorage.getItem("cotare.clip");
-      } catch (_) { /* stocare indisponibilă */ }
+      } catch (_) { /* storage unavailable */ }
     }
     if (!raw) return;
     let src = JSON.parse(raw);
@@ -1068,7 +1068,7 @@ class App {
       a.page = this.page;
       return a;
     });
-    // grupul se mută ca întreg: ancora primei adnotări ajunge la cursor
+    // the group moves as a whole: the anchor of the first annotation goes to the cursor
     const anchor = (build(items[0], this.S(), this.measure).handles || []).find((h) => h.p);
     let dx = 5 * K;
     let dy = 5 * K;
@@ -1116,7 +1116,7 @@ class App {
     return rows;
   }
 
-  /** Rânduri noi pentru lista de componente: câte unul pentru fiecare număr de reper absent. */
+  /** New rows for the parts list: one for each missing item number. */
   bomRowsFromBalloons(existing = [], ensureOne = false) {
     const have = new Set(existing.map((r) => String(r.poz).trim()));
     const nums = [...new Set(this.annots.filter((a) => a.type === "balloon").map((a) => String(a.num ?? "").trim()).filter(Boolean))];
@@ -1136,7 +1136,7 @@ class App {
     return "A";
   }
 
-  /** Eticheta propusă pentru vederea următoare: prima secțiune sau primul detaliu fără etichetă. */
+  /** Proposed label for the next view: the first section or detail without a label. */
   nextViewLabel() {
     const texts = this.annots.filter((a) => a.type === "text").map((a) => String(a.text || "").replace(/\s+/g, ""));
     const has = (l) => texts.some((t) => t.startsWith(`${l}–`) || t.startsWith(`${l}-`) || t.startsWith(`${l}(`) || t === l);
@@ -1220,7 +1220,7 @@ class App {
         }
       }
       this._extra = extra;
-      // originalul ascuns pe ecran nu mai „prinde” cursorul
+      // an original hidden on screen no longer "catches" the cursor
       const sp = on && !this.hidden.has("orig") ? this.snapper : this.noSnapper;
       sn = sp.snap(raw, {
         tol: 10 / v.zoom,
@@ -1260,9 +1260,9 @@ class App {
   }
 
   /**
-   * Achiziție ca în AutoCAD: cursorul oprit ~½ s pe un punct îl marchează pentru urmărire și
-   * extensie (încă o oprire îl scoate); oprit pe o linie, în timpul unei comenzi, îi ia direcția
-   * pentru snap paralel.
+   * Acquisition as in AutoCAD: resting the cursor ~½ s on a point marks it for tracking and
+   * extension (resting again removes it); resting on a line during a command takes its direction
+   * for parallel snap.
    */
   trackHover(sn, raw) {
     const cfg = this.snapCfg;
@@ -1317,7 +1317,7 @@ class App {
   saveSnapCfg() {
     try {
       localStorage.setItem("cotare.snap", JSON.stringify(this.snapCfg));
-    } catch (_) { /* fără memorare */ }
+    } catch (_) { /* not remembered */ }
     this.syncSnapUi();
   }
 
@@ -1358,7 +1358,7 @@ class App {
     });
     $("stSnap").addEventListener("change", () => { c.on = $("stSnap").checked; this.clearAcq(); this.saveSnapCfg(); });
     $("stTrack").addEventListener("change", () => { c.tracking = $("stTrack").checked; this.saveSnapCfg(); });
-    // ortho și polar se exclud, ca în AutoCAD
+    // ortho and polar exclude each other, as in AutoCAD
     $("stOrtho").addEventListener("change", () => { c.ortho = $("stOrtho").checked; if (c.ortho) c.polar = false; this.saveSnapCfg(); });
     $("stPolar").addEventListener("change", () => { c.polar = $("stPolar").checked; if (c.polar) c.ortho = false; this.saveSnapCfg(); });
     $("stPolarInc").addEventListener("change", () => { c.polarInc = Number($("stPolarInc").value); c.polar = true; c.ortho = false; this.saveSnapCfg(); });
@@ -1381,17 +1381,17 @@ class App {
     cv.addEventListener("pointerdown", (e) => {
       this.frame = (this.frame || 0) + 1;
       if (!this.doc) return;
-      // tastele de unelte nu trebuie să ajungă într-un câmp din panou rămas activ
+      // tool keys must not end up in a panel field that is still focused
       if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
       cv.setPointerCapture(e.pointerId);
       const [sx, sy] = pos(e);
       const raw = this.view.toPage(sx, sy);
       if (this.mmenu) {
-        // meniul radial deschis: un click în afara lui îl închide
+        // radial menu open: a click outside closes it
         this.closeMarkingMenu();
         return;
       }
-      // două degete: pan + zoom; renunță la ce începuse primul deget
+      // two fingers: pan + zoom; drop whatever the first finger started
       if (e.pointerType === "touch") {
         this.touches.set(e.pointerId, [sx, sy]);
         if (this.touches.size === 2) {
@@ -1402,7 +1402,7 @@ class App {
         if (this.touches.size > 2) return;
       }
       if (e.button === 2) {
-        // click dreapta: scurt = Esc / gata, ținut = meniu radial, tras = mută foaia
+        // right click: short = Esc / done, held = radial menu, dragged = pan the sheet
         this.drag = { kind: "rclick", sx, sy, x0: sx, y0: sy };
         clearTimeout(this.pressTimer);
         this.pressTimer = setTimeout(() => {
@@ -1415,7 +1415,7 @@ class App {
         return;
       }
       if (e.pointerType === "touch" && e.button === 0) {
-        // apăsare lungă cu degetul: meniul radial
+        // long press with a finger: the radial menu
         clearTimeout(this.pressTimer);
         this.pressStart = [sx, sy];
         this.pressTimer = setTimeout(() => {
@@ -1438,7 +1438,7 @@ class App {
         this.startSelectDrag(raw, sx, sy, e);
         return;
       }
-      // înainte de primul click al unei unelte, pătrățelele selecției au prioritate
+      // before the first click of a tool, the selection handles take priority
       if (!this.clicks.length && this.tryHandleDrag(sx, sy, true)) return;
       const anchor = this.clicks[this.clicks.length - 1];
       if (t.kind === "rect") {
@@ -1447,8 +1447,8 @@ class App {
         return;
       }
       if (e.pointerType === "touch") {
-        // pe ecran tactil punctul se pune la ridicarea degetului: poți ajusta poziția cu snap,
-        // iar apăsarea lungă deschide meniul fără să lase un punct în urmă
+        // on touch screens the point is placed when the finger lifts: you can adjust the position with snap,
+        // and a long press opens the menu without leaving a point behind
         this.drag = { kind: "tap" };
         return;
       }
@@ -1507,7 +1507,7 @@ class App {
         if (d.code.includes("e")) b[2] = pt[0];
         if (d.code.includes("n")) b[1] = pt[1];
         if (d.code.includes("s")) b[3] = pt[1];
-        // marginea trecută peste cea opusă: caseta se întoarce, ca în Windows
+        // edge dragged past the opposite one: the box flips, as in Windows
         if (b[0] > b[2]) {
           [b[0], b[2]] = [b[2], b[0]];
           d.code = d.code.replace(/[we]/, (c) => (c === "w" ? "e" : "w"));
@@ -1584,7 +1584,7 @@ class App {
       if (t.kind === "select" || t.kind === "pan") {
         this.showCoords(raw);
         if (t.kind === "select" && !d) {
-          // ce s-ar apuca la click: mâner, margine sau adnotare, cu cursorul și eticheta potrivite
+          // what a click would grab: handle, edge or annotation, with the matching cursor and label
           const hv = e.pointerType === "touch" ? null : this.hoverAt(sx, sy, raw, false);
           cv.style.cursor = hv ? hv.cursor : "default";
           this.setHover(hv, raw);
@@ -1592,7 +1592,7 @@ class App {
         return;
       }
       if (!d && !this.clicks.length) {
-        // și cu altă unealtă, colțurile de mărire ale selecției rămân apucabile
+        // even with another tool, the resize corners of the selection stay grabbable
         const hs = this.handleAt(sx, sy);
         if (hs && hs.h.k === "sc") {
           cv.style.cursor = this.handleCursor(hs.a, hs.h);
@@ -1607,7 +1607,7 @@ class App {
       this.trackHover(sn, raw);
       this._dynPt = spt;
       this._dynSn = sn;
-      // valorile scrise (intrarea dinamică) fixează punctul: cursorul alege doar ce n-ai scris
+      // typed values (dynamic input) fix the point: the cursor only picks what you did not type
       const pt = d && d.kind === "rect" ? spt : this.dynPoint(spt, anchor);
       this.showCoords(pt, anchor);
       if (d && d.kind === "rect") {
@@ -1628,7 +1628,7 @@ class App {
       }
       const d = this.drag;
       if (d && d.kind === "pinch") {
-        // al doilea deget ridicat: gestul se termină, fără click
+        // second finger lifted: the gesture ends, no click
         if (this.touches.size === 0) this.drag = null;
         return;
       }
@@ -1649,7 +1649,7 @@ class App {
       if (d.kind === "mmenu") {
         const m = this.mmenu;
         if (m && m.hi >= 0) this.runMarking(m.hi);
-        return; // fără direcție: meniul rămâne deschis pentru click
+        return; // no direction: the menu stays open for a click
       }
       if (d.kind === "pan") {
         $("canvas").style.cursor = this.tool === "pan" ? "grab" : this.tool === "select" ? "default" : "crosshair";
@@ -1685,7 +1685,7 @@ class App {
           else this.view.redraw();
           return;
         }
-        // stânga→dreapta: doar ce e complet în dreptunghi; dreapta→stânga: tot ce atinge
+        // left→right: only what is fully inside the rectangle; right→left: everything it touches
         const crossing = end[0] < d.start[0];
         const ids = [];
         for (const { a, built } of this.visibleBuilt()) {
@@ -1719,7 +1719,7 @@ class App {
     };
     cv.addEventListener("pointerup", up);
     cv.addEventListener("pointercancel", up);
-    // dublu-click pe o adnotare: cursorul ajunge direct în primul câmp de editat din panou
+    // double click on an annotation: the cursor goes straight to the first editable field in the panel
     cv.addEventListener("dblclick", (e) => {
       if (this.tool !== "select") return;
       const [sx, sy] = pos(e);
@@ -1733,8 +1733,8 @@ class App {
         if (f.select) f.select();
       }
     });
-    // meniul contextual al browserului nu apare peste desen; nici când click-ul dreapta se
-    // eliberează pe meniul radial (pe Windows evenimentul vine la ridicarea butonului)
+    // the browser context menu does not appear over the drawing; not even when the right click is
+    // released over the radial menu (on Windows the event comes when the button is released)
     $("viewport").addEventListener("contextmenu", (e) => e.preventDefault());
     document.addEventListener("contextmenu", (e) => {
       if (this.mmenu || this.mmenuClosedAt > performance.now() - 400) e.preventDefault();
@@ -1748,7 +1748,7 @@ class App {
     });
   }
 
-  /** Dreptunghiul editabil al unei casete (acoperire, ștergere, înnegrire, cotă tăiată, dreptunghi desenat). */
+  /** Editable rectangle of a box (cover, removal, blackening, struck dimension, drawn rectangle). */
   boxOf(a) {
     let r = null;
     if (a.r && ["white", "redact", "ink", "strike"].includes(a.type)) r = a.r;
@@ -1757,7 +1757,7 @@ class App {
     return [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.max(r[0], r[2]), Math.max(r[1], r[3])];
   }
 
-  /** Marginea sau colțul de casetă de sub cursor (ca la ferestrele din Windows). */
+  /** Box edge or corner under the cursor (like Windows windows). */
   edgeAt(sx, sy, touch) {
     const tol = touch ? 12 : 6;
     const items = this.visibleBuilt();
@@ -1812,15 +1812,15 @@ class App {
         return;
       }
     }
-    // zonă goală: dreptunghi de selecție
+    // empty area: selection rectangle
     this.drag = { kind: "marquee", start: raw, add: e.shiftKey };
   }
 
   /**
-   * Un click pe pătrățelele adnotării selectate o editează. Cu altă unealtă activă contează doar
-   * pătrățelul de mărire: capetele trebuie să rămână libere pentru cote înlănțuite din același punct.
+   * A click on the handles of the selected annotation edits it. With another tool active only the
+   * resize handle counts: endpoints must stay free for chained dimensions from the same point.
    */
-  /** Mânerul adnotării selectate cel mai apropiat de cursor (pixeli de ecran), sau null. */
+  /** Handle of the selected annotation closest to the cursor (screen pixels), or null. */
   handleAt(sx, sy, touch = false) {
     const sel = this.selected();
     if (!sel || sel.page !== this.page || this.sel.size > 1 || this.hidden.has(this.layerOf(sel))) return null;
@@ -1830,7 +1830,7 @@ class App {
     for (const h of this.builtOf(sel).handles || []) {
       if (!h.p) continue;
       const [hx, hy] = this.view.toScreen(h.p);
-      // la egalitate, punctele adnotării au prioritate față de colțurile de mărire
+      // on a tie, the annotation's points win over the resize corners
       const d = Math.hypot(hx - sx, hy - sy) + (h.k === "sc" ? 1.5 : 0);
       if (d <= bd) {
         bd = d;
@@ -1840,7 +1840,7 @@ class App {
     return best;
   }
 
-  /** Ce face un mâner, în cuvinte (tooltip la hover). */
+  /** What a handle does, in words (hover tooltip). */
   handleLabel(a, k) {
     if (k === "sc") return "Mărește / micșorează";
     if (k === "tx") return "Mută textul cotei";
@@ -1869,8 +1869,8 @@ class App {
   }
 
   /**
-   * Un click pe mânerele adnotării selectate o editează. Cu altă unealtă activă contează doar
-   * pătrățelele de mărire: capetele trebuie să rămână libere pentru cote înlănțuite din același punct.
+   * A click on the handles of the selected annotation edits it. With another tool active only the
+   * resize handles count: endpoints must stay free for chained dimensions from the same point.
    */
   tryHandleDrag(sx, sy, onlyScale = false, touch = false) {
     const hit0 = this.handleAt(sx, sy, touch);
@@ -1886,7 +1886,7 @@ class App {
     return true;
   }
 
-  /** Ce e sub cursor în modul Selecție: mâner, margine de casetă sau adnotare. */
+  /** What is under the cursor in Select mode: handle, box edge or annotation. */
   hoverAt(sx, sy, raw, touch) {
     const h = this.handleAt(sx, sy, touch);
     if (h) return { kind: "handle", a: h.a, h: h.h, cursor: this.handleCursor(h.a, h.h), label: this.handleLabel(h.a, h.h.k) };
@@ -1901,7 +1901,7 @@ class App {
     const key = hv ? `${hv.kind}:${hv.a.id}:${hv.h ? hv.h.k + hv.h.p.join(",") : ""}` : "";
     this.hoverPt = raw;
     if (key === this.hoverKey2) {
-      if (hv) this.view.redraw(); // eticheta urmează cursorul
+      if (hv) this.view.redraw(); // the label follows the cursor
       return;
     }
     this.hoverKey2 = key;
@@ -1937,15 +1937,15 @@ class App {
     const L = Math.hypot(dx, dy);
     const ang = ((Math.atan2(-dy, dx) * 180) / Math.PI + 360) % 180;
     const f = (v) => fmtNum(v, ",", 3);
-    // linia măsurată rămâne vizibilă până la măsurătoarea următoare
+    // the measured line stays visible until the next measurement
     this.lastMeasure = [{ t: "L", p: [...p, ...q], w: 0.6, c: "sel" }, { t: "C", p: [...p], r: 1.2, w: 0.6, c: "sel" }, { t: "C", p: [...q], r: 1.2, w: 0.6, c: "sel" }];
     this.view.overlay = { prims: this.lastMeasure };
     this.view.redraw();
     dlg.toast(`L = ${f(L)} mm · Δx ${f(Math.abs(dx))} · Δy ${f(Math.abs(dy))} · ${fmtNum(ang, ",", 2)}°${Math.abs(k - 1) > 1e-9 ? ` (scara ${this.scaleLabel()})` : ""}`, 8000);
   }
 
-  // ------------------------------------------------------------ intrare dinamică (DYN)
-  /** Unealta așteaptă un punct relativ la ultimul click: valorile se pot scrie de la tastatură. */
+  // ------------------------------------------------------------ dynamic input (DYN)
+  /** The tool expects a point relative to the last click: values can be typed on the keyboard. */
   dynTool() {
     const t = TOOL_BY_ID[this.tool];
     return !!(this.doc && this.dyn.on && this.clicks.length && t && (t.kind === "clicks" || t.kind === "poly"));
@@ -1957,7 +1957,7 @@ class App {
     this.dyn.text = "";
   }
 
-  /** Punctul cursorului, cu valorile scrise (în mm reali, Y în sus ca în CAD) aplicate. */
+  /** The cursor point, with the typed values applied (in real mm, Y up as in CAD). */
   dynPoint(pt, anchor) {
     const v = this.dyn.vals;
     if (!anchor || !Object.keys(v).length) return pt;
@@ -1974,7 +1974,7 @@ class App {
   }
 
   defaultDynField() {
-    // întâi lungimea pe direcția cursorului; Tab → unghiul
+    // length along the cursor direction first; Tab → angle
     return "len";
   }
 
@@ -1986,15 +1986,15 @@ class App {
     if (d.text === "" || d.text === "-" || d.text === ".") delete d.vals[d.active];
     else if (Number.isFinite(v)) {
       d.vals[d.active] = v;
-      for (const g of group) delete d.vals[g]; // carteziene sau polare, nu amestecate
+      for (const g of group) delete d.vals[g]; // cartesian or polar, not mixed
     }
   }
 
-  /** Taste pentru intrarea dinamică; întoarce true dacă tasta a fost folosită aici. */
+  /** Keys for dynamic input; returns true if the key was used here. */
   dynKey(e) {
     if (!this.dynTool()) return false;
     const d = this.dyn;
-    // virgula (și cea de pe tastatura numerică) e separator zecimal: 12,5 = 12.5
+    // the comma (including the numeric keypad one) is the decimal separator: 12,5 = 12.5
     const k = e.code === "NumpadDecimal" || e.key === "," ? "." : e.key;
     const has = d.active || Object.keys(d.vals).length;
     if (/^[0-9.\-]$/.test(k)) {
@@ -2010,7 +2010,7 @@ class App {
       return true;
     }
     if (k === "Tab") {
-      // Tab trece între lungime și unghi; valoarea scrisă rămâne fixată
+      // Tab switches between length and angle; the typed value stays locked
       d.active = (d.active || this.defaultDynField()) === "len" ? "ang" : "len";
       d.text = d.vals[d.active] != null ? String(d.vals[d.active]) : "";
       this.dynRefresh();
@@ -2071,7 +2071,7 @@ class App {
       const txt = on ? d.text.replace(".", sep) : fmtNum(lock ? d.vals[f] : live[f], sep, f === "ang" ? 1 : 2) + (f === "ang" ? "°" : "");
       return `<span class="df${on ? " on" : ""}${lock ? " lock" : ""}"><i>${names[f]}</i><b>${txt}</b></span>`;
     }).join("");
-    // lângă cursor, sub eticheta de snap / polar (aceea e la +16, +18 și are 20 px)
+    // next to the cursor, below the snap / polar label (that one is at +16, +18 and is 20 px tall)
     const [sx, sy] = this.view.toScreen(this._dynPt || pt);
     const vp = $("viewport");
     box.style.left = `${Math.max(4, Math.min(sx + 16, vp.clientWidth - 190))}px`;
@@ -2089,8 +2089,8 @@ class App {
     $("stCoords").textContent = s;
   }
 
-  // ------------------------------------------------------------ tastatură
-  // ------------------------------------------------------------ taste și linia de comandă
+  // ------------------------------------------------------------ keyboard
+  // ------------------------------------------------------------ keys and the command line
   applyKeyCfg(cfg) {
     this.keyCfg = cfg;
     this.keyMap = directKeyMap(cfg);
@@ -2112,11 +2112,11 @@ class App {
     if (!inp) return;
     let list = [];
     let pick = 0;
-    let hIdx = -1; // poziția în istoric (-1 = nu se răsfoiește)
+    let hIdx = -1; // position in the history (-1 = not browsing)
     const showHistory = () => {
       const hist = this.cmdHistory;
       const byId = Object.fromEntries(commandList(this.keyCfg).map((c) => [c.id, c]));
-      // ca în AutoCAD: cele mai recente jos, lângă linia de comandă
+      // as in AutoCAD: most recent at the bottom, next to the command line
       const from = Math.max(0, hIdx - 7);
       const rows = hist.slice(from, from + 8).map((h, k) => ({ ...h, i: from + k })).reverse();
       box.innerHTML = rows.map((h) => {
@@ -2131,7 +2131,7 @@ class App {
         if (c) this.execCmdLine(c);
       }));
     };
-    /** Săgeată sus / jos: comenzile folosite înainte, de la cea mai recentă. */
+    /** Arrow up / down: previously used commands, most recent first. */
     const browse = (dir) => {
       const hist = this.cmdHistory;
       if (!hist.length) return false;
@@ -2178,7 +2178,7 @@ class App {
       }
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
-        // linia goală (sau deja în istoric): istoricul comenzilor; altfel, sugestiile
+        // empty line (or already in history): the command history; otherwise, the suggestions
         if (!inp.value.trim() || hIdx >= 0) {
           browse(e.key === "ArrowUp" ? 1 : -1);
           return;
@@ -2195,7 +2195,7 @@ class App {
           if (e.key !== "Tab") this.repeatCmd();
           return;
         }
-        // potrivirea exactă are întâietate; altfel prima sugestie (sau cea aleasă cu săgețile)
+        // an exact match wins; otherwise the first suggestion (or the one picked with the arrows)
         const exact = resolveCommand(v, this.keyCfg);
         const chosen = hIdx >= 0 ? exact : pick > 0 && list[pick] ? list[pick] : exact || list[0];
         if (!chosen) {
@@ -2208,7 +2208,7 @@ class App {
     });
   }
 
-  /** Începe scrierea unei comenzi (modul AutoCAD) sau deschide linia de comandă goală. */
+  /** Starts typing a command (AutoCAD mode) or opens an empty command line. */
   focusCmdLine(ch = "") {
     const inp = $("cmdIn");
     if (!inp || inp.offsetParent === null) return false;
@@ -2221,7 +2221,7 @@ class App {
 
   execCmdLine(c) {
     const inp = $("cmdIn");
-    // în istoric rămâne ce ai scris (dacă e chiar o prescurtare a comenzii), altfel prescurtarea ei
+    // the history keeps what you typed (if it really is an alias of the command), otherwise its alias
     const typed = inp.value.trim().toUpperCase();
     this._typedCmd = c.aliases && c.aliases.includes(typed) ? typed : null;
     inp.value = "";
@@ -2234,7 +2234,7 @@ class App {
     if (this.lastCmd) this.runCommand(this.lastCmd);
   }
 
-  /** Istoricul comenzilor (cea mai recentă prima), păstrat în browser între sesiuni. */
+  /** Command history (most recent first), kept in the browser between sessions. */
   get cmdHistory() {
     if (!this._cmdHist) {
       try {
@@ -2257,7 +2257,7 @@ class App {
     this._cmdHist = h.slice(0, 50);
     try {
       localStorage.setItem("drawcad.cmdhist", JSON.stringify(this._cmdHist));
-    } catch (_) { /* stocare indisponibilă */ }
+    } catch (_) { /* storage unavailable */ }
   }
 
   toggleSnapFlag(fk) {
@@ -2277,7 +2277,7 @@ class App {
     this.view.zoomToBox([Math.min(...boxes.map((q) => q[0])), Math.min(...boxes.map((q) => q[1])), Math.max(...boxes.map((q) => q[2])), Math.max(...boxes.map((q) => q[3]))]);
   }
 
-  /** O comandă după id: unealtă sau acțiune (din linia de comandă, tastă sau repetare). */
+  /** A command by id: tool or action (from the command line, a key or a repeat). */
   runCommand(id) {
     const needDoc = () => {
       if (this.doc) return true;
@@ -2286,7 +2286,7 @@ class App {
     };
     if (TOOL_BY_ID[id]) {
       if (!needDoc()) return;
-      // E (ERASE) cu ceva selectat șterge selecția, ca în AutoCAD; altfel pornește ștergerea din original
+      // E (ERASE) with something selected deletes the selection, as in AutoCAD; otherwise starts removal from the original
       if (id === "redact" && this.sel.size) {
         this.deleteSelected();
         this.lastCmd = id;
@@ -2330,12 +2330,12 @@ class App {
       this.frame = (this.frame || 0) + 1;
       if (dlg.isModalOpen()) return;
       if (e.key === "F12") {
-        // ca în AutoCAD: intrarea dinamică pornită / oprită
+        // as in AutoCAD: dynamic input on / off
         e.preventDefault();
         this.dyn.on = !this.dyn.on;
         try {
           localStorage.setItem("drawcad.dyn", this.dyn.on ? "1" : "0");
-        } catch (_) { /* fără memorare */ }
+        } catch (_) { /* not remembered */ }
         if (!this.dyn.on) {
           this.dynReset();
           $("dynBox").hidden = true;
@@ -2393,13 +2393,13 @@ class App {
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      // în timpul unei comenzi, cifrele merg în lungimea de lângă cursor (intrarea dinamică)
+      // during a command, digits go to the length next to the cursor (dynamic input)
       if (this.dyn && this.dynKey(e)) {
         e.preventDefault();
         return;
       }
       const autocad = this.keyCfg && this.keyCfg.mode === "autocad";
-      // modul AutoCAD: literele și cifrele scriu comanda (Shift+F rămâne zoom pe selecție)
+      // AutoCAD mode: letters and digits type the command (Shift+F stays zoom to selection)
       if (autocad && e.key.length === 1 && /[a-z0-9]/i.test(e.key) && !(e.shiftKey && k === "f") && !this.mmenu) {
         e.preventDefault();
         this.focusCmdLine(e.key);
@@ -2416,8 +2416,8 @@ class App {
         return;
       }
       if (e.key === "Enter" && !this.clicks.length && !this.mmenu) {
-        // fără nimic în lucru: AutoCAD repetă ultima comandă; în modul cu taste directe,
-        // Enter deschide linia de comandă
+        // nothing in progress: AutoCAD repeats the last command; in direct-keys mode,
+        // Enter opens the command line
         e.preventDefault();
         if (autocad) this.repeatCmd();
         else this.focusCmdLine();
@@ -2432,13 +2432,13 @@ class App {
         return;
       }
       if ((e.key === "ArrowUp" || e.key === "ArrowDown") && autocad && !this.sel.size && !this.clicks.length) {
-        // ca în AutoCAD: săgeata sus aduce ultimele comenzi în linia de comandă
+        // as in AutoCAD: arrow up brings the last commands into the command line
         e.preventDefault();
         if (this.focusCmdLine("") && this._cmdBrowse) this._cmdBrowse(e.key === "ArrowUp" ? 1 : -1);
         return;
       }
       if (e.key.startsWith("Arrow") && this.sel.size) {
-        // deplasare fină: 0,5 mm, cu Shift 5 mm
+        // fine nudge: 0.5 mm, with Shift 5 mm
         e.preventDefault();
         const step = (e.shiftKey ? 5 : 0.5) * K;
         const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
@@ -2454,7 +2454,7 @@ class App {
         return;
       }
       if (k === "f") {
-        // Shift+F: zoom pe selecție; F: toată pagina
+        // Shift+F: zoom to selection; F: whole page
         if (e.shiftKey) this.zoomSelection();
         else this.view.fit();
         return;
@@ -2474,7 +2474,7 @@ class App {
     });
     window.addEventListener("keyup", (e) => {
       if (e.key === " ") {
-        // modul AutoCAD: Spațiu apăsat scurt (fără tragere) = Enter: termină sau repetă comanda
+        // AutoCAD mode: Space pressed briefly (no drag) = Enter: finishes or repeats the command
         const tap = this.space && !this.spaceDragged && Date.now() - (this.spaceAt || 0) < 300;
         if (tap && this.keyCfg && this.keyCfg.mode === "autocad" && !dlg.isModalOpen()) {
           const tag = document.activeElement && document.activeElement.tagName;
@@ -2491,6 +2491,6 @@ class App {
 }
 
 const app = new App();
-window.drawcad = app; // pentru depanare din consolă
-window.cotare = app; // numele vechi, folosit de testele e2e
+window.drawcad = app; // for debugging from the console
+window.cotare = app; // the old name, used by the e2e tests
 app.init();

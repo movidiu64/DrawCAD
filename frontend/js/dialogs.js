@@ -1,4 +1,4 @@
-// Ferestre de dialog: deschidere, export, setări, ștergere din original, calibrare.
+// Dialogs: open, export, settings, removal from the original, calibration.
 import * as api from "./api.js";
 import { K, fmtNum, parseNum, DEFAULT_SETTINGS } from "./annots.js";
 import { MM_POSITIONS, MM_DEFAULT, MM_SPECIAL, markingConfig } from "./mmenu.js";
@@ -87,7 +87,7 @@ export function recentHtml(docs, retentionDays, mode = "personal") {
     </div>`).join("") + note + modeNote;
 }
 
-/** Leagă butoanele din lista de recente: deschidere și ștergere (cu confirmare). */
+/** Binds the buttons of the recent list: open and delete (with confirmation). */
 export function bindRecent(container, app, onOpen) {
   container.querySelectorAll("[data-doc]").forEach((b) => b.addEventListener("click", () => {
     if (onOpen) onOpen();
@@ -105,7 +105,7 @@ export function bindRecent(container, app, onOpen) {
   }));
 }
 
-// ------------------------------------------------------------------ închidere document
+// ------------------------------------------------------------------ closing a document
 export function closeDialog(app) {
   const exp = app.doc && app.doc.expires ? new Date(app.doc.expires * 1000).toLocaleDateString("ro-RO") : null;
   const dlg = showModal(`
@@ -138,12 +138,12 @@ export function closeDialog(app) {
   });
 }
 
-// ------------------------------------------------------------------ deschidere
+// ------------------------------------------------------------------ open
 export async function openDialog(app) {
   let docs = [];
   try {
     docs = await api.listDocs();
-  } catch (_) { /* fără listă */ }
+  } catch (_) { /* no list */ }
   const dlg = showModal(`
     <h2>Deschide desen</h2>
     <div class="cols">
@@ -322,7 +322,7 @@ export function exportDialog(app, opts = {}) {
   });
 }
 
-// ------------------------------------------------------------------ pagini
+// ------------------------------------------------------------------ pages
 function sheetName(p) {
   const long = Math.max(p.w, p.h) / K;
   const hit = SHEETS.find(([, mm]) => Math.abs(long - mm) < 3);
@@ -380,7 +380,7 @@ export function pagesDialog(app) {
     grid.classList.remove("busy");
     armed = -1;
     render();
-    // butonul apăsat a dispărut odată cu grila: focalizarea rămâne în dialog, ca Esc să-l închidă
+    // the pressed button disappeared with the grid: focus stays in the dialog so Esc closes it
     dlg.querySelector(".foot .primary").focus();
   };
   grid.addEventListener("change", (e) => {
@@ -421,9 +421,9 @@ export function pagesDialog(app) {
   render();
 }
 
-// ------------------------------------------------------------------ salvare fișier
-/** Salvează un fișier generat. În aplicația desktop deschide dialogul „Salvează ca” al sistemului;
- *  în browser îl descarcă. Întoarce numele salvat sau null dacă utilizatorul a renunțat. */
+// ------------------------------------------------------------------ saving a file
+/** Saves a generated file. In the desktop app it opens the system "Save as" dialog;
+ *  in the browser it downloads it. Returns the saved name or null if the user cancelled. */
 export async function saveBlob(blob, fileName) {
   const bridge = window.pywebview && window.pywebview.api;
   if (bridge && bridge.save_file) {
@@ -451,7 +451,7 @@ export async function saveBlob(blob, fileName) {
   return fileName;
 }
 
-// ------------------------------------------------------------------ text și OCR
+// ------------------------------------------------------------------ text and OCR
 const norm = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[⌀ø]/g, "ø").replace(/\s+/g, "");
 
 export async function textDialog(app) {
@@ -509,7 +509,7 @@ export async function textDialog(app) {
     }
     const mark = (t) => {
       if (!q) return esc(t);
-      // evidențierea potrivirii, ignorând spațiile și diacriticele
+      // highlight the match, ignoring spaces and diacritics
       const chars = [...t];
       const nn = chars.map((c) => norm(c));
       const flat = nn.join("");
@@ -594,13 +594,13 @@ export async function textDialog(app) {
     }
   });
   updStat();
-  // textele PDF și OCR-ul deja făcut, pentru paginile în care se caută
+  // PDF texts and OCR already done, for the pages being searched
   await Promise.all(pagesToRead.map(async (n) => {
     try {
       native.set(n, (await api.pageText(app.doc.id, n, app.doc.lv || 0)).items);
     } catch (_) { native.set(n, []); }
     if (app.ocrPages.has(n) && !app.ocr.get(n)) {
-      try { await app.loadOcr(n); } catch (_) { /* fără OCR */ }
+      try { await app.loadOcr(n); } catch (_) { /* no OCR */ }
     }
   }));
   if (modal().hidden) return;
@@ -609,8 +609,8 @@ export async function textDialog(app) {
   $q.focus();
 }
 
-// ------------------------------------------------------------------ setări
-/** Cele 8 poziții ale meniului radial, ca o busolă în jurul cursorului. */
+// ------------------------------------------------------------------ settings
+/** The 8 positions of the radial menu, like a compass around the cursor. */
 function mmGridHtml(cfg) {
   const groups = [];
   for (const t of TOOLS) {
@@ -621,7 +621,7 @@ function mmGridHtml(cfg) {
   }
   const options = (cur) => `<optgroup label="Acțiuni">${MM_SPECIAL.map(([v, l]) => `<option value="${v}" ${v === cur ? "selected" : ""}>${esc(l)}</option>`).join("")}</optgroup>
     ${groups.map((g) => `<optgroup label="${esc(g.name)}">${g.tools.map((t) => `<option value="${t.id}" ${t.id === cur ? "selected" : ""}>${esc(t.label)}</option>`).join("")}</optgroup>`).join("")}`;
-  // poziția în grilă 3×3 pentru indicii E, NE, N, NV, V, SV, S, SE
+  // position in a 3×3 grid for the indices E, NE, N, NW, W, SW, S, SE
   const cell = { 0: [2, 1], 1: [2, 0], 2: [1, 0], 3: [0, 0], 4: [0, 1], 5: [0, 2], 6: [1, 2], 7: [2, 2] };
   let html = `<div class="mmc" style="grid-column:2;grid-row:2"><span>●</span><span class="sub">cursor</span></div>`;
   for (let i = 0; i < 8; i++) {
@@ -727,7 +727,7 @@ export function settingsDialog(app) {
     const mm = [...dlg.querySelectorAll("#sMm select")].sort((p, q) => p.dataset.i - q.dataset.i).map((x) => x.value);
     try {
       if (mm.length === 8) localStorage.setItem("cotare.mmenu", JSON.stringify(mm));
-    } catch (_) { /* stocare indisponibilă */ }
+    } catch (_) { /* storage unavailable */ }
     pending.revNo = dlg.querySelector("#sRev").value.trim() || "1";
     pending.author = dlg.querySelector("#sAuth").value.trim();
     const sc = parseNum(dlg.querySelector("#sScale").value);
@@ -739,13 +739,13 @@ export function settingsDialog(app) {
       void revNo;
       try {
         localStorage.setItem("cotare.defaults", JSON.stringify(style));
-      } catch (_) { /* stocare indisponibilă */ }
+      } catch (_) { /* storage unavailable */ }
     }
     closeModal();
   });
 }
 
-// ------------------------------------------------------------------ taste și comenzi
+// ------------------------------------------------------------------ keys and commands
 export function keysDialog(app) {
   let cfg = JSON.parse(JSON.stringify(keyConfig()));
   const rowsHtml = () => {
@@ -849,7 +849,7 @@ export function keysDialog(app) {
 }
 
 export function storedDefaults() {
-  // documentele noi: textele din desen și separatorul zecimal după limba interfeței
+  // new documents: drawing texts and the decimal separator follow the UI language
   const byLang = uiLang() === "en" ? { dlang: "en", sep: "." } : { dlang: "ro" };
   try {
     return { ...DEFAULT_SETTINGS, ...byLang, ...JSON.parse(localStorage.getItem("cotare.defaults") || "{}") };
@@ -858,7 +858,7 @@ export function storedDefaults() {
   }
 }
 
-// ------------------------------------------------------------------ calibrare
+// ------------------------------------------------------------------ calibration
 export function calibDialog(app, paperMm) {
   const dlg = showModal(`
     <h2>Calibrare scară</h2>
@@ -899,7 +899,7 @@ export function calibDialog(app, paperMm) {
   });
 }
 
-// ------------------------------------------------------------------ ștergere din original
+// ------------------------------------------------------------------ removal from the original
 export async function redactDialog(app, annot, isNew) {
   const rect = annot.r;
   let objs = [];
@@ -910,10 +910,10 @@ export async function redactDialog(app, annot, isNew) {
     return;
   }
   let mode = annot.mode || (isNew ? "cover" : "objects");
-  // implicit: obiectele aflate cel puțin 90% în zonă (lungimea liniei sau aria textului)
+  // default: objects at least 90% inside the zone (line length or text area)
   const FRAC = 0.9;
-  // literele mici (texte AutoCAD exportate ca linii) cu centrul în zonă se iau întregi,
-  // chiar dacă o codiță iese din casetă (g, p, y…)
+  // small letters (AutoCAD texts exported as lines) with their center in the zone are taken whole,
+  // even if a tail sticks out of the box (g, p, y…)
   const zx0 = Math.min(rect[0], rect[2]);
   const zx1 = Math.max(rect[0], rect[2]);
   const zy0 = Math.min(rect[1], rect[3]);
@@ -944,7 +944,7 @@ export async function redactDialog(app, annot, isNew) {
     if (o.cuttable) return ["tăiat la margine", "var(--accent)"];
     return ["parțial — doar acoperire", "var(--warn)"];
   };
-  // în modul zonă, ce nu se poate tăia (blocuri, umpleri, imagini) se poate acoperi cu alb
+  // in zone mode, what cannot be cut (blocks, fills, images) can be covered with white
   const needsCover = () => objs.some((o) => o.locked || (!o.inside && o.type !== "text" && !o.cuttable));
   let cover = annot.mode === "zone" && annot.cover !== undefined ? annot.cover : needsCover();
   const dlg = showModal(`
@@ -1004,7 +1004,7 @@ export async function redactDialog(app, annot, isNew) {
     schedulePreview();
   });
   dlg.querySelector("#rLockNote").hidden = !objs.some((o) => o.locked);
-  // ---- acoperire: culoare, mostre, pipetă
+  // ---- cover: color, swatches, eyedropper
   const colorInp = dlg.querySelector("#rColor");
   const setColor = (c) => {
     color = c.toLowerCase();
@@ -1015,8 +1015,8 @@ export async function redactDialog(app, annot, isNew) {
   };
   colorInp.addEventListener("input", () => setColor(colorInp.value));
   dlg.querySelectorAll("[data-sw]").forEach((b) => b.addEventListener("click", () => setColor(b.dataset.sw)));
-  // pipeta: un click pe imaginea „Înainte” ia culoarea punctului; în Chrome/Edge se poate lua
-  // și de oriunde de pe ecran (EyeDropper)
+  // eyedropper: a click on the "Before" image takes the color of that point; in Chrome/Edge it can be taken
+  // from anywhere on screen as well (EyeDropper)
   const pickBtn = dlg.querySelector("#rPick");
   const before = dlg.querySelector("#rBefore");
   const setPicking = (on) => {
@@ -1038,7 +1038,7 @@ export async function redactDialog(app, annot, isNew) {
         setPicking(false);
         setColor(res.sRGBHex);
       } catch (_) {
-        // anulat cu Esc: rămâne varianta cu click pe previzualizare
+        // cancelled with Esc: the click-on-preview option remains
       }
     }
   });
@@ -1048,7 +1048,7 @@ export async function redactDialog(app, annot, isNew) {
     const r = cv.getBoundingClientRect();
     const x = Math.min(cv.width - 1, Math.max(0, Math.round(((e.clientX - r.left) / r.width) * cv.width)));
     const y = Math.min(cv.height - 1, Math.max(0, Math.round(((e.clientY - r.top) / r.height) * cv.height)));
-    // fără conturul roșu al zonei: culoarea se citește din imaginea curată
+    // without the red zone outline: the color is read from the clean image
     paint(cv, beforeImg, null);
     const d = cv.getContext("2d").getImageData(x, y, 1, 1).data;
     drawBefore(null);
@@ -1073,7 +1073,7 @@ export async function redactDialog(app, annot, isNew) {
   };
   dlg.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.mode)));
 
-  // previzualizări decupate în jurul zonei
+  // previews cropped around the zone
   const x0 = Math.min(rect[0], rect[2]);
   const x1 = Math.max(rect[0], rect[2]);
   const y0 = Math.min(rect[1], rect[3]);
@@ -1132,7 +1132,7 @@ export async function redactDialog(app, annot, isNew) {
   const schedulePreview = () => {
     clearTimeout(pvTimer);
     if (mode === "cover") {
-      // acoperirea nu schimbă fișierul: „după” = „înainte” cu dreptunghiul colorat
+      // a cover does not change the file: "after" = "before" with the colored rectangle
       paint(dlg.querySelector("#rAfter"), beforeImg, (ctx) => {
         ctx.fillStyle = color;
         ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
@@ -1148,12 +1148,12 @@ export async function redactDialog(app, annot, isNew) {
           ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
         } : null);
         URL.revokeObjectURL(url);
-      } catch (_) { /* previzualizare indisponibilă */ }
+      } catch (_) { /* preview unavailable */ }
     }, 150);
   };
   try {
     beforeImg = await loadImg(api.renderUrl(app.doc.id, annot.page, imgScale));
-  } catch (_) { /* fără imagine */ }
+  } catch (_) { /* no image */ }
   drawBefore(null);
   setColor(color);
   setMode(mode);
@@ -1174,7 +1174,7 @@ export async function redactDialog(app, annot, isNew) {
   });
 }
 
-// ------------------------------------------------------------------ înnegrire linii originale
+// ------------------------------------------------------------------ blackening original lines
 export async function inkDialog(app, annot, isNew) {
   const rect = annot.r;
   let objs = [];
@@ -1184,7 +1184,7 @@ export async function inkDialog(app, annot, isNew) {
     toast(e.message);
     return;
   }
-  // implicit: tot ce atinge zona, mai puțin ce e în blocuri (acelea doar cu înnegrirea întregului desen)
+  // default: everything touching the zone, except what is inside blocks (those only via blackening the whole drawing)
   const ids = new Set(isNew ? objs.filter((o) => !o.locked && o.type !== "image").map((o) => o.id) : annot.ids || []);
   const label = (o) => (o.type === "text" ? `Text „${esc(o.text || "?")}”` : o.type === "path" ? `Linie / contur · ${o.segments} puncte` : o.type === "image" ? "Imagine" : o.type);
   const dlg = showModal(`
@@ -1244,7 +1244,7 @@ export async function inkDialog(app, annot, isNew) {
         const url = await api.previewRemoval(app.doc.id, annot.page, [{ mode: "black", ids: [...ids] }], imgScale);
         paint(dlg.querySelector("#kAfter"), await loadImg(url));
         URL.revokeObjectURL(url);
-      } catch (_) { /* fără previzualizare */ }
+      } catch (_) { /* no preview */ }
     }, 150);
   };
   const render = () => {
@@ -1271,7 +1271,7 @@ export async function inkDialog(app, annot, isNew) {
   });
   try {
     paint(dlg.querySelector("#kBefore"), await loadImg(api.renderUrl(app.doc.id, annot.page, imgScale)));
-  } catch (_) { /* fără imagine */ }
+  } catch (_) { /* no image */ }
   render();
   preview();
   dlg.querySelector("#kOk").addEventListener("click", () => {

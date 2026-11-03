@@ -1,7 +1,7 @@
-// Snap pe obiecte, în stilul AutoCAD: capăt, mijloc, centru, cadran, intersecție, intersecție
-// aparentă, extensie, perpendicular, tangent, paralel, pe obiect, plus urmărire (aliniere cu
-// puncte „achiziționate”) și urmărire polară. Coordonate: puncte PDF vizuale (y în jos);
-// unghiurile se măsoară pe ecran, în sens trigonometric. Arc = [cx, cy, r, a0, sweep cu semn].
+// Object snap, AutoCAD style: endpoint, midpoint, center, quadrant, intersection, apparent
+// intersection, extension, perpendicular, tangent, parallel, nearest, plus tracking (alignment with
+// "acquired" points) and polar tracking. Coordinates: visual PDF points (y down);
+// angles are measured on screen, counter-clockwise. Arc = [cx, cy, r, a0, signed sweep].
 
 export const MODES = [
   { id: "e", name: "Capăt" },
@@ -49,7 +49,7 @@ export function inArc(arc, th) {
   return rel <= Math.abs(sw) + 1e-6;
 }
 
-/** Intersecția dreptelor p + t·d și q + u·e: { t, u, p } sau null dacă sunt paralele. */
+/** Intersection of the lines p + t·d and q + u·e: { t, u, p } or null if they are parallel. */
 export function lineLine(p, d, q, e) {
   const den = d[0] * e[1] - d[1] * e[0];
   if (Math.abs(den) < 1e-12) return null;
@@ -59,7 +59,7 @@ export function lineLine(p, d, q, e) {
   return { t, u, p: [p[0] + d[0] * t, p[1] + d[1] * t] };
 }
 
-/** Intersecțiile dreptei p + t·d cu cercul (c, r): lista de { t, p }. */
+/** Intersections of the line p + t·d with the circle (c, r): a list of { t, p }. */
 export function lineCircle(p, d, c, r) {
   const fx = p[0] - c[0];
   const fy = p[1] - c[1];
@@ -97,7 +97,7 @@ function segDist(s, x, y) {
   return Math.hypot(s[0] + (s[2] - s[0]) * t - x, s[1] + (s[3] - s[1]) * t - y);
 }
 
-// ------------------------------------------------------------------ index spațial
+// ------------------------------------------------------------------ spatial index
 class Grid {
   constructor(cell) {
     this.cell = cell;
@@ -144,7 +144,7 @@ class Grid {
 
 function addSeg(grid, s) {
   if (grid.addBox(s, Math.min(s[0], s[2]), Math.min(s[1], s[3]), Math.max(s[0], s[2]), Math.max(s[1], s[3]))) return;
-  // segment lung (chenar, axă): se înregistrează doar celulele de pe traseul lui
+  // long segment (border, axis): only the cells along its path are registered
   const L = Math.hypot(s[2] - s[0], s[3] - s[1]);
   const n = Math.ceil(L / (grid.cell / 2));
   const pts = [];
@@ -183,13 +183,13 @@ export class Snapper {
     return { segs, arcs };
   }
 
-  /** Direcțiile de prelungire ale liniilor care se termină în p (pentru extensie). */
+  /** Extension directions of the lines ending at p (for extension snap). */
   dirsAt(p, extra = {}) {
     const eps = 0.05;
     const out = [];
     const { segs } = this.near(p[0], p[1], eps, extra);
     for (const s of segs) {
-      if (s[4]) continue; // bucăți de curbă aproximată: fără extensie
+      if (s[4]) continue; // pieces of an approximated curve: no extension
       const a = [s[0], s[1]];
       const b = [s[2], s[3]];
       const L = dist(a, b);
@@ -200,7 +200,7 @@ export class Snapper {
     return out;
   }
 
-  /** Direcția segmentului de sub cursor (pentru paralel), sau null. */
+  /** Direction of the segment under the cursor (for parallel), or null. */
   dirUnder(x, y, tol, extra = {}) {
     const { segs } = this.near(x, y, tol, extra);
     let best = null;
@@ -218,8 +218,8 @@ export class Snapper {
 
   /**
    * o: { tol, modes (Set), anchor, extra: {pts, segs, arcs}, acq: [{p, dirs}], parDir,
-   *      polarInc (grade, 0 = oprit), tracking (bool) }.
-   * Întoarce { p, kind, guides: [{ o, p }], from } sau null.
+   *      polarInc (degrees, 0 = off), tracking (bool) }.
+   * Returns { p, kind, guides: [{ o, p }], from } or null.
    */
   snap(cur, o) {
     const [x, y] = cur;
@@ -237,7 +237,7 @@ export class Snapper {
       }
     };
 
-    // 1. puncte caracteristice
+    // 1. characteristic points
     const pts = this.pg.query(x - tol, y - tol, x + tol, y + tol, new Set());
     for (const q of extra.pts || []) if (Math.abs(q[0] - x) <= tol && Math.abs(q[1] - y) <= tol) pts.add(q);
     for (const q of pts) {
@@ -248,7 +248,7 @@ export class Snapper {
     }
     const R = tol * 3;
     const { segs, arcs } = this.near(x, y, R, extra);
-    // capete, mijloace, centre și cadrane pentru arce (inclusiv cele din formele desenate)
+    // endpoints, midpoints, centers and quadrants for arcs (including those of drawn shapes)
     for (const a of arcs) {
       const c = [a[0], a[1]];
       const full = Math.abs(a[4]) >= TAU - 1e-6;
@@ -263,7 +263,7 @@ export class Snapper {
       }
     }
 
-    // 2. intersecții reale, aproape de cursor
+    // 2. real intersections, close to the cursor
     const close = segs.filter((s) => segDist(s, x, y) <= tol);
     const closeArcs = arcs.filter((a) => Math.abs(dist([a[0], a[1]], cur) - a[2]) <= tol && inArc(a, angOf([a[0], a[1]], cur)));
     if (M.has("x")) {
@@ -300,10 +300,10 @@ export class Snapper {
       }
     }
 
-    // 3. intersecție aparentă: prelungirile a două linii din jur se întâlnesc sub cursor
-    //    (colțul teoretic al unei teșituri sau racordări, la care se cotează)
+    // 3. apparent intersection: the extensions of two nearby lines meet under the cursor
+    //    (the theoretical corner of a chamfer or fillet, which is what gets dimensioned)
     if (M.has("ax")) {
-      // liniile pot fi la câțiva mm de colțul teoretic (teșitură 5×45°, racordare R5…)
+      // the lines may be a few mm from the theoretical corner (5×45° chamfer, R5 fillet…)
       const RAX = Math.max(R, 12 * (72 / 25.4));
       const cand = (RAX > R ? this.near(x, y, RAX, extra).segs : segs).filter((s) => !s[4]).slice(0, 90);
       for (let i = 0; i < cand.length; i++) {
@@ -314,10 +314,10 @@ export class Snapper {
           if (!r) continue;
           const onS = r.t >= -1e-6 && r.t <= 1 + 1e-6;
           const onU = r.u >= -1e-6 && r.u <= 1 + 1e-6;
-          if (onS && onU) continue; // e intersecție reală
+          if (onS && onU) continue; // it is a real intersection
           const d = dist(r.p, cur);
           if (d > tol || segDist(s, r.p[0], r.p[1]) > RAX || segDist(u, r.p[0], r.p[1]) > RAX) continue;
-          // unghi prea mic: punctul ar fi instabil
+          // angle too small: the point would be unstable
           const L1 = Math.hypot(s[2] - s[0], s[3] - s[1]);
           const L2 = Math.hypot(u[2] - u[0], u[3] - u[1]);
           const sin = Math.abs(((s[2] - s[0]) * (u[3] - u[1]) - (s[3] - s[1]) * (u[2] - u[0])) / (L1 * L2));
@@ -327,7 +327,7 @@ export class Snapper {
       }
     }
 
-    // 4. perpendicular și tangent față de punctul anterior
+    // 4. perpendicular and tangent relative to the previous point
     if (A && M.has("p")) {
       for (const s of close) {
         const f = footOnSeg(s, A[0], A[1]);
@@ -362,7 +362,7 @@ export class Snapper {
     }
     if (best) return best;
 
-    // 5. aliniere: urmărire din punctele achiziționate, extensii, paralel, polar
+    // 5. alignment: tracking from acquired points, extensions, parallel, polar
     const guides = [];
     for (const q of o.acq || []) {
       if (o.tracking) {
@@ -384,7 +384,7 @@ export class Snapper {
         if (g.ray && t < 0) return null;
         return [g.o[0] + g.d[0] * t, g.o[1] + g.d[1] * t];
       };
-      // două aliniamente care se întâlnesc sub cursor
+      // two alignments meeting under the cursor
       for (let i = 0; i < guides.length; i++) {
         for (let j = i + 1; j < guides.length; j++) {
           const g = guides[i];
@@ -395,7 +395,7 @@ export class Snapper {
           const d = dist(r.p, cur);
           if (d <= tol) take(r.p, g.kind, d, 0, { guides: [{ o: g.o, p: r.p }, { o: h.o, p: r.p }], from: g.kind === "pol" || g.kind === "par" ? g.o : h.kind === "pol" || h.kind === "par" ? h.o : g.o, d2: h.kind });
         }
-        // aliniament × obiect real
+        // alignment × real object
         const g = guides[i];
         for (const s of close) {
           const r = lineLine(g.o, g.d, [s[0], s[1]], [s[2] - s[0], s[3] - s[1]]);
@@ -420,7 +420,7 @@ export class Snapper {
       if (best) return best;
     }
 
-    // 6. cel mai apropiat punct pe obiect
+    // 6. nearest point on an object
     if (M.has("n")) {
       let bd = tol;
       for (const s of close) {

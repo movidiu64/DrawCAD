@@ -1,4 +1,4 @@
-// Afișarea paginii și a adnotărilor pe <canvas>, cu zoom și deplasare.
+// Rendering of the page and annotations on <canvas>, with zoom and pan.
 import * as api from "./api.js";
 import { tr } from "./i18n.js";
 
@@ -15,16 +15,16 @@ export const COLORS = {
 
 const colorOf = (c) => COLORS[c] || (typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c) ? c : "#111");
 
-// pagina întreagă: ~12 MP (≈ 48 MB decodați în browser); peste, la zoom mare, vine zona de detaliu
+// whole page: ~12 MP (≈ 48 MB decoded in the browser); beyond that, at high zoom, the detail area takes over
 const BASE_MAX_PX = 12e6;
 
-// imaginile paginii se țin ca ImageBitmap: la înlocuire se eliberează imediat (close), nu când
-// ajunge colectorul de gunoi la ele — la zoom înainte și înapoi se adunau altfel sute de MB
+// page images are kept as ImageBitmap: when replaced they are released immediately (close), not when
+// the garbage collector gets to them — zooming in and out would otherwise pile up hundreds of MB
 const toBitmap = (im) => (typeof createImageBitmap === "function" ? createImageBitmap(im) : Promise.reject(new Error("fără ImageBitmap"))).catch(() => im);
 const release = (x) => {
   if (x && typeof x.close === "function") x.close();
 };
-const DETAIL_MAX_PX = 22e6; // zona de detaliu (serverul acceptă până la 24 MP)
+const DETAIL_MAX_PX = 22e6; // detail area (the server accepts up to 24 MP)
 
 export function drawPrims(ctx, prims, zoom, color = colorOf, minPx = 0.8, opts = {}) {
   for (const p of prims) {
@@ -64,7 +64,7 @@ export function drawPrims(ctx, prims, zoom, color = colorOf, minPx = 0.8, opts =
   ctx.setLineDash([]);
 }
 
-// ------------------------------------------------------------------ vederea
+// ------------------------------------------------------------------ the view
 export class View {
   constructor(canvas, app) {
     this.canvas = canvas;
@@ -138,7 +138,7 @@ export class View {
     this.afterZoom();
   }
 
-  /** Zoom pe un dreptunghi din pagină (o adnotare sau o selecție), cu margine. */
+  /** Zoom to a rectangle of the page (an annotation or a selection), with a margin. */
   zoomToBox(b, margin = 60) {
     if (!b || !this.cw) return;
     const w = Math.max(b[2] - b[0], 20);
@@ -187,8 +187,8 @@ export class View {
   loadImage(force) {
     if (!this.docId || !this.pageW) return;
     const want = this.zoom * this.dpr;
-    const q = Math.pow(2, Math.ceil(Math.log2(want) * 2) / 2); // trepte de √2
-    // pagina întreagă cel mult ~12 MP; peste, la zoom mare, se randează doar zona vizibilă
+    const q = Math.pow(2, Math.ceil(Math.log2(want) * 2) / 2); // steps of √2
+    // whole page at most ~12 MP; beyond that, at high zoom, only the visible area is rendered
     const maxBase = Math.sqrt(BASE_MAX_PX / (this.pageW * this.pageH));
     const scale = Math.min(Math.max(q, 0.25), 16, Math.max(0.25, Math.pow(2, Math.floor(Math.log2(maxBase) * 2) / 2)));
     this.detailNeeded = want > scale * 1.05;
@@ -225,7 +225,7 @@ export class View {
     };
     const ops = this.app.removalOps ? this.app.removalOps(this.pageN) : [];
     if (ops.length) {
-      // cu ștergeri: pagina se randează cu ele aplicate, ca în PDF-ul exportat
+      // with removals: the page is rendered with them applied, as in the exported PDF
       const ink = this.app.settings.ink && this.app.settings.ink.all ? this.app.settings.ink : null;
       const bk = ink ? [] : this.app.annots.filter((a) => a.type === "ink" && a.page === this.pageN).flatMap((a) => a.ids || []);
       const all = bk.length ? [{ mode: "black", ids: bk }, ...ops] : ops;
@@ -244,7 +244,7 @@ export class View {
     im.src = api.renderUrl(this.docId, this.pageN, scale, extra);
   }
 
-  /** Detaliul vizibil la zoom mare: doar zona de pe ecran (plus o margine), la rezoluția cerută. */
+  /** The visible detail at high zoom: only the on-screen area (plus a margin), at the required resolution. */
   scheduleDetail() {
     clearTimeout(this.detailTimer);
     this.detailTimer = setTimeout(() => this.loadDetail(), 140);
@@ -261,7 +261,7 @@ export class View {
     let mx = (vx1 - vx0) * 0.25;
     let my = (vy1 - vy0) * 0.25;
     if ((vx1 - vx0 + 2 * mx) * (vy1 - vy0 + 2 * my) * scale * scale > DETAIL_MAX_PX) mx = my = 0;
-    const g = 256 / scale; // grilă în puncte: zone refolosibile din cache la deplasări mici
+    const g = 256 / scale; // grid in points: areas reusable from the cache on small pans
     const x0 = Math.max(0, Math.floor((vx0 - mx) / g) * g);
     const y0 = Math.max(0, Math.floor((vy0 - my) / g) * g);
     const x1 = Math.min(this.pageW, Math.ceil((vx1 + mx) / g) * g);
@@ -269,7 +269,7 @@ export class View {
     if (x1 - x0 < 1 || y1 - y0 < 1) return;
     const d = this.detail;
     const q2 = this.app.renderQuery ? this.app.renderQuery(this.pageN) : "";
-    // detaliul de acum acoperă deja ecranul la rezoluția cerută
+    // the current detail already covers the screen at the required resolution
     if (d && d.page === this.pageN && d.doc === this.docId && d.query === q2 && d.scale >= scale / 1.01
       && d.rect[0] <= Math.max(0, vx0) && d.rect[1] <= Math.max(0, vy0) && d.rect[2] >= Math.min(this.pageW, vx1) && d.rect[3] >= Math.min(this.pageH, vy1)) return;
     const rect = [x0, y0, x1, y1].map((v) => Math.round(v * 100) / 100);
@@ -332,7 +332,7 @@ export class View {
   }
 
   draw() {
-    // cadru nou: modificările făcute între timp (tragere, panou) se văd la redesenare
+    // new frame: changes made in the meantime (dragging, panel) show on redraw
     this.app.frame = (this.app.frame || 0) + 1;
     const ctx = this.ctx;
     const d = this.dpr;
@@ -364,13 +364,13 @@ export class View {
     for (const { a, built } of app.visibleBuilt()) {
       const on = app.isSelected(a.id);
       if (hv && hv.a.id === a.id && hv.kind === "body" && !on) {
-        // sub cursor: conturul se aprinde ușor, ca să se vadă ce se apucă
+        // under the cursor: the outline lights up slightly, to show what would be grabbed
         ctx.globalAlpha = 0.22;
         drawPrims(ctx, built.prims.filter((p) => p.t !== "R"), z, () => COLORS.sel, 6, { noDash: true });
         ctx.globalAlpha = 1;
       }
       if (on) {
-        // contur de selecție sub desen; textul primește o casetă
+        // selection outline beneath the drawing; text gets a box
         ctx.globalAlpha = 0.35;
         drawPrims(ctx, built.prims.filter((p) => p.t !== "T" && p.t !== "R"), z, () => COLORS.sel, 5, { noDash: true });
         if (!single && built.bbox) {
@@ -383,7 +383,7 @@ export class View {
       }
       drawPrims(ctx, built.prims, z);
       if (on && single) {
-        // caseta adnotării, ca să se vadă de unde se mărește
+        // annotation box, to show where it is resized from
         if (built.bbox && (built.handles || []).some((h) => h.k === "sc")) {
           const [x0, y0, x1, y1] = built.bbox;
           ctx.setLineDash([4 / z, 3 / z]);
@@ -426,12 +426,12 @@ export class View {
       if (ov.snap) this.drawSnap(ov.snap);
     }
     if ((app.acq && app.acq.length) || app.parSeg) this.drawAcquired(app.acq || [], app.parSeg);
-    // eticheta de lângă cursor: ce face mânerul / caseta de sub cursor, sau valoarea în timpul tragerii
+    // label next to the cursor: what the handle / box under the cursor does, or the value while dragging
     if (app.dragTip) this.drawTip(app.dragTip.txt, app.dragTip.p[0], app.dragTip.p[1]);
     else if (hv && hv.label && app.hoverPt && !(ov && ov.snap)) this.drawTip(hv.label, app.hoverPt[0], app.hoverPt[1], true);
   }
 
-  /** Textul recunoscut (OCR): casete verzi, cu textul citit deasupra când e destul de mare pe ecran. */
+  /** Recognized text (OCR): green boxes, with the read text above when it is large enough on screen. */
   drawOcr(lines) {
     const ctx = this.ctx;
     const z = this.zoom;
@@ -464,7 +464,7 @@ export class View {
     const ctx = this.ctx;
     const s = 7 / this.zoom;
     if (hot && hot.p) {
-      // mânerul de sub cursor: inel în jur
+      // handle under the cursor: a ring around it
       ctx.beginPath();
       ctx.arc(hot.p[0], hot.p[1], 9 / this.zoom, 0, Math.PI * 2);
       ctx.fillStyle = "rgba(242,169,59,0.25)";
@@ -479,7 +479,7 @@ export class View {
       ctx.strokeStyle = h.k === "tx" ? COLORS.sel : "#ffffff";
       ctx.lineWidth = 1.2 / this.zoom;
       if (h.k === "sc") {
-        // pătrățelul de mărire: contur alb cu săgeată diagonală
+        // resize handle: white outline with a diagonal arrow
         const q = s * 1.15;
         ctx.fillStyle = "#ffffff";
         ctx.strokeStyle = COLORS.sel;
@@ -509,7 +509,7 @@ export class View {
     const z = this.zoom;
     const s = 9 / z;
     const [x, y] = sn.p;
-    // linii de urmărire / extensie / polar: punctate, verzi, prelungite dincolo de punct
+    // tracking / extension / polar lines: dotted, green, extended past the point
     if (sn.guides) {
       ctx.save();
       ctx.strokeStyle = "#3ccf8e";
@@ -556,7 +556,7 @@ export class View {
         for (let i = 0; i < 3; i++) ctx.rect(x + s * (0.95 + i * 0.35), y + s * 0.55, 0.6 / z, 0.6 / z);
         break;
       case "n":
-        // clepsidră, ca la AutoCAD
+        // hourglass, as in AutoCAD
         ctx.moveTo(x - s / 2, y - s / 2);
         ctx.lineTo(x + s / 2, y - s / 2);
         ctx.lineTo(x - s / 2, y + s / 2);
@@ -601,7 +601,7 @@ export class View {
     if (sn.label) this.drawTip(sn.label, x, y);
   }
 
-  /** Eticheta de lângă cursor, în pixeli de ecran (ca tooltip-ul de snap din AutoCAD). */
+  /** Label next to the cursor, in screen pixels (like AutoCAD's snap tooltip). */
   drawTip(txt, x, y, subtle = false) {
     txt = tr(txt);
     const ctx = this.ctx;
@@ -624,7 +624,7 @@ export class View {
     ctx.restore();
   }
 
-  /** Punctele achiziționate pentru urmărire: cruciuliță portocalie mică; segmentul pentru paralel: „//”. */
+  /** Points acquired for tracking: small orange cross; the segment for parallel: "//". */
   drawAcquired(acq, par) {
     const ctx = this.ctx;
     const z = this.zoom;

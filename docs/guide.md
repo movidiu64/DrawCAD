@@ -1,0 +1,483 @@
+# DrawCAD — full guide
+
+> The short overview and quick install are in the [README](../README.md). This is the complete documentation: installing on Unraid / Dockhand, every tool, the keys, export and known limitations.
+
+DrawCAD is a self-hosted web app (Docker) for adding to a PDF or a scan:
+
+- **dimensions**: linear, aligned, diameter, radius and angular, plus chamfers, leaders and free text;
+- **tolerances**: ±, deviations, ISO 286 fits with automatic limits (e.g. `Ø25k6 (+0,015/+0,002)`);
+- **GD&T** to ISO 1101: all 14 characteristics, Ø, the Ⓜ Ⓛ Ⓟ Ⓕ CZ modifiers, datums A/B/C, plus datum symbols;
+- **surface roughness** to ISO 1302 / ISO 21920-1: with or without material removal, parameter (Ra, Rz…), process, directly on the surface or with a leader;
+- **revisions**: struck dimension + new value + revision triangle, plus a **revision table** (Rev. / Description / Date / Name) filled in from the struck dimensions;
+- multi-line **technical notes**, numbered automatically, with an optional title and frame;
+- a **parts list** (ISO 7573) filled in from the item balloons;
+- **views**: section plane A–A (ISO 128-44), detail circle, view labels and item balloons (ISO 6433);
+- **drawing**: line, polyline, rectangle, circle, arc, center mark, hatch and break line, with the ISO 128 line types (continuous, dashed, chain, double-dashed chain, dotted) and the standard widths;
+- **removal** from the original, either covered in white or by truly removing the PDF objects;
+- **blackening the original for printing**: colored drawings (light green, yellow) come out black, for the whole drawing or only for chosen lines; scans become black and white;
+- vector **PDF export**, with an embedded ISO 3098 font and an attached editable layer;
+- **search and OCR**: find any text on the drawing (Ctrl+F); on scanned drawings the text is recognized with Tesseract and can be placed invisibly in the PDF (searchable PDF);
+- **DXF export** for AutoCAD / Allplan: the PDF geometry as real lines, arcs, circles and texts, the DrawCAD dimensions on their own layer, at paper size or at real size; scans are vectorized (experimental), with the recognized text as text.
+
+The original is never modified. Annotations are stored separately and applied only on export.
+
+## Installation
+
+The `ghcr.io/movidiu64/drawcad:latest` image is built by GitHub Actions on every push to `main`, after the tests and the browser test on the container pass. `compose.yaml` is all you need to install it.
+
+### With Dockhand (Git stack) — recommended
+
+Dockhand clones the repo and builds the image directly on the server. No registry and no `ghcr.io` token are needed.
+
+1. **Repo access** (only while the repository is private). On GitHub create a fine-grained token for `DrawCAD` only, with **Contents: Read-only**. In Dockhand add it to the Git credentials: user `movidiu64`, password = the token.
+2. **New stack from Git:**
+   - repository: `https://github.com/movidiu64/DrawCAD.git`
+   - branch: `main`
+   - compose file: **`compose.build.yaml`**
+3. **Stack variables** (optional; the full list is in `.env.example`):
+   - `DRAWCAD_PORT=8478`
+   - `DRAWCAD_DATA_DIR=/mnt/user/appdata/drawcad` — an absolute path on the server, not a relative one
+   - `PUID=99`, `PGID=100`
+4. **Deploy.** The first build takes 1–2 minutes. The app starts on `http://<ip>:8478`.
+
+**Moving from the old name (Cotare):** the container is now called `drawcad`. Before the first redeploy, stop and remove the old `cotare` container, otherwise port 8478 stays taken. Data now lives in `/mnt/user/appdata/drawcad` by default. Working documents from `/mnt/user/appdata/cotare` can be moved there, or you can keep the old path with `DRAWCAD_DATA_DIR`. The `COTARE_*` variables still work.
+
+On every redeploy after a git sync the image is rebuilt (`pull_policy: build`). For automatic sync on push, set up the stack webhook in Dockhand and add it in GitHub under the repo's **Settings → Webhooks**.
+
+### With Dockhand and the prebuilt GHCR image
+
+The compose file is `compose.yaml`. While the package is private, the Docker daemon needs credentials to pull it: a classic token with `read:packages` (GitHub Packages does not accept fine-grained tokens).
+
+If the pull returns `unauthorized` even with the `ghcr.io` registry added in Dockhand, Dockhand is not passing the credentials to the stack deploy. Use the build variant above instead.
+
+### With Dockhand (stack pasted manually)
+
+Create a new stack and paste the contents of `compose.yaml`. Steps 3 and 4 above still apply.
+
+### With docker compose from the command line
+
+```bash
+cp .env.example .env          # optional: adjust the port and the data folder
+docker compose up -d          # with the image from GHCR
+# or, without GHCR, building locally from source:
+docker compose -f compose.build.yaml up -d --build
+```
+
+### Windows desktop app
+
+The same app, without a server and without Docker. It runs on the computer, in its own window, and works offline.
+
+**Installation:**
+1. Download `DrawCAD-<version>-setup.exe` from **Releases** and run it. It needs no administrator rights and installs for the current user, in `%LOCALAPPDATA%\Programs\DrawCAD`.
+2. Optionally, the installer adds a desktop icon and "Open with → DrawCAD" for PDFs and images, without becoming the default app.
+3. The `…-portabil.zip` version is not installed: unzip it and start `DrawCAD.exe`.
+
+**What it contains:** everything, OCR included (Tesseract, Romanian and English).
+
+**Where working documents live:** in `%LOCALAPPDATA%\DrawCAD`. They stay until you delete them from Recent; there is no automatic cleanup.
+
+**Export** opens the Windows "Save as" dialog.
+
+**The window** uses Microsoft Edge WebView2, which ships with Windows 11 and with Edge on Windows 10. If it is missing, DrawCAD opens in the default browser.
+
+**The internal server** listens only on `127.0.0.1` and answers only to the names `127.0.0.1` and `localhost`. Other computers cannot reach it, and a foreign site cannot access it through DNS rebinding.
+
+**Log:** warnings, slow starts (over 5 s) and slow requests (over 3 s) are written to `%LOCALAPPDATA%\DrawCAD\drawcad.log`.
+
+**Build:** GitHub Actions (`.github/workflows/desktop.yml`) produces automatically, on every push to `main`:
+- the executable, with PyInstaller;
+- a self-test on the executable: reading, rendering, OCR, PDF and DXF export, vectorization of a scan;
+- the full browser test against the server inside the executable;
+- the installer, with Inno Setup.
+
+The result can be downloaded from the run page (Artifacts). A `v1.2.3` tag, or a release created on GitHub, publishes the installer in Releases.
+
+**Update:** run the new version's installer over the old one. Documents and settings are kept.
+
+### Data folder and permissions
+
+The container starts as root only long enough to create the data folder and give it the owner `PUID:PGID`, `99:100` by default (nobody:users on Unraid). Then it runs the app as that user. No manual `chown` is needed. If you use `user:` in compose, the folder must already be writable by that user.
+
+The app has no user accounts, so keep it on the local network (or behind a reverse proxy with a login).
+
+### Environment variables
+
+The app was originally called "Cotare": the old `COTARE_*` variables are still accepted, and PDFs exported by old versions reopen editable.
+
+| Variable | Default | Role |
+|---|---|---|
+| `DRAWCAD_TAG` | `latest` | image tag; a commit SHA pins the version |
+| `DRAWCAD_PORT` | `8478` | port on the server |
+| `DRAWCAD_DATA_DIR` | `/mnt/user/appdata/drawcad` | data folder on the server |
+| `PUID` / `PGID` | `99` / `100` | user the app runs as |
+| `DRAWCAD_MAX_UPLOAD_MB` | `200` | maximum size of an uploaded file |
+| `DRAWCAD_MAX_RENDER_PX` | `12000` | maximum side, in pixels, of a page render |
+| `DRAWCAD_MAX_RENDER_MP` | `40` | maximum megapixels of a whole-page render (high zoom is rendered in tiles) |
+| `DRAWCAD_MODE` | `private` | `personal`, `private` or `session` (see [Modes](#modes-personal-or-for-work)) |
+| `DRAWCAD_MAX_PAGES` | `300` | maximum number of pages per document |
+| `DRAWCAD_MAX_IMAGE_MPX` | `400` | maximum megapixels of an uploaded image |
+| `DRAWCAD_PASSWORD` | empty | HTTP Basic password (user `drawcad`); empty = no password |
+| `DRAWCAD_CACHE_MB` | `256` | maximum memory of the in-RAM caches (PDFs, renders); only used as needed |
+| `DRAWCAD_RETENTION_DAYS` | `30` | days after which an unused document is deleted from the server; `0` = never |
+| `DRAWCAD_OCR_LANG` | `ron+eng` | OCR languages (Tesseract codes; the image includes Romanian and English) |
+| `DRAWCAD_OCR_TIMEOUT` | `150` | maximum seconds for OCR of one page |
+| `DRAWCAD_VECTOR_TIMEOUT` | `240` | maximum seconds for vectorizing one scanned page |
+
+## Usage
+
+**Workflow:**
+1. Open a PDF or an image (or drag the file onto the page).
+2. Pick a tool and click on the drawing.
+3. Edit the value and the tolerance in the panel on the right.
+4. Press **Export**.
+
+**Snap (as in AutoCAD):** the cursor snaps to the PDF's vector geometry and to what you have drawn. The tooltip next to the cursor shows the mode.
+- **Endpoint** □, **Midpoint** △, **Center** ○ (circles, and the centers of fillets too), **Quadrant** ◇, **Intersection** ⊠ (lines, circles, arcs), **Nearest** ⧗
+- **Apparent intersection** ⊠… — the point where the extensions of two lines would meet: the theoretical corner of a chamfer or fillet, which is what gets dimensioned
+- **Extension** — rest the cursor for a moment on the end of a line (a green cross appears), then move along its extension; the tooltip shows the distance from the end
+- **Tracking** — also from acquired points: horizontal and vertical alignment, including the point that has the X of one and the Y of another
+- **Perpendicular** ⊥ and **Tangent** relative to the command's previous point
+- **Parallel** // — during a command rest on a line, then move nearly parallel to it
+- **Polar** — on the 5°…90° rays from the previous point (15° by default), with distance and angle in the tooltip; excludes Ortho
+
+Modes are chosen from the arrow next to "Snap" in the bottom bar. Keys: **F3** snap, **F8** ortho, **F10** polar, **F11** tracking, **Alt** held = no snap, **Shift** = temporary ortho, **Esc** clears the acquired points.
+
+**Scans:** after opening, use **Calibrate (K)**. Click the ends of a known dimension and enter its real value.
+
+**Drawing to scale:** lines, circles and rectangles are drawn and edited in real mm, like dimension values. At scale 2, a line typed as 10 is 5 mm on paper and a dimension on it reads 10. In the panel, "· scale 2" appears next to the field. If you drew before calibrating, Calibrate asks what to do with the shapes:
+- **Stay on the drawing** (default): for shapes snapped to the outline. They stay on the same lines and their real size is recalculated.
+- **Keep their real dimensions**: for shapes drawn with typed values. They are scaled about their start point, so a line of 10 stays 10.
+
+Dimensions do not change on calibration: they measure the drawing.
+
+**Typed length and angle (as in AutoCAD):** after the first point of a line, polyline, circle, arc or dimension, **L** (the distance from the last point, in real mm) and **∠** (the angle, counter-clockwise: 0° to the right, 90° up) appear next to the cursor.
+- Type the digits directly, no click in the box needed: `100` Enter puts the point 100 away along the cursor direction. The comma is the decimal separator (`12,5`).
+- **Tab** switches between L and ∠. A typed value stays locked (🔒) and the other one follows the cursor: `100` Tab `30` Enter = 100 at 30°, while only Tab `45` fixes the direction and you pick the length with the mouse.
+- Without a typed angle, the direction comes from the cursor, **ortho** (Shift / F8), **polar** (F10) or a snap. For a circle, L is the radius.
+- **Enter** or **Space** places the point. **Backspace** corrects, and **Esc** drops the values (a second Esc stops the command).
+- **F12** turns the box on / off.
+
+**Keys and commands:** there are two modes, chosen in **Settings → Keys and commands** or by typing the `ALIASEDIT` command.
+- **Direct keys** (default): one key starts a tool (table below). **Enter** opens the command line in the bottom bar: type `DLI`, `C`, `PL`… and press Space or Enter.
+- **AutoCAD commands:** type the command anywhere on the drawing. It appears in the command line, with suggestions, and **Space** or **Enter** starts it. Space or Enter with nothing typed repeats the last command, and ends a polyline. Space held + drag pans the sheet.
+
+**Command history:** in the command line, arrow up / down browses previously used commands, most recent first, as in AutoCAD. The list appears above the command line and Enter starts the chosen one. In AutoCAD commands mode, arrow up works directly on the drawing when nothing is selected (with a selection, the arrows move it). Once you start typing, the arrows pick from the suggestions. The history keeps the last 50 commands, including those started from the toolbar or with keys, and is stored in the browser.
+
+The default aliases follow AutoCAD: `L` line, `PL` polyline, `REC` rectangle, `C` circle, `A` arc, `H` hatch, `CM` center mark, `DLI` / `DAL` / `DDI` / `DRA` / `DAN` dimensions, `LE` leader, `T` / `MT` text, `TOL` GD&T, `E` erase (with a selection: deletes the selection), `DI` measure, `P` pan, `U` undo, `Z` fit page, `OS` / `OR` snap / ortho, `OP` settings. Commands without an AutoCAD equivalent have short names: `RUG` roughness, `NOTE`, `REV` revision table, `BOM`, `SEC` section, `DET` detail, `BAL` balloon, `STR` strike dimension, `WO` cover, `CALIB` calibration. The tool name works too ("circle", "radius", in Romanian or English).
+
+In the same dialog every tool can get another key and other aliases. Duplicates are flagged and block saving. The configuration is kept in the browser (in the desktop app, on the computer), for all documents.
+
+Default direct keys:
+
+| Key | Tool | Key | Tool |
+|---|---|---|---|
+| V | select | G | GD&T frame |
+| H | pan | B | datum |
+| D | linear dimension | S | strike dimension (revision) |
+| A | aligned dimension | W | white cover |
+| O | diameter | X | delete from the original |
+| R | radius | K | calibrate scale |
+| C | chamfer | T | text |
+| L | leader | F | fit page |
+| U | angular dimension | Q | roughness |
+| N | technical notes | E | revision table |
+| I | line | P | polyline |
+| J | rectangle | Y | circle |
+| Z | arc | M | measure (adds nothing) |
+
+**Mouse:**
+- **right click** = Esc: finishes the polyline, stops the line chain, drops the picked points or deselects
+- **right click held** = radial menu with your favorite commands (chosen in **Settings**, in the 8 positions). At the top is the last command used, then Diameter, Radius, Text, Line (or Delete selection), Leader, Undo, Measure. Pick by dragging towards the command and releasing, or release in place and click the command.
+- **right click dragged** or the pressed wheel = pan the sheet
+
+**Tablet and phone:** the properties panel becomes a drawer (on a phone, a sheet sliding up from the bottom). It opens by itself when you pick an annotation or have text to type, and the slider button in the header opens it at any time. On touch screens:
+- **two fingers** pan and zoom
+- **the point** is placed when the finger lifts, so you can adjust it with snap
+- **long press** opens the radial menu
+
+**Original when printing:** colored drawings print pale. There are two options:
+- **The whole drawing.** In the document panel (or in the export dialog) check "Black lines and text, whole drawing". The original's lines and text become black, including those in blocks (the title block). White stays white and your dimensions do not change.
+  - Colored filled areas can become black, gray or stay unchanged.
+  - Images (and scans) can become black and white: everything that is not paper becomes black.
+  - It shows on screen and is applied on export.
+- **Only some lines.** The **Blacken** tool in the Revision group: drag an area and check the objects that become black.
+
+**General keys:**
+- Ctrl+Z / Ctrl+Y: undo / redo
+- Ctrl+C / Ctrl+V: copy the selected annotation / paste it at the cursor
+- Ctrl+D: duplicate the selected annotation, offset by 5 mm
+- Ctrl+A: select all annotations on the page
+- arrows: move the selection by 0.5 mm (with Shift: 5 mm)
+- Delete: delete the selected annotation
+- Esc: cancel the current operation
+- mouse wheel: zoom
+- Space + drag, or the middle button: pan the sheet
+
+**Diameter dimensions** always have filled arrows, like the leader, even if you chose open, oblique or dot terminators for other dimensions.
+
+**Circle diameter** (the `DDI` command, like DIMDIAMETER) takes three clicks: the center (with snap ○), a point on the circle, then the text position.
+- The arrow sits on the outline and points to the center, and the leader is radial.
+- The `Ø…` text is horizontal, on a short shoulder (as on shop drawings).
+- If the position is inside the circle, the dimension goes through the center, with arrows at both ends.
+- The panel switches between "Text on shoulder" and "Aligned with line", or between radius and diameter. The same "Text on shoulder" style works for radius dimensions too.
+
+The diameter dimension between generatrices remains the **Diameter** tool (`DDL`).
+
+**Editing:** on a selected annotation, the handles move the points and the white circle moves the dimension text along the line. Dragging the body moves the whole annotation.
+
+**Multiple selection:**
+- **Shift+click** adds an annotation to the selection or removes it.
+- **A rectangle dragged over an empty area** selects:
+  - left to right: only what is fully inside;
+  - right to left: everything it touches (as in AutoCAD).
+- **The selected group** moves by dragging any of its annotations or with the arrows. It is copied, duplicated and deleted together.
+- **From the panel** you set the size and layer for the whole group.
+
+**Size:** every selected annotation (dimensions, roughness, GD&T, datum, revision table, etc.) has a white square with a diagonal in its corner. Drag it towards the anchor to shrink or away to enlarge, between 30% and 500%. The panel does the same, with the −/+ buttons or 50…200%. Text, arrows and distances scale; line widths stay. The resize handle also works with another tool active.
+
+**Multi-line text:** the text, leader and notes fields accept Enter for a new line. For text, the height is picked directly in mm (2.5 / 3.5 / 5 / 7 / 10).
+
+**Dimension text:** if the label does not fit between the arrows, it moves next to an arrow automatically and the dimension line extends under the text. If you move the text manually, the "Automatic text" button restores automatic placement.
+
+**Symbols in text:** below the text fields there are buttons for ⌀ ⌴ (counterbore) ⌵ (countersink) ↧ (depth) ± ° × √, for hole and thread callouts like `4× M8 ↧12`.
+
+**Notes (N):** click the top-left corner of the block and type the notes in the panel, one per line. Numbering is automatic and empty lines are skipped. Common notes can be added with one click: chamfers, radii, ISO 2768, heat treatment.
+
+**Revision table (E):** click the top-right corner of the title block (it snaps). The table sits above it, right-aligned, with the header at the bottom and the newest revision on top. On creation it is filled in from the struck dimensions: one row for each revision number. The "From struck dimensions" button adds new revisions later. The default name is set in Settings.
+
+**Parts list:** click the top-right corner of the title block. The list sits above it, with the header at the bottom and item 1 next to the header (ISO 7573), one row for each balloon on the drawing. Columns: Item, Description, Qty, Material, Remarks. "From balloons" adds balloons placed later.
+
+**Grab, move, resize:** in Select mode the cursor and a short label show what a click would grab:
+- **over an annotation:** its outline lights up and the cursor becomes a move cross;
+- **over a handle of the selected annotation:** the handle gets a ring and the label says what it does ("Dimension point", "Dimension line position", "Move dimension text", "Leader elbow"…);
+- **over a resize corner:** the white corners of the dotted box, with a resize arrow;
+- **over a box edge:** the resize arrow, as in Windows.
+
+While dragging, the label shows the value: the Δx/Δy offset, the resize percentage, the new dimension or the box size.
+
+**Removals show directly in the editor:** the page is rendered with the removals applied, exactly as in the exported PDF; only the red outline of the area remains.
+
+**Boxes (covers, removals, blackening, struck dimensions, drawn rectangles):** as with Windows windows, the cursor becomes a resize arrow on the edges and corners; drag an edge and the box grows or shrinks, with snap.
+
+**The GD&T frame:** the leader has a handle at its elbow. Drag it anywhere to bend the leader at any angle; "Automatic elbow (90°)" in the panel returns to the default.
+
+**Toolbar and layers:** toolbar groups collapse from their title (the state is remembered); a tool's key opens its group. In the document panel, the eye next to each layer (Original, Added, Revisions, Deletions) hides it on screen only, for checking; the export contains everything.
+
+**Roughness (Q):** click twice at the same point for a symbol directly on the surface, or click a second time elsewhere for a symbol with a leader. A direct symbol can sit above the surface or to its left; for surfaces seen from below or from the right, ISO 1302 requires a leader.
+
+**Angular dimension (U):** click the vertex, a point on each leg, then the arc position. The arc position picks one of the four sectors: the angle, its supplement or their opposites.
+
+**Drawing:**
+- **Line (I):** start → end; the next line starts at the end of the previous one, like LINE in AutoCAD. Esc or Enter stops the chain.
+- **Polyline (P):** click each vertex; Enter, double click or Esc finishes. Clicking the first point closes the outline.
+- **Rectangle (J), Circle (Y):** two clicks; the exact width, height or diameter can then be typed in the panel.
+- **Arc (Z):** center → start → end. The direction is the one in which you move the cursor after the second click; "Complementary arc" in the panel flips it.
+- **Center mark:** the center (snap ○) → a point on the circle. The chain lines extend past the outline by 3 mm (2 / 3 / 5 mm in the panel) and cross on dashes.
+- **Break:** the ends of the line; a zigzag in the middle or wavy (from the panel), thin line type 01.1.
+- **Snap on what you drew:** endpoints, midpoints, centers, circle quadrants and intersections, including with the PDF geometry.
+- **Hatch:** click the vertices of the sectioned area, with snap on the outline; Enter or a click on the first point finishes. The angle (45°, 135°…), the spacing and the cross-hatched variant are picked in the panel.
+- **Line type and width** are picked in the panel before drawing (with the tool active) or afterwards, on the selected shape. There are ISO 128-24 presets too: visible outline 0.5, hidden outline, center line, adjacent parts, etc. The last choice stays the default.
+- **The line pattern** follows the ISO 128-20 lengths (dash 12d, long dash 24d, gap 3d) and is fitted to the length of each line so it starts and ends with a dash. "Pattern scale" enlarges it for large drawings.
+
+**Views:**
+- **Section:** the ends of the section plane → a click on the side you are looking towards. It is drawn as a thin chain line, thick at the ends, with arrows and letters (A, B, C…, no I, O, Q). The handle in the middle flips the arrows.
+- **Detail:** the center of the area → the radius; the next letter goes next to the circle and can be moved.
+- **Label:** proposes "A–A" for the first unlabeled section, then "B (2:1)" for details. The "Add label" button in the section or detail panel does the same.
+- **Balloon:** a point on the part → the circle position; numbers increase automatically. From the panel: circled or on a line, ending with a dot (inside the part) or an arrow (on the outline).
+- **Measure (M):** two points with snap; shows the distance, Δx, Δy and the angle, at drawing scale.
+
+**Removal from the original:** after you drag the area, the dialog shows the objects found and a before/after preview. There are four modes:
+- **Cover area** (default): a filled rectangle over the area, without removing anything from the file. The color is white, but you can change it: pick from the palette, take a sample with the "Eyedropper" directly from the "Before" preview or, in Chrome/Edge, from anywhere on screen. That way the cover matches the background of a colored or scanned drawing.
+- **Select objects:** check exactly what is removed. Objects at least 90% inside the area (line length, text area) are checked from the start, and so are small letters with their center in the area, even if a tail sticks out (g, p, y in AutoCAD texts exported as lines). The list shows the percentage for each one. "Check everything touching the area" checks them all.
+- **Text only:** removes the values; dimension lines stay.
+- **Everything in area:** removes what is inside the area and cuts the lines passing through it exactly at the area's edge (the outline stays, with a gap; arcs and circles are cut the same way). What cannot be cut (filled areas, images, objects inside blocks) can be covered with white: the "Cover the area with white" option is checked automatically when needed.
+
+**Export by pages:** for a multi-page document, the export dialog offers all pages (default), only the current page, or a list ("1, 3-5"). The "Each page as a separate PDF" checkbox downloads a ZIP archive with one PDF per page (`name_p1.pdf`…). Each file carries the editable layer only for its own pages, so it reopens correctly.
+
+**Annotation list:** in the document panel (with nothing selected) the page's annotations are listed with their values. Click = select and center, the bin = delete. **Shift+F** zooms to the selection, **double click** on an annotation puts the cursor straight into the field to edit. In the header, next to the document name, you can see whether changes are saved on the server. On a network error, saving is retried automatically.
+
+**Closing and keeping documents on the server:**
+- **The ✕ button** next to the document name closes it and returns to the start page.
+- **Without unexported changes**, the document closes right away. Otherwise you are asked:
+  - **Export PDF and close:** save the PDF to your computer, then the document closes;
+  - **Close without export:** the work stays on the server and you reopen it from Recent;
+  - **Close and delete from server.**
+- **Saving to the server** is automatic, on every change, and also happens when the tab closes.
+- **How long documents stay on the server:** `DRAWCAD_RETENTION_DAYS` days (30 by default) after the last use; opening a document resets the countdown. Cleanup runs at startup and then every 6 hours.
+- **In Recent** you see how many days each document has left. The bin button deletes it immediately.
+- **PDFs exported to your computer** are not affected by this cleanup.
+
+**Reopening:** a PDF exported with the editable layer can be reopened. The dimensions come back editable and the original is recovered from the file, so nothing gets drawn twice.
+
+### Pages: rotate, reorder, delete
+
+Next to the page tabs there are two buttons, ⟲ and ⟳, that rotate the current page by 90° (the `ROTL` / `ROTR` commands). The third button (or the `PAGES` command) opens the **Pages** dialog. There you see thumbnails and, for each page:
+- rotate left / right;
+- move before / after;
+- delete (asks for confirmation if the page has annotations).
+
+All pages can be rotated at once from there too (90° or 180°).
+
+- **The export keeps rotation and order** (PDF and DXF). The uploaded file stays unchanged on the server; order and rotation are stored separately and applied on render and export.
+- **Dimensions and other annotations rotate with the page.** A horizontal dimension becomes vertical and measures the same, texts rotate, and tables (revisions, parts list) stay horizontal, moved to the matching place.
+- **Ctrl+Z does not undo a page operation.** For that, rotate or move back. The annotation history is transformed as well, so undoing earlier changes works correctly.
+- **OCR** is remembered for each orientation of the page.
+
+### Sheet size (scans and photos)
+
+Dimensions and texts have their size in mm relative to the sheet (3.5 mm text, 3 mm arrows). For an image, the sheet size comes from the DPI. Photos and screenshots often have a default of 72 or 96 DPI. That way, an A3 drawing photographed at 3300 px would end up on a 1.16 m sheet, and dimensions would look tiny.
+
+- **On opening:** if the image has a low DPI (≤ 96) and the sheet would be larger than A1, it is brought to A3. A DPI given explicitly in the open dialog takes precedence.
+- **For a document already open:** in **Pages** pick "Sheet: A4 / A3 / A2 / A1 / A0" (or 50% / 200%). The document panel warns you when an image's sheet is unusually large. Existing dimensions stay on the drawing and the calibrated scale is adjusted, so measured values do not change. The export keeps the new size.
+
+### Zoom
+
+Zoom goes up to 3000%. Above the resolution of the whole-page render (~12 MP), the server renders only the visible area, at screen resolution. Lines stay sharp at any magnification, and the area reloads by itself when you pan.
+
+### Language
+
+The interface is in Romanian or English: pick it in **Settings** or on the start page; by default it follows the browser language. Separately, for each document, **Settings → Language of drawing texts** picks the language of the table headers (Rev. / Modificare / Data / Nume or Rev. / Description / Date / Name, Poz. / Denumire / Buc. or Item / Description / Qty) and of the default notes. New documents start with the interface language (in English, with a decimal point too).
+
+### Text, search and OCR
+
+The **Text** button in the header (or **Ctrl+F**) searches the drawing's texts: the real ones in the PDF and those recognized by OCR. The search ignores spaces and diacritics, so "ø25" finds "Ø 25". Clicking a result goes to its page, zooms on the area and frames it in orange.
+
+**OCR (text recognition):** "Recognize page" reads the text from the page image with Tesseract (Romanian + English). It is useful for scanned drawings and for AutoCAD PDFs with SHX fonts, where text is drawn as lines. A page usually takes 5–30 s. The result stays on the server, so it is not redone on reopening.
+
+For drawings, OCR does a few extra steps:
+- straightens a skewed scan first;
+- removes long lines (borders, dimension lines) so they do not stick to the letters;
+- reads the page a second time rotated, for vertical dimensions;
+- corrects Ø misread as "O", "0" or "@".
+
+The "Show recognized text on the drawing" checkbox draws the boxes of the found text: green for reliable readings, orange for those to check. "Copy page text" puts all the text on the clipboard.
+
+**Searchable PDF:** in the PDF export, the "Invisible recognized text (OCR)" checkbox puts the recognized text over the image, invisibly. In the resulting PDF the text can be searched and copied, as in a vector PDF.
+
+### DXF export
+
+In the export dialog pick **DXF**. Each page becomes one DXF file (AutoCAD 2010, millimeters); several pages come out in a ZIP archive.
+
+What it contains:
+- **the PDF geometry** (layer PDF-GEOMETRIE): lines and outlines as polylines, with fillets as true arcs (bulge); circles as CIRCLE, arbitrary curves as SPLINE; line weights, colors and dashed lines (a line type generated from the PDF pattern) are kept;
+- **fills** as solid hatches (PDF-UMPLERI);
+- **texts** as TEXT (PDF-TEXT), with the ISOCPEUR style;
+- **DrawCAD dimensions and annotations** (DRAWCAD-COTE, DRAWCAD-REVIZIE); white covers become WIPEOUT;
+- **the page border** (PAGINA).
+
+Objects removed from the original are missing from the DXF too.
+
+**Scale:** "Paper size (1:1)" gives the drawing 1:1 with the sheet. "Real size" uses the calibrated scale (K): a 1:2 drawing comes out twice as large, so dimensions measured in CAD are the real ones.
+
+**Scans (experimental):** on a scanned page the export does four things:
+- runs OCR, if it has not been done yet;
+- removes the confidently read text from the image and adds it as TEXT (OCR-TEXT);
+- vectorizes the rest (SCAN-VECTORI): thinning to one pixel, line tracing, circles and arcs fitted on the pixels, fillets tangent to the lines, the scan straightened and nearly horizontal / vertical lines aligned;
+- optionally, adds the image as a background (IMAGE + PNG in the ZIP), for comparison.
+
+The result is a starting point, not a clean drawing:
+- dashed lines come out as short segments;
+- arrows and hatches come out simplified;
+- text read with low confidence stays drawn as lines.
+
+Check the important dimensions.
+
+## Modes: personal or for work
+
+`DRAWCAD_MODE` decides who sees which documents:
+
+| Mode | Who sees the documents | Suited for |
+|---|---|---|
+| `private` (default) | only the browser that uploaded them (secret cookie, 1 year) | work, several colleagues on the same server |
+| `personal` | anyone opening the app, from any browser | a single user: at home, on Unraid; continue on another computer with nothing extra |
+| `session` | only the browser that uploaded them, until it closes | shared computers; nothing stays visible after closing |
+
+In `private` and `session`, a document of another browser does not appear in Recent and cannot be opened, rendered or deleted, even if someone knows its address: the server answers as if it did not exist. To continue on another computer, copy the code in **Settings → Your workspace** and paste it in the other browser ("Use"). The code works like a key, so do not give it to anyone. Documents uploaded in `personal` mode (or before the modes existed) do not appear in the private spaces; for home-only use set `DRAWCAD_MODE=personal`.
+
+## Security
+
+Uploaded files are treated as untrusted:
+- **Isolated reading.** The first read of a file (image decoding, PDF parsing, rendering each page, geometry extraction) happens in a separate process, limited to 3 GB of memory and 120 s. A file built to hang, fill the memory or crash the reading library is rejected, and the server carries on.
+- **Active content removed.** JavaScript, automatic actions (on open, on page, on fields), links that start programs or open other files, form submission, attached files, multimedia annotations and XFA forms are stripped from the PDF. Ordinary web links stay. The drawing does not change and exports come out clean. On opening, a message lists what was removed.
+- **Limits:** file size (`DRAWCAD_MAX_UPLOAD_MB`, read as a stream, never held fully in memory), number of pages (`DRAWCAD_MAX_PAGES`), megapixels per image (`DRAWCAD_MAX_IMAGE_MPX`, protects against "decompression bombs"), page size and the size of the data received on export.
+- **Browser.** A strict Content-Security-Policy (only the app's scripts, no `eval`), `nosniff`, no referrer and no framing by other sites. Data-changing requests coming from another site are refused, so a foreign page open in the browser cannot upload or delete documents.
+- **Container:** runs as an unprivileged user, with `no-new-privileges`, without capabilities beyond those needed to prepare the `/data` folder, with a read-only filesystem (writes only to `/data` and `/tmp`) and a limited number of processes.
+- **Access:** the app has no accounts; it is meant for the local network. If you make it reachable from outside, put it behind a reverse proxy with HTTPS and set `DRAWCAD_PASSWORD` (user `drawcad`). If the proxy uses another domain than the one in the browser's address bar, add it to `DRAWCAD_ALLOWED_ORIGINS`.
+
+CI checks all of this on the built container (`tools/security_smoke.py`), with a "trojan" test PDF.
+
+## ISO 286 data
+
+The IT tolerances and fundamental deviations (`frontend/js/iso286_data.js`) are taken from TechTools, where they were:
+- read from ISO 286-2:2010 (Table 1 and Tables 8, 17–32) and checked against ISO 286-1:2010;
+- validated by recomputing all 5907 limit deviations printed up to 500 mm. 5896 match exactly; the other 11 are misprints in ISO 286-2.
+
+The computation follows the rules of ISO 286-1:2010:
+- Δ for holes K…ZC in the fine grades;
+- the special case M6 at 250–315 mm;
+- JS/js = ±IT/2, without the round-to-even of the 1988 edition.
+
+## Architecture
+
+```
+frontend/   HTML + ES modules, no build step (canvas 2D, osifont font)
+  js/iso286.js   IT tables and fundamental deviations + computation
+  js/annots.js   annotation model → drawing primitives (lines, polygons, text)
+  js/gdt.js      ISO 1101 symbols
+  js/view.js     display, zoom, snap
+  js/main.js     tools, history, autosave, export
+backend/    Starlette
+  app/pdfcore.py rendering (PDFium), geometry for snap, objects in an area,
+                 object removal, vector overlay (reportlab + pikepdf), attachments
+  app/main.py    API + frontend serving, security headers, limits
+  app/ingest.py  first read of uploaded files, in a separate, limited process
+  app/sanitize.py removal of active content from PDFs (JavaScript, actions, attachments)
+  app/ocr.py     OCR with Tesseract: straightening, line removal, horizontal and vertical text
+  app/dxfout.py  DXF export (ezdxf): geometry, texts, annotations, layers
+  app/vectorize.py vectorization of scans, in a separate process (thinning, graph, arcs, circles)
+desktop/    the Windows app: launcher (pywebview), PyInstaller spec, Inno Setup installer
+```
+
+The frontend computes the geometry of each dimension once and sends it to the export as primitives. What you see on screen is what comes out in the PDF, with the same font and the same text widths.
+
+**Compared with the initial plan:** PDF.js + PyMuPDF were replaced by PDFium (`pypdfium2`) on the server, for two reasons:
+- PDFium gives access to the page objects, which allows removal by object and extracting geometry for snap;
+- the libraries' licenses are permissive, while PyMuPDF is AGPL.
+
+**Third-party licenses:**
+
+| Component | License |
+|---|---|
+| pypdfium2 / PDFium | Apache-2.0 / BSD |
+| pikepdf | MPL-2.0 |
+| reportlab | BSD |
+| img2pdf | LGPL-3.0 |
+| Starlette, uvicorn | BSD |
+| osifont | LGPL-3 with a font exception |
+| ezdxf | MIT |
+| NumPy | BSD |
+| Tesseract OCR | Apache-2.0 |
+| pywebview | BSD |
+| PyInstaller (build only; the bootloader has an exception for distributed programs) | GPL-2.0 with exception |
+
+## Tests
+
+```bash
+cd backend && python -m unittest discover -s tests      # API: open, snap, removal, export, reopen
+cd frontend && npm test                                 # ISO 286 (42 cases from the tables), dimension geometry
+python tools/e2e_smoke.py http://127.0.0.1:8080 out     # browser: full workflow with Playwright
+```
+
+`tools/make_sample.py` generates a test PDF similar to a CAD export. It contains a stepped shaft, a title block in a Form XObject, circles and a rotated page.
+
+## Known limitations
+
+- **ISO 286**: letters a–zc for shafts and holes, except t, v and y; grades IT1–IT18; nominal sizes up to 500 mm (not 500–3150 mm).
+- **Removal by object** removes whole PDF objects; to cut only part of an outline use "Everything in area". Cutting works only on lines (no fills); filled areas and images that are partly hit stay and can be covered with white.
+- **Blocks (Form XObject)**, usually the title block or symbols inserted as blocks, are not modified: PDFium breaks the block's fonts when it changes its content. Their objects show as "in block — cover only" and can only be covered with white.
+- **Text exported by AutoCAD with SHX fonts** appears in the PDF as lines, not as text. In the removal dialog it shows as "Line / outline".
+- **Annotations can be placed only horizontally or vertically** (plus aligned dimensions). There is no text rotated at an arbitrary angle yet.
+- **No authentication and no simultaneous editing** of the same document by several users.
+- **OCR on drawings** is good on the title block, notes and clear dimensions, weaker on small, crowded text or text touching lines. Tesseract does not know the GD&T symbols, and Ø, ± and ° are recognized only partly (Ø is corrected from context). Uncertain readings show in orange.
+- **Vectorization of scans** is experimental. Dashed lines, arrows and hatches come out simplified. On poor-quality scans (below 200 DPI, blots, faded lines) the result needs cleaning up in CAD.
+- **DXF:** blocks in the PDF (Form XObject) come out as separate entities, not as blocks. Texts use the ISOCPEUR style: if the font is missing, the CAD program substitutes another one, with a different width.

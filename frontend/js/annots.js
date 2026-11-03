@@ -1,23 +1,23 @@
-// Modelul adnotărilor și generarea primitivelor de desen.
-// Toate coordonatele: puncte PDF vizuale (y în jos). Unghiuri text: grade, sens trigonometric pe ecran.
+// Annotation model and generation of drawing primitives.
+// All coordinates: visual PDF points (y down). Text angles: degrees, counter-clockwise on screen.
 import { deviations, fmtDev } from "./iso286.js";
 import { symbolPrims, GDT_BY_ID, MODIFIERS } from "./gdt.js";
 import { buildShape, SHAPE_NAMES } from "./shapes.js";
 import { buildSection, buildDetail, buildBalloon } from "./symbols.js";
 
-export const K = 72 / 25.4; // pt pe mm
-export const CAP = 1515 / 2048; // înălțimea majusculelor în osifont, raportată la em
+export const K = 72 / 25.4; // pt per mm
+export const CAP = 1515 / 2048; // cap height in osifont, relative to the em
 
 export const DEFAULT_SETTINGS = {
-  textH: 3.5, // mm, înălțimea majusculelor (ISO 3098)
+  textH: 3.5, // mm, cap height (ISO 3098)
   arrowLen: 3, // mm
   lineW: 0.25, // mm
   sep: ",",
   isoDisplay: "codeDev",
-  codeSpace: false, // „Ø25k6” (ISO 286) sau „Ø25 k6”
+  codeSpace: false, // "Ø25k6" (ISO 286) or "Ø25 k6"
   arrow: "closed",
-  dlang: "ro", // limba textelor din desen: antetul tabelelor, notele implicite
-  scale: 1, // mm reali pe mm de hârtie (1 = scara 1:1)
+  dlang: "ro", // language of the texts on the drawing: table headers, default notes
+  scale: 1, // real mm per paper mm (1 = scale 1:1)
   revNo: "1",
   extGap: 0.5,
   extOver: 2,
@@ -50,7 +50,7 @@ export function typeName(a) {
   return (a.type === "shape" && SHAPE_NAMES[a.kind]) || TYPE_NAMES[a.type] || a.type;
 }
 
-// ------------------------------------------------------------------ vectori
+// ------------------------------------------------------------------ vectors
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
 const add = (a, b) => [a[0] + b[0], a[1] + b[1]];
 const mul = (a, k) => [a[0] * k, a[1] * k];
@@ -60,7 +60,7 @@ const norm = (a) => {
   const l = len(a);
   return l > 1e-9 ? [a[0] / l, a[1] / l] : null;
 };
-const perpL = (a) => [a[1], -a[0]]; // „sus” față de direcția textului, pe ecran
+const perpL = (a) => [a[1], -a[0]]; // "up" relative to the text direction, on screen
 
 export function derive(settings) {
   const S = { ...DEFAULT_SETTINGS, ...(settings || {}) };
@@ -73,7 +73,7 @@ export function derive(settings) {
   return S;
 }
 
-// ------------------------------------------------------------------ formatare
+// ------------------------------------------------------------------ formatting
 export function round(v, d = 3) {
   const f = 10 ** d;
   return Math.round(v * f) / f;
@@ -86,7 +86,7 @@ export function fmtNum(v, sep = ",", maxDec = 3) {
   return s.replace(".", sep);
 }
 
-/** mm cu semn, minim 3 zecimale: +0,015 / -0,1 → -0,100 */
+/** signed mm, at least 3 decimals: +0,015 / -0,1 → -0,100 */
 export function fmtSigned(mm, sep = ",") {
   return fmtDev(mm * 1000, sep, true);
 }
@@ -105,10 +105,10 @@ export function parseNum(str) {
   return Number.isFinite(v) ? v : null;
 }
 
-// ------------------------------------------------------------------ etichete
+// ------------------------------------------------------------------ labels
 /**
- * Construiește textul unei cote ca listă de „run”-uri: { txt, x, dy, s, w }.
- * x avansează pe direcția textului, dy e deasupra liniei de bază (pt).
+ * Builds the text of a dimension as a list of "runs": { txt, x, dy, s, w }.
+ * x advances along the text direction, dy is above the baseline (pt).
  */
 export function labelRuns(a, S, measure, nominal, prefix) {
   const F = S.F;
@@ -138,7 +138,7 @@ export function labelRuns(a, S, measure, nominal, prefix) {
 
   const deg = a.type === "ang" || a.deg === true;
   const unit = deg ? "°" : "";
-  // abateri: mm cu minim 3 zecimale; la unghiuri, grade fără zerouri inutile
+  // deviations: mm with at least 3 decimals; for angles, degrees without needless zeros
   const fd = (v) => (deg ? (v > 0 ? "+" : v < 0 ? "-" : "") + fmtNum(Math.abs(v), sep, 3) + "°" : fmtSigned(v, sep));
   const fabs = (v) => (deg ? fmtNum(Math.abs(v), sep, 3) + "°" : fmtSigned(Math.abs(v), sep).slice(1));
   const main = a.textOverride && a.textOverride.trim() ? a.textOverride.trim() : prefix + fmtNum(nominal, sep, deg ? 2 : 3) + unit;
@@ -197,13 +197,13 @@ export function labelRuns(a, S, measure, nominal, prefix) {
   return { runs, w: x, iso };
 }
 
-// ------------------------------------------------------------------ primitive auxiliare
+// ------------------------------------------------------------------ helper primitives
 function lineP(a, b, S, c) {
   return { t: "L", p: [a[0], a[1], b[0], b[1]], w: S.lw, c };
 }
 
 function arrowP(tip, d, S, c) {
-  // d: direcția în care „arată” săgeata (spre vârf)
+  // d: the direction the arrow "points" (towards the tip)
   const aw = S.aw;
   const back = sub(tip, mul(d, aw));
   const n = [-d[1], d[0]];
@@ -226,7 +226,7 @@ function arrowP(tip, d, S, c) {
 }
 
 function textAngle(dir) {
-  // direcție lizibilă (de jos sau din dreapta, ISO 129 metoda 1) și unghiul ei
+  // readable direction (from below or from the right, ISO 129 method 1) and its angle
   let tu = dir;
   let ang = (Math.atan2(-tu[1], tu[0]) * 180) / Math.PI;
   if (ang <= -90 + 1e-6 || ang > 90 + 1e-6) {
@@ -243,7 +243,7 @@ function placeRuns(lab, origin, tu, up, ang, c) {
   });
 }
 
-// ------------------------------------------------------------------ constructori pe tip
+// ------------------------------------------------------------------ builders per type
 
 function buildDim(a, S, measure) {
   const c = a.layer || "add";
@@ -270,8 +270,8 @@ function buildDim(a, S, measure) {
   const Ld = len(AB);
   const dir = Ld > 1e-6 ? mul(AB, 1 / Ld) : u;
   const inside = Ld >= 2.4 * S.aw + S.h;
-  // la diametru, săgeți pline ca la linia de indicație, oricare ar fi capetele alese pentru cote
-  // (liniuța oblică și punctul nu se folosesc la diametre)
+  // for diameters, filled arrows like the leader, whatever terminators were chosen for dimensions
+  // (the oblique stroke and the dot are not used on diameters)
   const SA = (a.prefix || "").startsWith("Ø") ? { ...S, arrow: "closed" } : S;
   if (inside) {
     prims.push(lineP(A, B, S, c));
@@ -285,7 +285,7 @@ function buildDim(a, S, measure) {
   const lab = labelRuns(a, S, measure, nominal, a.prefix || "");
   const { tu, ang, up } = textAngle(dir);
   const mid0 = mul(add(A, B), 0.5);
-  // textul care nu încape între săgeți se mută lângă săgeată, pe prelungirea liniei de cotă
+  // text that does not fit between the arrows moves next to an arrow, on the extension of the dimension line
   let shift = a.textShift;
   if (shift == null) {
     const fits = lab.w + 2 * S.aw * 1.1 <= Ld;
@@ -317,15 +317,15 @@ function buildDim(a, S, measure) {
 }
 
 function buildRad(a, S, measure) {
-  // rază (R) sau diametru pe cerc (Ø): săgeata pe contur, linia spre centru. Cu „umăr”, textul stă
-  // orizontal deasupra unei linii scurte de la capătul liniei de indicație (ca în desenele de atelier).
+  // radius (R) or diameter on a circle (Ø): arrow on the outline, line towards the center. With a "shoulder", the text sits
+  // horizontally above a short line at the end of the leader (as on shop drawings).
   const c = a.layer || "add";
   const R = len(sub(a.p, a.c));
   const dia = !!a.dia;
   const d = norm(sub(a.p3, a.c)) || norm(sub(a.p, a.c)) || [1, 0];
   const q = add(a.c, mul(d, R));
   const far = len(sub(a.p3, a.c)) > R;
-  // la diametru săgeți pline, ca la linia de indicație (ISO 129: fără liniuță oblică)
+  // diameters get filled arrows, like the leader (ISO 129: no oblique stroke)
   const SA = dia ? { ...S, arrow: "closed" } : S;
   const shoulder = far && (a.style || (dia ? "shoulder" : "aligned")) === "shoulder";
   const measured = (((dia ? 2 : 1) * R) / K) * S.scale;
@@ -340,7 +340,7 @@ function buildRad(a, S, measure) {
   ];
   if (shoulder) {
     prims.push(lineP(q, a.p3, S, c), ...arrowP(q, mul(d, -1), SA, c));
-    // umărul pleacă spre exteriorul cercului
+    // the shoulder points away from the circle
     const side = a.p3[0] >= a.c[0] ? 1 : -1;
     const pad = S.h * 0.3;
     const P2 = [a.p3[0] + side * (lab.w + 2 * pad), a.p3[1]];
@@ -357,7 +357,7 @@ function buildRad(a, S, measure) {
     s1 = a.p3;
     prims.push(lineP(q, a.p3, S, c), ...arrowP(q, mul(d, -1), SA, c));
   } else if (dia) {
-    // în interior: linia trece prin centru, cu săgeți la ambele capete ale diametrului
+    // inside: the line goes through the center, with arrows at both ends of the diameter
     s0 = sub(a.c, mul(d, R));
     s1 = q;
     prims.push(lineP(s0, q, S, c), ...arrowP(q, d, SA, c), ...arrowP(s0, mul(d, -1), SA, c));
@@ -373,16 +373,16 @@ function buildRad(a, S, measure) {
   return { prims, measured, nominal, iso: lab.iso, handles };
 }
 
-// unghi „pe ecran” (sens trigonometric, y în jos) al unui vector
+// "on screen" angle (counter-clockwise, y down) of a vector
 const angOf = (v) => Math.atan2(-v[1], v[0]);
 const TAU = Math.PI * 2;
 const wrap = (x) => ((x % TAU) + TAU) % TAU;
 const polar = (c, r, th) => [c[0] + r * Math.cos(th), c[1] - r * Math.sin(th)];
 
 /**
- * Sectorul unghiular care conține direcția p3, dintre cele patru formate de cele două drepte
- * prin vârf. Întoarce { s, e, sweep, legS, legE } — capetele în radiani, sens trigonometric,
- * și pentru fiecare capăt indicele laturii (0/1) și dacă e direcția laturii sau opusa ei.
+ * The angular sector containing direction p3, out of the four formed by the two lines
+ * through the vertex. Returns { s, e, sweep, legS, legE } — the ends in radians, counter-clockwise,
+ * and for each end the index of the leg (0/1) and whether it is the leg's direction or its opposite.
  */
 export function angleSector(v, p1, p2, p3) {
   const a1 = angOf(sub(p1, v));
@@ -412,7 +412,7 @@ function buildAng(a, S, measure) {
   const measured = (sec.sweep * 180) / Math.PI;
   const prims = [];
 
-  // linii ajutătoare pe direcțiile laturilor, până dincolo de arc
+  // extension lines along the legs, past the arc
   for (const end of sec.ends) {
     const th = end.th;
     const d = [Math.cos(th), -Math.sin(th)];
@@ -422,7 +422,7 @@ function buildAng(a, S, measure) {
     }
   }
 
-  // arcul de cotă, ca polilinie
+  // the dimension arc, as a polyline
   const arcLen = r * sec.sweep;
   const inside = arcLen >= 2.4 * S.aw + S.h * 0.5;
   const ext = inside ? 0 : (S.aw * 2.2) / r;
@@ -437,7 +437,7 @@ function buildAng(a, S, measure) {
   const tipE = polar(V, r, sec.e);
   prims.push(...arrowP(tipS, tanAt(sec.s, !inside), S, c), ...arrowP(tipE, tanAt(sec.e, inside), S, c));
 
-  // valoarea: orizontală, în afara arcului, pe bisectoare
+  // the value: horizontal, outside the arc, on the bisector
   const nominal = a.nominal != null ? a.nominal : round(measured, 2);
   const lab = labelRuns(a, S, measure, nominal, "");
   const mid = (sec.s + sec.e) / 2 + (a.textShift || 0) / r;
@@ -462,13 +462,13 @@ function buildAng(a, S, measure) {
   };
 }
 
-// ------------------------------------------------------------------ rugozitate (ISO 1302 / ISO 21920-1)
-const T60 = Math.tan(Math.PI / 6); // proiecția orizontală a unei laturi înclinate la 60° față de suprafață
+// ------------------------------------------------------------------ roughness (ISO 1302 / ISO 21920-1)
+const T60 = Math.tan(Math.PI / 6); // horizontal projection of a leg inclined at 60° to the surface
 
-/** Simbolul în sistemul local: vârful în (0,0), simbolul „în sus” (y negativ). */
+/** The symbol in local coordinates: tip at (0,0), symbol pointing "up" (negative y). */
 function roughLocal(a, S, measure) {
   const h = S.h;
-  const H1 = 1.43 * h; // ISO 1302: h = 3,5 → H1 = 5 mm
+  const H1 = 1.43 * h; // ISO 1302: h = 3.5 → H1 = 5 mm
   const H2 = 3 * h; //            H2 = 10,5 mm
   const lines = [];
   const circles = [];
@@ -483,7 +483,7 @@ function roughLocal(a, S, measure) {
     const s = S.F;
     const wv = val ? measure(val, s) : 0;
     const wm = method ? measure(method, s) : 0;
-    const x0 = (H2 - 0.4 * h) * T60 + 0.5 * h; // textul începe în dreapta laturii lungi
+    const x0 = (H2 - 0.4 * h) * T60 + 0.5 * h; // the text starts to the right of the long leg
     const L = Math.max(wv, wm) + (x0 - top[0]) + 0.6 * h;
     lines.push([top[0], top[1], top[0] + Math.max(L, 2 * h), top[1]]);
     if (val) texts.push({ p: [x0, top[1] + 1.4 * h], txt: val, s, w: wv });
@@ -500,7 +500,7 @@ function buildRough(a, S, measure) {
   let origin = a.target;
   let rot = leader ? 0 : a.rot || 0;
   if (leader) {
-    // linie de indicație cu săgeată pe suprafață și umăr orizontal pe care stă simbolul
+    // leader with the arrow on the surface and a horizontal shoulder carrying the symbol
     const side = a.pos[0] >= a.target[0] ? 1 : -1;
     const span = loc.width + S.h * 1.6;
     const end = [a.pos[0] + side * span, a.pos[1]];
@@ -514,7 +514,7 @@ function buildRough(a, S, measure) {
   const th = (rot * Math.PI) / 180;
   const cs = Math.cos(th);
   const sn = Math.sin(th);
-  // rotire pe ecran în sens trigonometric (y în jos)
+  // rotation on screen, counter-clockwise (y down)
   const tr = (x, y) => [origin[0] + x * cs + y * sn, origin[1] - x * sn + y * cs];
   for (const [x1, y1, x2, y2] of loc.lines) prims.push(lineP(tr(x1, y1), tr(x2, y2), S, c));
   for (const ci of loc.circles) prims.push({ t: "C", p: tr(...ci.c), r: ci.r, w: S.lw, c });
@@ -522,7 +522,7 @@ function buildRough(a, S, measure) {
   return { prims, handles: [{ k: "target", p: a.target }, { k: "pos", p: a.pos || a.target, move: true }] };
 }
 
-// ------------------------------------------------------------------ note tehnice
+// ------------------------------------------------------------------ technical notes
 export function noteLines(a) {
   return String(a.text || "").replace(/\r/g, "").split("\n");
 }
@@ -532,7 +532,7 @@ function buildNote(a, S, measure) {
   const k = a.size || 1;
   const h = S.h * k;
   const F = S.F * k;
-  const pitch = 1.7 * h; // distanța dintre liniile de bază
+  const pitch = 1.7 * h; // distance between baselines
   const [x0, y0] = a.p;
   const pad = a.frame ? 0.8 * h : 0;
   const prims = [];
@@ -573,7 +573,7 @@ function buildNote(a, S, measure) {
   return { prims, handles: [{ k: "p", p: a.p, move: true }] };
 }
 
-// ------------------------------------------------------------------ tabel de revizii
+// ------------------------------------------------------------------ revision table
 export const REVTAB_COLS = [
   { key: "rev", title: "Rev.", en: "Rev.", minMm: 10 },
   { key: "desc", title: "Modificare", en: "Description", minMm: 40 },
@@ -581,7 +581,7 @@ export const REVTAB_COLS = [
   { key: "name", title: "Nume", en: "Name", minMm: 14 },
 ];
 
-// Lista de componente (ISO 7573): deasupra cartușului, antetul jos, poziția 1 lângă antet.
+// Parts list (ISO 7573): above the title block, header at the bottom, item 1 next to the header.
 export const BOM_COLS = [
   { key: "poz", title: "Poz.", en: "Item", minMm: 10 },
   { key: "name", title: "Denumire", en: "Description", minMm: 45, left: true },
@@ -590,7 +590,7 @@ export const BOM_COLS = [
   { key: "obs", title: "Observații", en: "Remarks", minMm: 24, left: true },
 ];
 
-// antetul tabelelor e în limba desenului (setarea documentului), nu neapărat în cea a interfeței
+// table headers are in the drawing language (document setting), not necessarily the UI language
 const colTitle = (col, S) => (S.dlang === "en" && col.en ? col.en : col.title);
 
 function buildRevtab(a, S, measure) {
@@ -605,7 +605,7 @@ function buildTable(a, S, measure, COLS) {
   const c = a.layer || "add";
   const h = S.h;
   const F = S.F;
-  const rowH = 2 * h; // ca la cadrul GD&T: înălțimea rândului = 2 × înălțimea textului
+  const rowH = 2 * h; // as for the GD&T frame: row height = 2 × text height
   const pad = 0.6 * h;
   const rows = a.rows || [];
   const widths = COLS.map((col) => {
@@ -617,12 +617,12 @@ function buildTable(a, S, measure, COLS) {
   const W = widths.reduce((s, w) => s + w, 0);
   const nRows = rows.length + 1;
   const Htot = nRows * rowH;
-  // ancora e colțul dreapta-jos: tabelul se aliniază la dreapta cu cartușul, oricât de lat devine
+  // the anchor is the bottom-right corner: the table stays right-aligned with the title block, however wide it gets
   const yb = a.p[1];
   const x0 = a.p[0] - W;
   const yt = yb - Htot;
   const prims = [{ t: "P", p: [x0, yt, x0 + W, yt, x0 + W, yb, x0, yb], close: true, w: S.lw * 1.4, c }];
-  // ordinea vizuală a rândurilor, de sus în jos
+  // visual order of the rows, top to bottom
   const order = a.headerBottom !== false ? [...rows].reverse().map((r) => ({ r })).concat([{ header: true }]) : [{ header: true }].concat(rows.map((r) => ({ r })));
   order.forEach((item, i) => {
     const top = yt + i * rowH;
@@ -653,7 +653,7 @@ function buildTable(a, S, measure, COLS) {
 function buildLead(a, S, measure) {
   const c = a.layer || "add";
   const [P0, P1] = a.pts;
-  // text pe mai multe rânduri: ultimul rând stă pe umăr, celelalte deasupra
+  // multi-line text: the last line sits on the shoulder, the others above it
   const lines = noteLines(a).map((l) => l.replace(/\s+$/, ""));
   const widths = lines.map((l) => measure(l, S.F));
   const w = Math.max(0, ...widths);
@@ -681,7 +681,7 @@ function buildText(a, S, measure) {
   const h = S.h * (a.size || 1);
   const ang = a.angle || 0;
   const th = (ang * Math.PI) / 180;
-  const down = [Math.sin(th), Math.cos(th)]; // direcția „rândul următor” pe ecran
+  const down = [Math.sin(th), Math.cos(th)]; // "next line" direction on screen
   const prims = [];
   noteLines(a).forEach((raw, i) => {
     const txt = raw.replace(/\s+$/, "");
@@ -731,7 +731,7 @@ function buildGdt(a, S, measure) {
     }
     x += cell.w;
   });
-  // linia de indicație spre element
+  // leader line towards the feature
   const T = a.target;
   let elbowH = null;
   if (T) {
@@ -739,7 +739,7 @@ function buildGdt(a, S, measure) {
     const x1 = x0 + W;
     const E = a.elbow;
     if (E) {
-      // cot liber: linia pleacă din capătul cadrului cel mai apropiat de cot, apoi spre element
+      // free elbow: the line leaves from the frame end closest to the elbow, then goes to the feature
       let start;
       if (E[0] < x0) start = [x0, a.pos[1]];
       else if (E[0] > x1) start = [x1, a.pos[1]];
@@ -753,7 +753,7 @@ function buildGdt(a, S, measure) {
       if (Math.abs(sx - T[0]) > 0.01) pts.push(T);
     }
     elbowH = E || (pts.length === 3 ? pts[1] : mul(add(pts[0], pts[pts.length - 1]), 0.5));
-    // segmente degenerate eliminate
+    // degenerate segments removed
     const clean = [pts[0]];
     for (let i = 1; i < pts.length; i++) if (len(sub(pts[i], clean[clean.length - 1])) > 0.3) clean.push(pts[i]);
     if (clean.length >= 2) {
@@ -779,7 +779,7 @@ function buildDatum(a, S, measure) {
   const b1 = add(a.target, mul(n, hb));
   const b2 = add(a.target, mul(n, -hb));
   const prims = [{ t: "P", p: [b1[0], b1[1], b2[0], b2[1], apex[0], apex[1]], close: true, fill: true, w: S.lw, c }];
-  // marginea casetei pe direcția spre triunghi
+  // box edge in the direction of the triangle
   const v = sub(apex, a.pos);
   const half = Hf / 2;
   const k = Math.min(Math.abs(v[0]) > 1e-9 ? half / Math.abs(v[0]) : Infinity, Math.abs(v[1]) > 1e-9 ? half / Math.abs(v[1]) : Infinity);
@@ -803,7 +803,7 @@ function buildStrike(a, S, measure) {
   const tw = txt ? measure(txt, S.F) : 0;
   const tri = h * 1.9;
   const triPrims = (bx, by, ang) => {
-    // triunghi echilateral cu numărul reviziei, în sistemul local al textului
+    // equilateral triangle with the revision number, in the text's local coordinates
     const tu = [Math.cos((ang * Math.PI) / 180), -Math.sin((ang * Math.PI) / 180)];
     const up = perpL(tu);
     const p0 = [bx, by];
@@ -850,7 +850,7 @@ function rectOutline(r, c) {
   return { t: "P", p: [x0, y0, x1, y0, x1, y1, x0, y1], close: true, w: 0.6, c, ed: true, dash: true };
 }
 
-/** Culoarea unei acoperiri: alb implicit sau culoarea aleasă (#rrggbb). */
+/** Color of a cover: white by default or the chosen color (#rrggbb). */
 export function coverColor(a) {
   return a.color && /^#[0-9a-f]{6}$/i.test(a.color) && a.color.toLowerCase() !== "#ffffff" ? a.color.toLowerCase() : "white";
 }
@@ -874,10 +874,10 @@ function buildInk(a) {
 }
 
 function buildRedact(a) {
-  // pagina din editor e deja randată cu ștergerile aplicate: aici rămâne doar conturul zonei
+  // the editor page is already rendered with removals applied: only the zone outline remains here
   const r = normRect(a.r);
   const prims = [rectOutline(r, a.mode === "cover" ? "edgray" : "edred")];
-  // vechile zone (fără „cover”) se acopereau mereu cu alb
+  // old zones (without "cover") were always covered with white
   const cover = (a.mode === "zone" && a.cover !== false) || a.mode === "cover";
   if (cover) prims.unshift({ t: "R", p: r, c: a.mode === "cover" ? coverColor(a) : "white", cover: true });
   return { prims, handles: [{ k: "r0", p: [a.r[0], a.r[1]] }, { k: "r1", p: [a.r[2], a.r[3]] }] };
@@ -885,7 +885,7 @@ function buildRedact(a) {
 
 const BUILDERS = { dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, ink: buildInk, shape: buildShape, section: buildSection, detail: buildDetail, balloon: buildBalloon, bom: buildBom };
 
-// caractere fără glifă în osifont → echivalente care există (la fel pe ecran și în PDF)
+// characters without a glyph in osifont → existing equivalents (same on screen and in the PDF)
 const GLYPH_SUBST = { "…": "...", "„": '"', "”": '"', "“": '"', "«": '"', "»": '"', "‚": ",", "‘": "'", "\u00a0": " ", "−": "-" };
 const GLYPH_RE = new RegExp(`[${Object.keys(GLYPH_SUBST).join("")}]`, "g");
 export function fontSafe(txt) {
@@ -896,13 +896,13 @@ export const SCALABLE = new Set(["dim", "rad", "ang", "rough", "lead", "text", "
 export const SCALE_MIN = 0.3;
 export const SCALE_MAX = 5;
 
-/** Setările pentru o adnotare mărită/micșorată: text, săgeți și distanțe; grosimea liniilor rămâne. */
+/** Settings for an enlarged/shrunk annotation: text, arrows and distances; line widths stay. */
 export function scaledS(S, k) {
   if (!k || Math.abs(k - 1) < 1e-9) return S;
   return { ...S, h: S.h * k, F: S.F * k, aw: S.aw * k, gap: S.gap * k, over: S.over * k };
 }
 
-/** Punctul fix la mărire: ancora principală a adnotării. */
+/** Fixed point when resizing: the annotation's main anchor. */
 export function scaleAnchor(a) {
   return a.target || a.p || a.pos || a.v || a.c || (a.pts && a.pts[1]) || a.p1 || (a.r && [a.r[0], a.r[1]]) || [0, 0];
 }
@@ -915,7 +915,7 @@ export function build(a, S, measure) {
   for (const p of b.prims) if (p.t === "T") p.txt = fontSafe(p.txt);
   b.bbox = primsBBox(b.prims);
   if (b.bbox && SCALABLE.has(a.type)) {
-    // pătrățelele de mărire: colțurile casetei aflate departe de ancoră (cel mai depărtat primul)
+    // resize handles: the box corners far from the anchor (farthest first)
     const an = scaleAnchor(a);
     const [x0, y0, x1, y1] = b.bbox;
     const corners = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map((q) => ({ q, d: Math.hypot(q[0] - an[0], q[1] - an[1]) }));
@@ -926,7 +926,7 @@ export function build(a, S, measure) {
   return b;
 }
 
-// ------------------------------------------------------------------ geometrie de selecție
+// ------------------------------------------------------------------ selection geometry
 function textCorners(p) {
   const ang = ((p.a || 0) * Math.PI) / 180;
   const tu = [Math.cos(ang), -Math.sin(ang)];
@@ -1010,7 +1010,7 @@ export function hit(built, a, pt, tol) {
   return false;
 }
 
-// ------------------------------------------------------------------ editare geometrie
+// ------------------------------------------------------------------ geometry editing
 export function setHandle(a, k, pt, built) {
   if (k === "tx") {
     const meta = built && built.meta;
@@ -1040,12 +1040,12 @@ export function moveAnnot(a, dx, dy) {
   if (a.r) a.r = [a.r[0] + dx, a.r[1] + dy, a.r[2] + dx, a.r[3] + dy];
 }
 
-/** Puncte ale adnotărilor, oferite ca țintă de snap. */
+/** Annotation points, offered as snap targets. */
 export function annotSnapPoints(built) {
   return (built.handles || []).filter((h) => h.p && h.k !== "tx" && h.k !== "sc").map((h) => h.p);
 }
 
-/** Primitive pentru export: fără elementele care există doar în editor. */
+/** Primitives for export: without elements that exist only in the editor. */
 export function exportPrims(prims) {
   return prims
     .filter((p) => !p.ed)

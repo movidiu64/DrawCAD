@@ -1,7 +1,7 @@
 name: Desktop Windows
 
-# Aplicația desktop: PyInstaller + Tesseract (română, engleză) + installer Inno Setup.
-# La fiecare push pe main se construiește și se testează; la un tag v* se publică în Releases.
+# Desktop app: PyInstaller + Tesseract (Romanian, English) + Inno Setup installer.
+# Every push to main builds and tests it; a v* tag publishes it to Releases.
 on:
   push:
     branches: [main]
@@ -18,7 +18,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     env:
-      PYTHONUTF8: "1"  # diacriticele în jurnalele testelor
+      PYTHONUTF8: "1"  # diacritics in the test logs
     defaults:
       run:
         shell: pwsh
@@ -29,7 +29,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Versiune
+      - name: Version
         id: ver
         run: |
           if ("${{ github.event_name }}" -eq "release") { $v = "${{ github.event.release.tag_name }}".TrimStart("v") }
@@ -38,16 +38,16 @@ jobs:
           "version=$v" >> $env:GITHUB_OUTPUT
           Write-Host "Versiune: $v"
 
-      - name: Dependențe Python
+      - name: Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt -r desktop/requirements.txt
 
-      - name: Tesseract (română + engleză) pentru pachet
+      - name: Tesseract (Romanian + English) for the package
         run: |
           choco install tesseract -y --no-progress
           $src = "C:\Program Files\Tesseract-OCR"
-          if (-not (Test-Path "$src\tesseract.exe")) { Write-Host "::error::Tesseract nu s-a instalat în $src"; exit 1 }
+          if (-not (Test-Path "$src\tesseract.exe")) { Write-Host "::error::Tesseract was not installed in $src"; exit 1 }
           $dst = Join-Path $env:RUNNER_TEMP "tesseract"
           New-Item -ItemType Directory -Force "$dst\tessdata\configs" | Out-Null
           Copy-Item "$src\*.exe", "$src\*.dll" $dst
@@ -55,41 +55,41 @@ jobs:
           Copy-Item "$src\tessdata\configs\*" "$dst\tessdata\configs"
           Get-ChildItem $src -File | Where-Object { $_.Name -match "LICENSE|COPYING|AUTHORS|README" } | Copy-Item -Destination $dst
           Invoke-WebRequest "https://github.com/tesseract-ocr/tessdata_fast/raw/main/ron.traineddata" -OutFile "$dst\tessdata\ron.traineddata"
-          # nu ne trebuie programele de antrenare: doar tesseract.exe
+          # we do not need the training tools: only tesseract.exe
           Get-ChildItem $dst -Filter *.exe | Where-Object { $_.Name -ne "tesseract.exe" } | Remove-Item
           & "$dst\tesseract.exe" --list-langs
           $mb = [math]::Round(((Get-ChildItem $dst -Recurse | Measure-Object Length -Sum).Sum / 1MB), 1)
-          Write-Host "::notice::Tesseract în pachet: $mb MB"
+          Write-Host "::notice::Tesseract in the package: $mb MB"
           "TESSERACT_DIR=$dst" >> $env:GITHUB_ENV
 
       - name: PyInstaller
         run: pyinstaller desktop/drawcad.spec --noconfirm --distpath dist --workpath build
 
-      - name: Autotest pe executabil
+      - name: Self-test on the executable
         run: |
           $rep = Join-Path $env:RUNNER_TEMP "selftest.json"
           $p = Start-Process -FilePath "dist\DrawCAD\DrawCAD.exe" -ArgumentList "--selftest", "--report", "`"$rep`"" -Wait -PassThru
           if (Test-Path $rep) {
             Get-Content $rep -Raw | Write-Host
             $j = Get-Content $rep -Raw | ConvertFrom-Json
-            Write-Host "::notice::Autotest: OCR $($j.steps.ocr.lang) → $($j.steps.ocr.texts -join ' / '); DXF scan: $($j.steps.scan_dxf.stats | ConvertTo-Json -Compress)"
-          } else { Write-Host "::error::autotestul nu a scris raportul" }
+            Write-Host "::notice::Self-test: OCR $($j.steps.ocr.lang) → $($j.steps.ocr.texts -join ' / '); DXF scan: $($j.steps.scan_dxf.stats | ConvertTo-Json -Compress)"
+          } else { Write-Host "::error::the self-test did not write its report" }
           if ($p.ExitCode -ne 0) {
             $j = Get-Content $rep -Raw -ErrorAction SilentlyContinue
-            Write-Host "::error::Autotest eșuat (cod $($p.ExitCode)): $($j -replace "`r?`n", ' ')"
+            Write-Host "::error::Self-test failed (code $($p.ExitCode)): $($j -replace "`r?`n", ' ')"
             $log = Join-Path $env:LOCALAPPDATA "DrawCAD\drawcad.log"
-            if (Test-Path $log) { Write-Host "::error::Jurnal: $((Get-Content $log -Raw) -replace "`r?`n", ' | ')" }
+            if (Test-Path $log) { Write-Host "::error::Log: $((Get-Content $log -Raw) -replace "`r?`n", ' | ')" }
             exit 1
           }
 
-      - name: Test în browser pe executabil
+      - name: Browser test on the executable
         run: |
           $srv = Start-Process -FilePath "dist\DrawCAD\DrawCAD.exe" -ArgumentList "--server-only", "--port", "8080" -PassThru
           $ok = $false
           for ($i = 0; $i -lt 60; $i++) {
             try { Invoke-RestMethod http://127.0.0.1:8080/api/health | Out-Null; $ok = $true; break } catch { Start-Sleep 1 }
           }
-          if (-not $ok) { Write-Host "::error::Serverul din executabil nu răspunde"; exit 1 }
+          if (-not $ok) { Write-Host "::error::The server in the executable does not respond"; exit 1 }
           pip install playwright
           python -m playwright install chromium
           New-Item -ItemType Directory -Force e2e_out | Out-Null
@@ -98,11 +98,11 @@ jobs:
           Get-Content e2e_out/e2e.log | Select-Object -Last 30 | Write-Host
           Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue
           if ($code -ne 0) {
-            $why = (Get-Content e2e_out/e2e.log | Select-String -Pattern "^E2E EȘUAT|^  » |^ERORI CONSOLĂ" | Select-Object -First 10 | ForEach-Object { $_.Line }) -join ' | '
+            $why = (Get-Content e2e_out/e2e.log | Select-String -Pattern "^E2E FAILED|^  » |^CONSOLE ERRORS" | Select-Object -First 10 | ForEach-Object { $_.Line }) -join ' | '
             if (-not $why) { $why = (Get-Content e2e_out/e2e.log | Select-Object -Last 15) -join ' | ' }
-            Write-Host "::error::e2e pe executabil eșuat: $why"
+            Write-Host "::error::e2e on the executable failed: $why"
             $log = Join-Path $env:LOCALAPPDATA "DrawCAD\drawcad.log"
-            if (Test-Path $log) { Write-Host "::error::Jurnal server: $((Get-Content $log -Tail 20) -join ' | ')" }
+            if (Test-Path $log) { Write-Host "::error::Server log: $((Get-Content $log -Tail 20) -join ' | ')" }
             exit 1
           }
 
@@ -112,7 +112,7 @@ jobs:
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { $iscc = "$env:ProgramFiles\Inno Setup 6\ISCC.exe" }
           & $iscc "/DAppVersion=${{ steps.ver.outputs.version }}" "/DSrcDir=..\dist\DrawCAD" desktop\drawcad.iss
-          if ($LASTEXITCODE -ne 0) { Write-Host "::error::Inno Setup a eșuat"; exit 1 }
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::Inno Setup failed"; exit 1 }
           Compress-Archive -Path dist\DrawCAD\* -DestinationPath "dist\DrawCAD-${{ steps.ver.outputs.version }}-portabil.zip"
           Get-ChildItem dist -File | ForEach-Object { Write-Host "::notice::$($_.Name): $([math]::Round($_.Length / 1MB, 1)) MB" }
 
@@ -138,9 +138,9 @@ jobs:
         run: |
           $files = (Get-ChildItem dist -File -Include *-setup.exe, *-portabil.zip -Recurse).FullName
           if ("${{ github.event_name }}" -eq "release") {
-            # release creat din GitHub: i se atașează fișierele
+            # release created from GitHub: the files are attached to it
             gh release upload "${{ github.event.release.tag_name }}" $files --clobber
           } else {
             gh release create "${{ github.ref_name }}" $files `
-              --title "DrawCAD ${{ steps.ver.outputs.version }}" --notes "Installer pentru Windows 10/11 (64 biți) și varianta portabilă (ZIP)."
+              --title "DrawCAD ${{ steps.ver.outputs.version }}" --notes "Installer for Windows 10/11 (64-bit) and the portable version (ZIP)."
           }

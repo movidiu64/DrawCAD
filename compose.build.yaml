@@ -1,5 +1,5 @@
-# Variantă care construiește imaginea pe server, din sursă (fără registry, fără token GHCR).
-# Potrivită pentru Dockhand cu stack din Git: fișierul compose = compose.build.yaml.
+# Variant that builds the image on the server, from source (no registry, no GHCR token).
+# Suitable for Dockhand with a Git stack: compose file = compose.build.yaml.
 #   docker compose -f compose.build.yaml up -d --build
 
 name: drawcad
@@ -8,7 +8,7 @@ services:
   drawcad:
     build: .
     image: drawcad:local
-    # reconstruiește la fiecare deploy, ca un redeploy după git sync să ia codul nou
+    # rebuild on every deploy, so a redeploy after a git sync picks up the new code
     pull_policy: build
     container_name: drawcad
     restart: unless-stopped
@@ -22,16 +22,16 @@ services:
       DRAWCAD_MAX_UPLOAD_MB: ${DRAWCAD_MAX_UPLOAD_MB:-${COTARE_MAX_UPLOAD_MB:-200}}
       DRAWCAD_MAX_RENDER_PX: ${DRAWCAD_MAX_RENDER_PX:-${COTARE_MAX_RENDER_PX:-12000}}
       DRAWCAD_RETENTION_DAYS: ${DRAWCAD_RETENTION_DAYS:-${COTARE_RETENTION_DAYS:-30}}
-      # private = fiecare browser are documentele lui (implicit); personal = un singur utilizator,
-      # documentele se văd din orice browser; session = ca private, doar până la închiderea browserului
+      # private = each browser has its own documents (default); personal = a single user,
+      # documents are visible from any browser; session = like private, only until the browser closes
       DRAWCAD_MODE: ${DRAWCAD_MODE:-private}
       DRAWCAD_MAX_PAGES: ${DRAWCAD_MAX_PAGES:-300}
       DRAWCAD_MAX_IMAGE_MPX: ${DRAWCAD_MAX_IMAGE_MPX:-400}
-      # parolă opțională (utilizator „drawcad”); goală = fără parolă, ca în rețeaua de acasă
+      # optional password (user "drawcad"); empty = no password, as on a home network
       DRAWCAD_PASSWORD: ${DRAWCAD_PASSWORD:-}
       DRAWCAD_OCR_LANG: ${DRAWCAD_OCR_LANG:-ron+eng}
-    # întărire: fără privilegii în plus, sistem de fișiere doar-citire (se scrie doar în /data și /tmp),
-    # număr limitat de procese; capabilitățile rămase servesc doar la pregătirea folderului /data
+    # hardening: no extra privileges, read-only filesystem (writes only to /data and /tmp),
+    # limited number of processes; the remaining capabilities only serve to prepare the /data folder
     security_opt:
       - no-new-privileges:true
     cap_drop:

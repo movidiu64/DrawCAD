@@ -1,12 +1,12 @@
-"""DrawCAD pentru desktop (Windows): serverul aplicației pornește local, pe 127.0.0.1, iar
-interfața se deschide într-o fereastră nativă (WebView2, prin pywebview). Totul rulează pe
-calculator, fără internet; documentele de lucru stau în %LOCALAPPDATA%\\DrawCAD.
+"""DrawCAD for the desktop (Windows): the app server starts locally, on 127.0.0.1, and
+the interface opens in a native window (WebView2, via pywebview). Everything runs on the
+computer, without internet; working documents live in %LOCALAPPDATA%\\DrawCAD.
 
-Argumente:
-  DrawCAD.exe [fișier.pdf]          deschide aplicația (și fișierul dat, ex. din „Deschide cu”)
-  DrawCAD.exe --server-only [--port N]   doar serverul (teste, sau folosire din browser)
-  DrawCAD.exe --selftest [--report f.json]  verificare completă fără fereastră (CI)
-  DrawCAD.exe --run-module app.ingest …   uz intern: procesele-copil ale serverului
+Arguments:
+  DrawCAD.exe [file.pdf]          opens the app (and the given file, e.g. from "Open with")
+  DrawCAD.exe --server-only [--port N]   the server only (tests, or use from a browser)
+  DrawCAD.exe --selftest [--report f.json]  full check without a window (CI)
+  DrawCAD.exe --run-module app.ingest …   internal: the server's child processes
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ import urllib.request
 from pathlib import Path
 
 APP = "DrawCAD"
-PREFERRED_PORT = 47878  # fix, ca setările păstrate de fereastră (localStorage) să rămână aceleași
+PREFERRED_PORT = 47878  # fixed, so the settings kept by the window (localStorage) stay the same
 
 
 def base_dir() -> Path:
@@ -47,7 +47,7 @@ def setup_env():
         "DRAWCAD_MODE": "personal",
         "DRAWCAD_DESKTOP": "1",
         "DRAWCAD_ALLOWED_HOSTS": "127.0.0.1,localhost",
-        # documentele rămân până le ștergi tu din Recente
+        # documents stay until you delete them from Recent
         "DRAWCAD_RETENTION_DAYS": "0",
         "OMP_THREAD_LIMIT": "1",
     }
@@ -68,7 +68,7 @@ def setup_env():
 
 
 def redirect_output():
-    """O aplicație Windows fără consolă nu are ieșire standard: mesajele merg într-un jurnal."""
+    """A Windows app without a console has no standard output: messages go to a log file."""
     if sys.stdout is None or sys.stderr is None:
         log = open(data_root() / "drawcad.log", "a", encoding="utf-8", buffering=1)  # noqa: SIM115
         if sys.stdout is None:
@@ -131,8 +131,8 @@ class LocalServer:
 
 
 def choose_port(requested: int | None):
-    """(port, server_existent): portul fix dacă e liber; dacă DrawCAD rulează deja pe el,
-    fereastra nouă se leagă la același server; altfel un port liber oarecare."""
+    """(port, existing_server): the fixed port if it is free; if DrawCAD already runs on it,
+    the new window connects to the same server; otherwise any free port."""
     port = requested or PREFERRED_PORT
     if port_free(port):
         return port, False
@@ -146,7 +146,7 @@ def upload(port: int, path: str) -> str | None:
     p = Path(path)
     if not p.is_file():
         return None
-    # numele (poate cu diacritice) merge ca octeți UTF-8 în antet, cum îl trimite și pagina
+    # the name (possibly with diacritics) goes as UTF-8 bytes in the header, as the page sends it
     req = urllib.request.Request(
         f"http://127.0.0.1:{port}/api/open", data=p.read_bytes(), method="POST",
         headers={"X-Filename": p.name.encode("utf-8").decode("latin-1")},
@@ -158,16 +158,16 @@ def upload(port: int, path: str) -> str | None:
         return None
 
 
-# ---------------------------------------------------------------- fereastra
+# ---------------------------------------------------------------- the window
 
 
 class Bridge:
-    """Funcții apelate din pagină (window.pywebview.api): salvarea cu dialogul sistemului."""
+    """Functions called from the page (window.pywebview.api): saving with the system dialog."""
 
     def __init__(self):
-        # cu „_” în față: pywebview expune paginii tot ce e public în acest obiect și coboară
-        # recursiv în atribute; prin fereastră ajungea în obiectele .NET ale ferestrei (mii de
-        # niveluri, „maximum recursion depth”), ceea ce bloca pornirea și fiecare încărcare a paginii
+        # prefixed with "_": pywebview exposes to the page everything public in this object and walks
+        # attributes recursively; through the window it reached the window's .NET objects (thousands of
+        # levels, "maximum recursion depth"), which froze startup and every page load
         self._window = None
 
     def save_file(self, name, b64):
@@ -200,7 +200,7 @@ class Bridge:
 
 
 def open_window(url: str) -> bool:
-    """Fereastra nativă. Întoarce False dacă nu s-a putut deschide (ex. lipsește WebView2)."""
+    """The native window. Returns False if it could not be opened (e.g. WebView2 is missing)."""
     try:
         import webview
     except Exception:  # noqa: BLE001
@@ -215,17 +215,17 @@ def open_window(url: str) -> bool:
         bridge._window = win
         kw = {"private_mode": False, "storage_path": str(data_root() / "webview")}
         if sys.platform == "win32":
-            kw["gui"] = "edgechromium"  # niciodată vechiul motor IE: nu înțelege interfața
+            kw["gui"] = "edgechromium"  # never the old IE engine: it does not understand the interface
         webview.start(**kw)
         return True
     except Exception as e:  # noqa: BLE001
-        print(f"fereastra nativă a eșuat: {e}", file=sys.stderr)
+        print(f"native window failed: {e}", file=sys.stderr)
         return False
 
 
 def browser_fallback(url: str):
-    """Fără WebView2: interfața se deschide în browserul implicit, iar o fereastră mică ține
-    serverul pornit până o închizi."""
+    """Without WebView2: the interface opens in the default browser, and a small window keeps
+    the server running until you close it."""
     import webbrowser
 
     webbrowser.open(url)
@@ -240,7 +240,7 @@ def browser_fallback(url: str):
         tk.Button(root, text="Deschide din nou", command=lambda: webbrowser.open(url)).pack(pady=8)
         root.mainloop()
     except Exception:  # noqa: BLE001
-        while True:  # fără interfață grafică: serverul rămâne pornit
+        while True:  # no GUI: the server keeps running
             time.sleep(3600)
 
 
@@ -268,8 +268,8 @@ def _sample_pdf() -> bytes:
 
 
 def selftest(report: str | None) -> int:
-    """Verifică tot lanțul din pachet: citirea în proces separat, randarea, OCR-ul cu Tesseract
-    din pachet, exportul PDF și DXF, vectorizarea unui scan."""
+    """Checks the whole chain in the package: reading in a separate process, rendering, OCR with the bundled
+    Tesseract, PDF and DXF export, vectorization of a scan."""
     import io
 
     out = {"ok": False, "steps": {}}
@@ -293,7 +293,7 @@ def selftest(report: str | None) -> int:
 
         st = out["steps"]
         st["health"] = call("GET", "/api/health")
-        for _ in range(90):  # detectarea limbilor OCR rulează în fundal la pornire
+        for _ in range(90):  # OCR language detection runs in the background at startup
             if not st["health"].get("ocrPending"):
                 break
             time.sleep(1)
@@ -308,12 +308,12 @@ def selftest(report: str | None) -> int:
             texts = [ln["text"] for ln in res["lines"]]
             st["ocr"] = {"lang": res["lang"], "texts": texts, "ok": any("42CrMo4" in t for t in texts)}
         else:
-            st["ocr"] = {"ok": False, "error": "Tesseract lipsește"}
+            st["ocr"] = {"ok": False, "error": "Tesseract missing"}
         data, h = call("POST", f"/api/doc/{meta['id']}/export", {"filename": "a.pdf", "ocrLayer": True}, raw=True)
         st["export_pdf"] = data[:5] == b"%PDF-"
         data, h = call("POST", f"/api/doc/{meta['id']}/export", {"format": "dxf", "filename": "a"}, raw=True)
         st["export_dxf"] = data.startswith(b"  0\nSECTION") and h.get("X-Export-Kind") == "dxf"
-        # un „scan”: pagina randată ca imagine → citire ca imagine, apoi DXF cu vectorizare
+        # a "scan": the page rendered as an image → read as an image, then DXF with vectorization
         import pypdfium2 as pdfium
 
         img = pdfium.PdfDocument(pdf)[0].render(scale=200 / 72).to_pil().convert("L")
@@ -328,7 +328,7 @@ def selftest(report: str | None) -> int:
 
             st["webview"] = True
         except Exception as e:  # noqa: BLE001
-            st["webview"] = f"lipsă: {e}"
+            st["webview"] = f"missing: {e}"
         out["ok"] = all([
             st["render"], st["ocr"]["ok"], st["export_pdf"], st["export_dxf"], st["scan_dxf"]["ok"], st["webview"] is True,
         ])
@@ -347,7 +347,7 @@ def selftest(report: str | None) -> int:
     return 0 if out["ok"] else 1
 
 
-# ---------------------------------------------------------------- intrare
+# ---------------------------------------------------------------- entry point
 
 
 def run_module(name: str, args: list[str]) -> int:
@@ -360,7 +360,7 @@ def run_module(name: str, args: list[str]) -> int:
 
 
 def main(argv: list[str]) -> int:
-    # procesele-copil ale serverului: primul lucru, fără nimic grafic
+    # the server's child processes: first thing, nothing graphical
     if len(argv) > 2 and argv[1] == "--run-module":
         setup_env()
         return run_module(argv[2], argv[3:])
@@ -394,7 +394,7 @@ def main(argv: list[str]) -> int:
         srv.start()
     took = time.time() - t_start
     if took > 5:
-        log.warning("pornire lentă: serverul a fost gata după %.1f s", took)
+        log.warning("slow start: the server was ready after %.1f s", took)
     url = f"http://127.0.0.1:{port}/"
     if files:
         doc_id = upload(port, files[0])
@@ -405,7 +405,7 @@ def main(argv: list[str]) -> int:
             browser_fallback(url)
     finally:
         if srv:
-            time.sleep(0.4)  # ultima salvare trimisă la închiderea ferestrei
+            time.sleep(0.4)  # the last save sent when the window closes
             srv.stop()
     return 0
 

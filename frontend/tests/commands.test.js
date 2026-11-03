@@ -5,7 +5,7 @@ import { TOOLS } from "../js/tools.js";
 
 const D = defaultKeyConfig();
 
-test("implicit: fără dubluri de taste sau de comenzi, fiecare unealtă are cel puțin o comandă", () => {
+test("defaults: no duplicate keys or commands, every tool has at least one command", () => {
   const bad = conflicts(D);
   assert.deepEqual(bad.keys, {});
   assert.deepEqual(bad.aliases, {});
@@ -16,17 +16,17 @@ test("implicit: fără dubluri de taste sau de comenzi, fiecare unealtă are cel
   }
 });
 
-test("comenzile AutoCAD: L, C, PL, REC, A, H, DLI, DDI, DRA, DAN, DAL, LE, TOL, E, U, Z", () => {
+test("AutoCAD commands: L, C, PL, REC, A, H, DLI, DDI, DRA, DAN, DAL, LE, TOL, E, U, Z", () => {
   const want = { L: "line", C: "circle", PL: "poly", REC: "rect", A: "arc", H: "hatch", DLI: "dimLin", DDI: "dimDiaC",
     DRA: "dimRad", DAN: "dimAng", DAL: "dimAli", LE: "lead", DDL: "dimDia", TOL: "gdt", E: "redact", U: "undo", Z: "fit", P: "pan", T: "text" };
   for (const [a, id] of Object.entries(want)) assert.equal(resolveCommand(a, D).id, id, a);
-  assert.equal(resolveCommand("dli", D).id, "dimLin"); // litere mici
-  assert.equal(resolveCommand("Cerc", D).id, "circle"); // după nume
-  assert.equal(resolveCommand("teșitură", D).id, "chamfer"); // cu diacritice
+  assert.equal(resolveCommand("dli", D).id, "dimLin"); // lowercase letters
+  assert.equal(resolveCommand("Cerc", D).id, "circle"); // by name
+  assert.equal(resolveCommand("teșitură", D).id, "chamfer"); // with diacritics
   assert.equal(resolveCommand("XYZQ", D), null);
 });
 
-test("sugestii: potrivirea exactă prima, apoi prescurtările care încep la fel", () => {
+test("suggestions: the exact match first, then aliases starting the same way", () => {
   const s = suggest("D", D).map((c) => c.id);
   assert.ok(s.includes("dimLin") && s.includes("dimDia") && s.includes("measure"));
   assert.equal(suggest("C", D)[0].id, "circle");
@@ -34,7 +34,7 @@ test("sugestii: potrivirea exactă prima, apoi prescurtările care încep la fel
   assert.equal(suggest("raz", D)[0].id, "dimRad");
 });
 
-test("taste directe: cele vechi rămân implicite; modificările și dublurile se văd", () => {
+test("direct keys: the old ones stay default; changes and duplicates are visible", () => {
   const m = directKeyMap(D);
   assert.equal(m.v, "select");
   assert.equal(m.l, "lead");
@@ -44,6 +44,6 @@ test("taste directe: cele vechi rămân implicite; modificările și dublurile s
   assert.deepEqual(bad.keys.L.sort(), ["circle", "lead"]);
   assert.deepEqual(bad.aliases.C.sort(), ["circle", "line"]);
   assert.deepEqual(conflicts({ mode: "direct", keys: { circle: "F" }, aliases: {} }).reserved, ["F"]);
-  // o tastă scoasă nu mai pornește nimic
+  // a removed key no longer starts anything
   assert.equal(directKeyMap({ mode: "direct", keys: { lead: "" }, aliases: {} }).l, undefined);
 });

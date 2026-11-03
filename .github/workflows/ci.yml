@@ -21,14 +21,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Dependențe Python
+      - name: Python dependencies
         run: pip install -r backend/requirements.txt
       - name: Tesseract (OCR)
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-ron
-      - name: Teste backend
+      - name: Backend tests
         working-directory: backend
         run: python -m unittest discover -s tests -v
-      - name: Teste frontend (ISO 286, geometrie cote)
+      - name: Frontend tests (ISO 286, dimension geometry)
         working-directory: frontend
         run: npm test
 
@@ -37,11 +37,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Numele imaginii
+      - name: Image name
         id: img
         run: echo "name=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
-      - name: Construiește imaginea
+      - name: Build the image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -49,11 +49,11 @@ jobs:
           tags: ${{ steps.img.outputs.name }}:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Validează fișierele compose
+      - name: Validate the compose files
         run: |
           docker compose -f compose.yaml config -q
           docker compose -f compose.build.yaml config -q
-      - name: Pornește containerul (folder de date montat, deținut de alt utilizator)
+      - name: Start the container (data folder mounted, owned by another user)
         run: |
           mkdir -p "$RUNNER_TEMP/cotdata"
           docker run -d --name drawcad -p 8080:8080 -v "$RUNNER_TEMP/cotdata:/data" \
@@ -66,27 +66,27 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Test în browser pe container
+      - name: Browser test on the container
         run: |
           pip install -r backend/requirements.txt playwright
           python -m playwright install --with-deps chromium
           mkdir -p e2e_out
           python tools/e2e_smoke.py http://127.0.0.1:8080 e2e_out 2>&1 | tee e2e_out/e2e.log
           test "${PIPESTATUS[0]}" = 0
-      - name: Verificare de securitate pe container
+      - name: Security check on the container
         run: |
           python tools/security_smoke.py http://127.0.0.1:8080 2>&1 | tee e2e_out/security.log
           test "${PIPESTATUS[0]}" = 0
-      - name: Verifică utilizatorul și permisiunile
+      - name: Check the user and permissions
         run: |
           docker exec drawcad grep -E "^(Uid|Gid):" /proc/1/status
           docker exec drawcad grep -qE "^Uid:[[:space:]]+99[[:space:]]" /proc/1/status
           test "$(stat -c %u:%g "$RUNNER_TEMP/cotdata/docs")" = "99:100"
           ls -ln "$RUNNER_TEMP/cotdata/docs" | head
-      - name: Jurnal container
+      - name: Container log
         if: always()
         run: docker logs drawcad
-      - name: Diagnostic (ultimele linii ca adnotări)
+      - name: Diagnostics (last lines as annotations)
         if: failure()
         run: |
           for f in e2e_out/e2e.log e2e_out/security.log; do
@@ -100,7 +100,7 @@ jobs:
         with:
           name: e2e
           path: e2e_out
-      - name: Publică imaginea în GHCR
+      - name: Publish the image to GHCR
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin

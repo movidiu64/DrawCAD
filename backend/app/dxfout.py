@@ -1,9 +1,9 @@
-"""Export DXF: geometria paginii (din PDF-ul vectorial sau din vectorizarea scanului), textele,
-adnotările DrawCAD și textul recunoscut (OCR), pe straturi separate.
+"""DXF export: page geometry (from the vector PDF or from scan vectorization), texts,
+DrawCAD annotations and recognized text (OCR), on separate layers.
 
-Coordonatele: milimetri, originea în colțul stânga-jos al paginii, așa cum se vede pe ecran
-(rotația paginii aplicată). Cu `scale` ≠ 1 desenul ajunge la dimensiunile reale ale piesei
-(ex. desen 1:2 → scale 2), deci cotele măsurate în CAD dau valorile reale.
+Coordinates: millimeters, origin at the bottom-left corner of the page as seen on screen
+(page rotation applied). With `scale` ≠ 1 the drawing gets the part's real dimensions
+(e.g. a 1:2 drawing → scale 2), so dimensions measured in CAD give the real values.
 """
 from __future__ import annotations
 
@@ -14,8 +14,8 @@ import os
 import re
 import tempfile
 
-# ezdxf caută la import ~/.config/ezdxf/ezdxf.ini: în container, procesul rulează ca alt
-# utilizator decât proprietarul lui HOME (/root), iar căutarea ar da „Permission denied”
+# on import ezdxf looks for ~/.config/ezdxf/ezdxf.ini: in the container the process runs as a different
+# user than the owner of HOME (/root), and the lookup would fail with "Permission denied"
 if not os.access(os.path.expanduser("~"), os.R_OK | os.X_OK):
     os.environ["HOME"] = tempfile.gettempdir()
 os.environ.setdefault("XDG_CACHE_HOME", os.path.join(tempfile.gettempdir(), "drawcad-cache"))
@@ -39,9 +39,9 @@ from .pdfcore import (
 )
 
 PT_MM = 25.4 / 72
-CAP_OSIFONT = 1515 / 2048  # înălțimea majusculelor în osifont, raportată la corpul literei
+CAP_OSIFONT = 1515 / 2048  # cap height in osifont, relative to the letter body
 CAP_GENERIC = 0.72
-# grosimile standard de linie din DXF (sutimi de mm)
+# standard DXF line weights (hundredths of a mm)
 LINEWEIGHTS = [0, 5, 9, 13, 15, 18, 20, 25, 30, 35, 40, 50, 53, 60, 70, 80, 90, 100, 106, 120, 140, 158, 200, 211]
 
 LAYERS = {
@@ -63,7 +63,7 @@ def _lineweight(mm: float) -> int:
     return min(LINEWEIGHTS[1:], key=lambda w: abs(w - v))
 
 
-# ---------------------------------------------------------------- extragere din PDF
+# ---------------------------------------------------------------- extraction from the PDF
 
 
 def _rgb(fn, obj):
@@ -94,7 +94,7 @@ def _dash(obj, scale):
 
 
 def _segments(sp, g):
-    """Un subpath în coordonate vizuale: listă de ("L", a, b) / ("A", a, b, sweep, cerc) / ("B", a, c1, c2, b)."""
+    """A subpath in visual coordinates: a list of ("L", a, b) / ("A", a, b, sweep, circle) / ("B", a, c1, c2, b)."""
     P = [g.to_vis(*p) for p in sp["pts"]]
     K = sp["kinds"]
     out = []
@@ -125,7 +125,7 @@ def _segments(sp, g):
 
 
 def _as_circle(segs):
-    """Subpath format doar din arce ale aceluiași cerc, care se închide: (cx, cy, r)."""
+    """A subpath made only of arcs of the same circle, which closes: (cx, cy, r)."""
     if not segs or any(s[0] != "A" for s in segs):
         return None
     cx, cy, r = segs[0][4]
@@ -145,7 +145,7 @@ def _as_circle(segs):
 
 
 def page_content(pdf_bytes: bytes, page_index: int) -> dict:
-    """Tot ce se poate pune în DXF dintr-o pagină PDF, în coordonate vizuale (puncte, y în jos)."""
+    """Everything that can go into the DXF from a PDF page, in visual coordinates (points, y down)."""
     with PDFIUM_LOCK:
         doc = pdfium.PdfDocument(pdf_bytes)
         try:
@@ -162,7 +162,7 @@ def page_content(pdf_bytes: bytes, page_index: int) -> dict:
                     if not R.FPDFPath_GetDrawMode(obj, ctypes.byref(fill), ctypes.byref(stroke)):
                         continue
                     if not fill.value and not stroke.value:
-                        continue  # cale de decupare / invizibilă
+                        continue  # clipping / invisible path
                     det = abs(total[0] * total[3] - total[1] * total[2])
                     sc = math.sqrt(det) if det > 0 else 1.0
                     w = ctypes.c_float()
@@ -186,7 +186,7 @@ def page_content(pdf_bytes: bytes, page_index: int) -> dict:
                 elif typ == R.FPDF_PAGEOBJ_TEXT:
                     try:
                         if R.FPDFTextObj_GetTextRenderMode(obj) == 3:
-                            continue  # text invizibil (strat OCR al altui program)
+                            continue  # invisible text (another program's OCR layer)
                     except Exception:  # noqa: BLE001
                         pass
                     txt = _text_of(obj, tp.raw).replace("\r", " ").replace("\n", " ")
@@ -218,14 +218,14 @@ def page_content(pdf_bytes: bytes, page_index: int) -> dict:
 
 
 def is_scan(content: dict) -> bool:
-    """Pagină scanată: o imagine acoperă cea mai mare parte a foii, iar liniile vectoriale lipsesc."""
+    """Scanned page: an image covers most of the sheet and vector lines are missing."""
     area = content["W"] * content["H"]
     img = max(((b[2] - b[0]) * (b[3] - b[1]) for b in content["images"]), default=0)
     n_segs = sum(len(s["segs"]) for p in content["paths"] for s in p["subs"])
     return img > 0.5 * area and n_segs < 200
 
 
-# ---------------------------------------------------------------- scriere DXF
+# ---------------------------------------------------------------- DXF writing
 
 
 def _gray_dark(c):
@@ -259,7 +259,7 @@ class DxfPage:
         return (round(p[0] * self.k, 5), round((self.H - p[1]) * self.k, 5))
 
     def linetype(self, dash_pt):
-        """Tip de linie din modelul de liniuțe al PDF-ului (lungimi în puncte, pe hârtie)."""
+        """Line type from the PDF dash pattern (lengths in points, on paper)."""
         if not dash_pt:
             return None
         vals = [round(v * self.k, 3) for v in dash_pt]
@@ -286,13 +286,13 @@ class DxfPage:
             a["linetype"] = lt
         return a
 
-    # --- geometrie
+    # --- geometry
     def frame(self):
         self.msp.add_lwpolyline([self.xy((0, 0)), self.xy((self.W, 0)), self.xy((self.W, self.H)), self.xy((0, self.H))],
                                 close=True, dxfattribs={"layer": "PAGINA"})
 
     def _poly_run(self, run, closed, attribs):
-        """Linii și arce consecutive → LWPOLYLINE cu „bulge” (arcele rămân arce adevărate în CAD)."""
+        """Consecutive lines and arcs → LWPOLYLINE with "bulge" (arcs stay true arcs in CAD)."""
         pts = []
         for s in run:
             x, y = self.xy(s[1])
@@ -315,7 +315,7 @@ class DxfPage:
             self.msp.add_circle(self.xy((cx, cy)), r * self.k, dxfattribs=attribs)
             self._count("cercuri")
             return
-        # un singur arc → ARC (centru și rază exacte, util la cote în CAD)
+        # a single arc → ARC (exact center and radius, useful for dimensioning in CAD)
         if len(segs) == 1 and segs[0][0] == "A":
             _t, a, b, sw, (cx, cy, r) = segs[0]
             a0 = math.degrees(math.atan2(-(a[1] - cy), a[0] - cx))
@@ -369,7 +369,7 @@ class DxfPage:
         self.msp.add_text(txt, height=round(h_mm, 4), rotation=round(ang % 360, 4), dxfattribs=a)
         self._count("texte")
 
-    # --- surse
+    # --- sources
     def add_pdf(self, content, text=True):
         for p in content["paths"]:
             if p["fill"] and not _whiteish(p["fc"]):
@@ -387,7 +387,7 @@ class DxfPage:
                 self.add_text(t["txt"], t["p"], t["h"] * CAP_GENERIC * self.k, t["a"], "PDF-TEXT", t["c"])
 
     def add_prims(self, prims, color_mode="black"):
-        """Adnotările DrawCAD (aceleași primitive ca la exportul PDF)."""
+        """DrawCAD annotations (the same primitives as for the PDF export)."""
         covers = [p for p in prims if p.get("cover") or p.get("c") == "white"]
         rest = [p for p in prims if not (p.get("cover") or p.get("c") == "white")]
         for p in covers:
@@ -454,7 +454,7 @@ class DxfPage:
                 p = tuple(ln["org"])
                 ang = float(ln.get("ang", 90 if vert else 0))
             elif vert:
-                # text citit de jos în sus: linia de bază e verticală, spre dreapta casetei
+                # text read bottom to top: the baseline is vertical, at the right of the box
                 p = (base if base is not None else x1, y1)
                 ang = 90
             else:
@@ -466,7 +466,7 @@ class DxfPage:
             self.add_text(ln["text"], p, cap * self.k, ang, "OCR-TEXT")
 
     def add_vectors(self, vec, skew=None):
-        """Rezultatul vectorizării unui scan (polilinii cu arce și cercuri)."""
+        """Result of a scan vectorization (polylines with arcs, and circles)."""
         at = {"layer": "SCAN-VECTORI"}
         T = skew or (lambda q: q)
         for c in vec.get("circles", []):
@@ -482,7 +482,7 @@ class DxfPage:
                 self.msp.add_line(self.xy(T(pts[0])), self.xy(T(pts[1])), dxfattribs=at)
                 self._count("linii")
                 continue
-            # bulge-urile vin deja în sensul DXF (unghiuri trigonometrice cu y în sus)
+            # bulges already come in the DXF sense (counter-clockwise angles with y up)
             v = [(*self.xy(T(q)), 0, 0, b) for q, b in zip(pts, bul)]
             self.msp.add_lwpolyline(v, format="xyseb", close=bool(pl.get("closed")), dxfattribs=at)
             self._count("polilinii")
@@ -508,13 +508,13 @@ class DxfPage:
 
 
 class Rotation:
-    """Rotația care îndreaptă un scan înclinat (în jurul centrului paginii, coordonate vizuale)."""
+    """The rotation that straightens a skewed scan (about the page center, visual coordinates)."""
 
     def __init__(self, deg, W, H):
         self.deg = deg
         self.cx, self.cy = W / 2, H / 2
         a = math.radians(deg)
-        # unghi trigonometric pe ecran (y în jos)
+        # counter-clockwise angle on screen (y down)
         self.c, self.s = math.cos(a), math.sin(a)
 
     def __call__(self, p):

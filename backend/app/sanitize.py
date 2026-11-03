@@ -1,9 +1,9 @@
-"""Curățarea PDF-urilor încărcate de conținutul activ.
+"""Cleaning active content out of uploaded PDFs.
 
-Un desen tehnic nu are nevoie de JavaScript, de acțiuni care pornesc programe sau trimit date,
-de fișiere atașate ori de formulare XFA. Toate acestea se elimină din original înainte să fie
-salvat pe server, așa că nici exporturile nu le mai conțin. Geometria, textul și fluxurile de
-conținut ale paginilor nu se ating, deci id-urile obiectelor rămân aceleași.
+A technical drawing needs no JavaScript, no actions that start programs or send data,
+no attached files and no XFA forms. All of these are removed from the original before it is
+saved on the server, so exports do not contain them either. Geometry, text and the content
+streams of the pages are not touched, so object ids stay the same.
 """
 from __future__ import annotations
 
@@ -12,12 +12,12 @@ import io
 import pikepdf
 from pikepdf import Name
 
-# acțiuni care pot rula cod, porni programe, deschide alte fișiere sau trimite date
+# actions that can run code, start programs, open other files or send data
 DANGEROUS_ACTIONS = {
     "/JavaScript", "/Launch", "/SubmitForm", "/ImportData", "/GoToR", "/GoToE", "/Rendition",
     "/Sound", "/Movie", "/RichMediaExecute",
 }
-# adnotări cu conținut multimedia sau fișiere încorporate
+# annotations with multimedia content or embedded files
 DANGEROUS_ANNOTS = {"/FileAttachment", "/RichMedia", "/Screen", "/Movie", "/Sound", "/3D"}
 
 
@@ -31,7 +31,7 @@ class _Report(dict):
 
 
 def _clean_action(act, rep: _Report, depth=0):
-    """Întoarce acțiunea curățată sau None dacă trebuie eliminată (urmează și lanțul /Next)."""
+    """Returns the cleaned action or None if it must be removed (follows the /Next chain too)."""
     if depth > 20 or not _is_dict(act):
         return act
     s = str(act.get("/S", ""))
@@ -66,12 +66,12 @@ def _clean_a(obj, rep: _Report):
 
 
 def sanitize_pdf(pdf_bytes: bytes) -> tuple[bytes, dict]:
-    """Elimină conținutul activ. Întoarce (pdf, raport); dacă nu e nimic de eliminat, PDF-ul rămâne
-    identic octet cu octet."""
+    """Removes active content. Returns (pdf, report); if there is nothing to remove, the PDF stays
+    byte-for-byte identical."""
     rep = _Report()
     with pikepdf.open(io.BytesIO(pdf_bytes)) as pk:
         root = pk.Root
-        # acțiunea de la deschidere: rămâne doar dacă e un simplu salt la o pagină
+        # the open action: kept only if it is a plain jump to a page
         if "/OpenAction" in root:
             oa = root.OpenAction
             if _is_dict(oa) and _clean_action(oa, rep) is None:
@@ -106,7 +106,7 @@ def sanitize_pdf(pdf_bytes: bytes) -> tuple[bytes, dict]:
                 _strip_aa(f, rep)
                 _clean_a(f, rep)
                 stack.extend(list(f.get("/Kids", [])))
-        # semnele de carte (outline) pot purta acțiuni
+        # bookmarks (outline) can carry actions
         outl = root.get("/Outlines")
         stack = [outl.get("/First")] if _is_dict(outl) else []
         guard = 0

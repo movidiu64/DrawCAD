@@ -1,5 +1,5 @@
-// Simbolurile ISO 1101, desenate ca primitive într-un pătrat unitate (y în jos).
-// Fiecare simbol: listă de { t: "L"|"P"|"C", ... } în coordonate 0…1.
+// ISO 1101 symbols, drawn as primitives in a unit square (y down).
+// Each symbol: a list of { t: "L"|"P"|"C", ... } in 0…1 coordinates.
 
 function arc(cx, cy, r, a0, a1, n = 24) {
   const pts = [];
@@ -64,7 +64,7 @@ export const MODIFIERS = [
   { id: "CZ", glyph: "CZ", name: "Zonă comună" },
 ];
 
-/** Transformă simbolul în primitive plasate în pătratul (x, y, size). */
+/** Turns the symbol into primitives placed in the square (x, y, size). */
 export function symbolPrims(id, x, y, size, w, layer) {
   const s = GDT_BY_ID[id];
   if (!s) return [];

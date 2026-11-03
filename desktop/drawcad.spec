@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller: DrawCAD pentru Windows, ca folder (pornește mai repede decât un singur .exe).
-# Rulare (din rădăcina repo-ului):  pyinstaller desktop/drawcad.spec --noconfirm
-# Variabila TESSERACT_DIR (opțională) indică folderul cu tesseract.exe, DLL-urile și tessdata.
+# PyInstaller: DrawCAD for Windows, as a folder (starts faster than a single .exe).
+# Run (from the repo root):  pyinstaller desktop/drawcad.spec --noconfirm
+# The TESSERACT_DIR variable (optional) points to the folder with tesseract.exe, its DLLs and tessdata.
 import os
 import sys
 
@@ -21,7 +21,7 @@ for pkg in ("pypdfium2", "pypdfium2_raw", "ezdxf", "reportlab", "webview", "pike
     try:
         d, b, h = collect_all(pkg)
     except Exception as e:  # noqa: BLE001
-        print(f"collect_all({pkg}) a eșuat: {e}")
+        print(f"collect_all({pkg}) failed: {e}")
         continue
     datas += d
     binaries += b

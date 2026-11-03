@@ -2,10 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { deviations, fmtDev, parseFit } from "../js/iso286.js";
 
-// [nominal, câmp, abatere superioară, abatere inferioară] în µm, din tabelele ISO 286-2
+// [nominal, class, upper deviation, lower deviation] in µm, from the ISO 286-2 tables
 const CASES = [
   [25, "H7", 21, 0],
-  [30, "H7", 21, 0], // limită de interval: 30 aparține 18–30
+  [30, "H7", 21, 0], // range boundary: 30 belongs to 18–30
   [50, "H7", 25, 0],
   [100, "H11", 220, 0],
   [25, "k6", 15, 2],
@@ -32,7 +32,7 @@ const CASES = [
   [25, "F7", 41, 20],
   [10, "G7", 20, 5],
   [25, "js6", 6.5, -6.5],
-  [25, "js7", 10.5, -10.5], // ISO 286-1:2010: ±IT/2, fără rotunjire la par
+  [25, "js7", 10.5, -10.5], // ISO 286-1:2010: ±IT/2, no round-to-even
   [25, "JS7", 10.5, -10.5],
   [25, "M9", -8, -60],
   [25, "j6", 9, -4],
@@ -56,20 +56,20 @@ for (const [D, fit, up, lo] of CASES) {
   });
 }
 
-test("câmpuri invalide", () => {
+test("invalid tolerance classes", () => {
   assert.equal(parseFit("Js7"), null);
   assert.equal(parseFit("q7"), null);
   assert.equal(parseFit("t6"), null);
   assert.equal(deviations(600, "H7").ok, false);
   assert.equal(deviations(25, "H20").ok, false);
-  assert.equal(deviations(40, "t6").ok, false); // t, v, y nu sunt incluse
-  assert.equal(deviations(25, "j8").ok, false); // j8 doar până la 3 mm
+  assert.equal(deviations(40, "t6").ok, false); // t, v, y are not included
+  assert.equal(deviations(25, "j8").ok, false); // j8 only up to 3 mm
   assert.equal(deviations(25, "J9").ok, false); // J9+ = JS
-  assert.equal(deviations(25, "K9").ok, false); // K peste IT8 doar ≤ 3 mm
-  assert.equal(deviations(25, "P2").ok, false); // alezajele cu Δ încep de la treapta 3
+  assert.equal(deviations(25, "K9").ok, false); // K above IT8 only ≤ 3 mm
+  assert.equal(deviations(25, "P2").ok, false); // holes with Δ start at grade 3
 });
 
-test("formatare abateri", () => {
+test("deviation formatting", () => {
   assert.equal(fmtDev(15), "+0,015");
   assert.equal(fmtDev(-21), "-0,021");
   assert.equal(fmtDev(0), "0");

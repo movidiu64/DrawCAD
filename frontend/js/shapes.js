@@ -1,9 +1,9 @@
-// Geometrie desenată: linii, polilinii, dreptunghiuri, cercuri, arce, axe de cerc și hașuri,
-// cu tipurile de linie din ISO 128-20 (lungimile elementelor, în multipli ai grosimii d).
-// Coordonate în puncte PDF vizuale (y în jos); grosimi și lungimi în mm la nivelul adnotării.
+// Drawn geometry: lines, polylines, rectangles, circles, arcs, center marks and hatches,
+// with the line types of ISO 128-20 (element lengths in multiples of the width d).
+// Coordinates in visual PDF points (y down); widths and lengths in mm at annotation level.
 export const K = 72 / 25.4;
 
-/** Tipurile de linie. pat: dash, gol, dash, gol… în multipli de d (ISO 128-20, tabelul 2). */
+/** Line types. pat: dash, gap, dash, gap… in multiples of d (ISO 128-20, table 2). */
 export const LTYPES = [
   { id: "cont", name: "Continuă", code: "01", pat: null },
   { id: "dash", name: "Întreruptă", code: "02", pat: [12, 3] },
@@ -13,10 +13,10 @@ export const LTYPES = [
 ];
 export const LTYPE_BY_ID = Object.fromEntries(LTYPES.map((t) => [t.id, t]));
 
-/** Seria de grosimi ISO 128-20 (mm). */
+/** The ISO 128-20 line width series (mm). */
 export const WIDTHS = [0.13, 0.18, 0.25, 0.35, 0.5, 0.7, 1];
 
-/** Utilizări uzuale în desenul de execuție (ISO 128-24). */
+/** Usual applications on production drawings (ISO 128-24). */
 export const PRESETS = [
   { id: "vis", name: "Contur vizibil", ltype: "cont", w: 0.5, code: "01.2" },
   { id: "thin", name: "Linie subțire (ajutătoare, cote)", ltype: "cont", w: 0.25, code: "01.1" },
@@ -39,21 +39,21 @@ export const SHAPE_NAMES = {
 
 const TAU = Math.PI * 2;
 const dist = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
-// unghiuri pe ecran, sens trigonometric (y în jos → se inversează y)
+// angles on screen, counter-clockwise (y down → y is flipped)
 const angOf = (c, p) => Math.atan2(-(p[1] - c[1]), p[0] - c[0]);
 const polar = (c, r, th) => [c[0] + r * Math.cos(th), c[1] - r * Math.sin(th)];
 const wrap = (x) => ((x % TAU) + TAU) % TAU;
 
 /**
- * Modelul de linie, ajustat la lungimea elementului ca în CAD: o linie deschisă începe și se termină
- * cu o liniuță întreagă, un contur închis se închide fără „cusătură”. even: număr par de perioade,
- * ca liniuța din mijloc să cadă exact pe centru (axele unui cerc se intersectează pe liniuțe).
- * Întoarce lista de lungimi în pt, sau null pentru linie continuă.
+ * The line pattern, fitted to the element length as in CAD: an open line starts and ends
+ * with a full dash, a closed outline closes without a "seam". even: even number of periods,
+ * so the middle dash falls exactly on the center (circle center lines cross on dashes).
+ * Returns the list of lengths in pt, or null for a continuous line.
  */
 export function fitDash(ltype, wMm, lscale, L, closed, even = false) {
   const t = LTYPE_BY_ID[ltype];
   if (!t || !t.pat || !(L > 0)) return null;
-  const d = Math.max(wMm, 0.25) * (lscale || 1) * K; // la linii foarte subțiri modelul ar deveni invizibil
+  const d = Math.max(wMm, 0.25) * (lscale || 1) * K; // on very thin lines the pattern would become invisible
   const pat = t.pat.map((v) => v * d);
   const P = pat.reduce((s, v) => s + v, 0);
   if (ltype === "dot") return pat;
@@ -65,7 +65,7 @@ export function fitDash(ltype, wMm, lscale, L, closed, even = false) {
   const D = pat[0];
   let n = Math.round((L - D) / P);
   if (even) n = Math.round(n / 2) * 2;
-  if (n < 1) return even || L < D * 0.5 ? null : pat; // prea scurtă pentru model: continuă (ISO 128-24)
+  if (n < 1) return even || L < D * 0.5 ? null : pat; // too short for the pattern: continuous (ISO 128-24)
   const s = L / (n * P + D);
   return pat.map((v) => v * s);
 }
@@ -77,7 +77,7 @@ function polyLen(pts, closed) {
   return L;
 }
 
-/** Geometria arcului: centru, rază, unghi de start și deschidere cu semn (radiani). */
+/** Arc geometry: center, radius, start angle and signed sweep (radians). */
 export function arcGeom(a) {
   const [c, p1, p2] = a.pts;
   const r = dist(c, p1);
@@ -96,14 +96,14 @@ export function arcPoints(c, r, a0, sw) {
 }
 
 /**
- * Liniile de hașură în interiorul poligonului (regula par-impar): drepte paralele la unghiul dat
- * (grade, sens trigonometric pe ecran), la distanța sp (pt), ancorate în origine ca hașurile
- * alăturate ale aceleiași piese să se continue.
+ * Hatch lines inside the polygon (even-odd rule): parallel lines at the given angle
+ * (degrees, counter-clockwise on screen), at spacing sp (pt), anchored at the origin so adjacent
+ * hatches of the same part line up.
  */
 export function hatchLines(poly, angleDeg, sp) {
   if (poly.length < 3 || !(sp > 0)) return [];
   const th = (angleDeg * Math.PI) / 180;
-  // sistem local: u de-a lungul hașurii, v perpendicular
+  // local system: u along the hatch, v perpendicular
   const u = [Math.cos(th), -Math.sin(th)];
   const v = [Math.sin(th), Math.cos(th)];
   const loc = poly.map((p) => [p[0] * u[0] + p[1] * u[1], p[0] * v[0] + p[1] * v[1]]);
@@ -137,7 +137,7 @@ export function rectCorners(a) {
   return [[p[0], p[1]], [q[0], p[1]], [q[0], q[1]], [p[0], q[1]]];
 }
 
-/** Valori măsurate pentru panou (mm pe hârtie). */
+/** Measured values for the panel (paper mm). */
 export function shapeInfo(a) {
   const m = (v) => v / K;
   switch (a.kind) {
@@ -160,7 +160,7 @@ export function shapeInfo(a) {
   }
 }
 
-/** Primitivele unei forme desenate. */
+/** Primitives of a drawn shape. */
 export function buildShape(a) {
   const c = a.layer || "add";
   const wMm = a.w ?? 0.25;
@@ -186,7 +186,7 @@ export function buildShape(a) {
       if (pts.length >= 2) {
         const r = dist(pts[0], pts[1]);
         prims.push({ t: "C", p: [...pts[0]], r, w, c, dp: fitDash(lt, wMm, ls, TAU * r, true) });
-        // pătrățelele: centrul și punctul de pe cerc (raza)
+        // handles: the center and the point on the circle (radius)
       }
       break;
     case "arc":
@@ -210,7 +210,7 @@ export function buildShape(a) {
           const B = [C[0] + d[0] * L, C[1] + d[1] * L];
           prims.push({ t: "L", p: [...A, ...B], w, c, dp: fitDash(lt, wMm, ls, 2 * L, false, true) });
         }
-        // cercul de referință, doar în editor
+        // reference circle, editor only
         prims.push({ t: "C", p: [...C], r, w: 0.4, c: "edgray", ed: true, dash: true });
       }
       break;
@@ -236,7 +236,7 @@ export function buildShape(a) {
   return { prims, handles, info: shapeInfo(a), snap: shapeSnap(a) };
 }
 
-/** Linia de ruptură (ISO 128-20 tip 01.1): dreaptă cu zigzag la mijloc, sau ondulată (trasă „cu mâna”). */
+/** Break line (ISO 128-20 type 01.1): straight with a zigzag in the middle, or wavy (freehand). */
 export function breakPoints(A, B, style) {
   const L = dist(A, B);
   if (L < 1e-6) return [A, B];
@@ -254,14 +254,14 @@ export function breakPoints(A, B, style) {
     }
     return out;
   }
-  // zigzag: lățime 3,5 mm, înălțime ±2,5 mm, centrat (se micșorează pe linii scurte)
+  // zigzag: 3.5 mm wide, ±2.5 mm high, centered (shrinks on short lines)
   const half = Math.min(1.75 * K, L / 4);
   const h = Math.min(2.5 * K, L / 3);
   const m = L / 2;
   return [A, at(m - half, 0), at(m - half / 3, h), at(m + half / 3, -h), at(m + half, 0), B];
 }
 
-/** Puncte (capăt e, mijloc m, centru c, cadran q) și segmente pentru snap pe forma desenată. */
+/** Points (endpoint e, midpoint m, center c, quadrant q) and segments for snapping to the drawn shape. */
 export function shapeSnap(a) {
   const pts = [];
   const segs = [];
@@ -276,7 +276,7 @@ export function shapeSnap(a) {
     if (closed && Q.length > 2) seg(Q[Q.length - 1], Q[0]);
   };
   const arcs = [];
-  // cercurile și arcele merg ca arce exacte: centru, cadrane, tangent, intersecții (în osnap.js)
+  // circles and arcs go as exact arcs: center, quadrants, tangent, intersections (in osnap.js)
   const ring = (c, r) => arcs.push([c[0], c[1], r, 0, TAU]);
   switch (a.kind) {
     case "line":
@@ -313,7 +313,7 @@ export function shapeSnap(a) {
   return { pts, segs, arcs };
 }
 
-/** Schimbă dimensiunea principală păstrând primul punct (și direcția). */
+/** Changes the main dimension keeping the first point (and the direction). */
 export function resizeShape(a, field, mm) {
   const v = mm * K;
   const [p0, p1] = a.pts;
@@ -335,8 +335,8 @@ export function resizeShape(a, field, mm) {
   }
 }
 
-// ------------------------------------------------------------------ unelte de desen
-/** Sensul arcului din mișcarea cursorului: unghiul parcurs de la al doilea click încoace. */
+// ------------------------------------------------------------------ drawing tools
+/** Arc direction from the cursor movement: the angle swept since the second click. */
 export function trackSweep(state, c, start, cur) {
   const a = angOf(c, cur);
   if (state.last == null) {

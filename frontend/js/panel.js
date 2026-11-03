@@ -1,4 +1,4 @@
-// Panoul de proprietăți din dreapta.
+// The properties panel on the right.
 import { typeName, newId, fmtNum, parseNum, build, derive, K, SCALABLE, SCALE_MIN, SCALE_MAX } from "./annots.js";
 import { LTYPES, LTYPE_BY_ID, WIDTHS, PRESETS, resizeShape } from "./shapes.js";
 import { fmtDev } from "./iso286.js";
@@ -9,7 +9,7 @@ import { commandList, keyConfig } from "./commands.js";
 import { tr } from "./i18n.js";
 import { pagesDialog as dlgPages } from "./dialogs.js";
 
-const ORIG_EDIT = new Set(["white", "redact", "ink"]); // modificări ale originalului, fără strat
+const ORIG_EDIT = new Set(["white", "redact", "ink"]); // changes to the original, no layer
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
 const ISO_DISP = [
@@ -47,7 +47,7 @@ export class Panel {
     this.drawPreview(a);
   }
 
-  // -------------------------------------------------------------- selecție multiplă
+  // -------------------------------------------------------------- multiple selection
   groupHtml() {
     const list = this.app.selectedAll();
     const counts = {};
@@ -107,7 +107,7 @@ export class Panel {
     }));
   }
 
-  // -------------------------------------------------------------- fără selecție
+  // -------------------------------------------------------------- no selection
   introHtml() {
     return `<div class="sec"><div class="title">Bine ai venit</div>
       <div class="note">Deschide un PDF exportat din CAD sau o imagine scanată. Originalul nu se modifică: cotele, toleranțele și ștergerile se păstrează separat și se aplică la export.</div></div>
@@ -170,7 +170,7 @@ export class Panel {
       ${this.keysHtml()}`;
   }
 
-  /** Lista adnotărilor de pe pagină: click = selectează și centrează, coș = șterge. */
+  /** List of annotations on the page: click = select and center, bin = delete. */
   annListHtml() {
     const app = this.app;
     const list = app.annots.filter((a) => a.page === app.page);
@@ -183,7 +183,7 @@ export class Panel {
       <div class="sub">Shift+F face zoom pe selecție, F revine la toată pagina.</div></div>`;
   }
 
-  /** Înnegrirea originalului pentru tipărire (desene colorate care ies palid la imprimantă). */
+  /** Blackening the original for printing (colored drawings that print pale). */
   inkHtml() {
     const ink = this.app.settings.ink || {};
     const img = this.app.doc && this.app.doc.kind === "image";
@@ -195,7 +195,7 @@ export class Panel {
       <div class="sub">${ink.all ? "Albul rămâne alb; cotele adăugate de tine nu se schimbă. Se vede pe ecran și se aplică la export." : "Pentru doar câteva linii folosește unealta <b>Înnegrește</b> din grupul Revizie."}</div></div>`;
   }
 
-  // -------------------------------------------------------------- comun
+  // -------------------------------------------------------------- common
   headHtml(a) {
     const b = this.app.builtOf(a);
     let sub = a.layer === "rev" ? "strat Revizii" : ORIG_EDIT.has(a.type) ? "aplicat la export" : "strat Adăugate";
@@ -237,7 +237,7 @@ export class Panel {
     return `<div class="preview"><canvas id="pv" width="560" height="120" style="width:280px;height:60px"></canvas></div>`;
   }
 
-  // -------------------------------------------------------------- cote
+  // -------------------------------------------------------------- dimensions
   tolHtml(a, b) {
     const t = a.tol || { mode: "none" };
     const S = this.app.settings;
@@ -459,7 +459,7 @@ export class Panel {
       <div class="note">Valoarea veche rămâne lizibilă, tăiată cu o linie, iar cea nouă se scrie alături cu triunghiul de revizie.</div></div>`;
   }
 
-  // -------------------------------------------------------------- desen
+  // -------------------------------------------------------------- drawing
   styleHtml(st, scope) {
     const lt = st.ltype || "cont";
     const sample = (t) => {
@@ -479,7 +479,7 @@ export class Panel {
   html_shape(a) {
     const b = this.app.builtOf(a);
     const inf = (b && b.info) || {};
-    // dimensiunile formelor sunt reale, la scara desenului (ca valorile din cote)
+    // shape dimensions are real, at drawing scale (like dimension values)
     const k = Number(this.app.settings.scale) || 1;
     const real = new Set(["len", "w", "h", "d", "r"]);
     const num = (id, f, label, v, dec = 2) => `<div class="field"><label for="${id}">${label}${k !== 1 && real.has(f) ? ` <span class="muted">· scara ${fmtNum(k, ",", 4)}</span>` : ""}</label><input type="text" class="mono" id="${id}" data-shf="${f}" value="${v != null ? fmtNum(real.has(f) ? v * k : v, ",", dec) : ""}"></div>`;
@@ -569,7 +569,7 @@ export class Panel {
       <div class="btns"><button class="ghost" data-act="redit">Editează selecția</button></div></div>`;
   }
 
-  // -------------------------------------------------------------- evenimente
+  // -------------------------------------------------------------- events
   bind() {
     const app = this.app;
     const el = this.el;
@@ -627,7 +627,7 @@ export class Panel {
         let v = parseNum(inp.value);
         if (v == null) return;
         const f = inp.dataset.shf;
-        // valoarea scrisă e reală: pe hârtie se desenează împărțită la scară
+        // the typed value is real: on paper it is drawn divided by the scale
         if (["len", "w", "h", "d", "r"].includes(f)) v /= Number(app.settings.scale) || 1;
         app.updateSel((a) => {
           if (f === "d") resizeShape(a, "r", v / 2);
@@ -697,7 +697,7 @@ export class Panel {
         a[f] = raw;
       }
     }, f);
-    // câmpurile care schimbă informațiile calculate re-randează doar zona de toleranță
+    // fields that change the computed information re-render only the tolerance area
     if (f === "fit" || f === "nominal" || f === "prefix") this.refreshTol();
     this.drawPreview(app.selected());
   }
@@ -727,7 +727,7 @@ export class Panel {
     if (scope === "tool") app.setDrawStyle(patch);
     else {
       app.updateSel((a) => Object.assign(a, patch));
-      // ultima alegere devine implicită pentru formele următoare (nu pentru axe și hașuri)
+      // the last choice becomes the default for the next shapes (not for center marks and hatches)
       const a = app.selected();
       if (a && !["cross", "hatch"].includes(a.kind)) app.setDrawStyle(patch);
     }
@@ -791,7 +791,7 @@ export class Panel {
             const res = await new window.EyeDropper().open();
             app.updateSel((a) => { a.color = res.sRGBHex.toLowerCase(); });
             this.render();
-          } catch (_) { /* anulat */ }
+          } catch (_) { /* cancelled */ }
         })();
         break;
       case "inkfills":
@@ -906,7 +906,7 @@ export class Panel {
         upd((a) => { a[k] = !a[k]; });
         break;
       case "shflip":
-        // aceleași capete, celălalt sens: arcul complementar
+        // same endpoints, other direction: the complementary arc
         upd((a) => { a.ccw = a.ccw === false; });
         break;
       case "bshape":
@@ -945,7 +945,7 @@ export class Panel {
     if (a.type === "gdt") {
       prims = build({ ...a, target: null, pos: [0, 0] }, S, this.app.measure).prims;
     } else {
-      // doar textul cotei, orizontal, cu nominalul efectiv (introdus sau măsurat)
+      // only the dimension text, horizontal, with the effective nominal (typed or measured)
       const own = this.app.builtOf(a);
       const tmp = {
         ...a, type: "dim", kind: "lin", orient: "h", p1: [0, 0], p2: [100, 0], p3: [0, -10], textShift: 0,

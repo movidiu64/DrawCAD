@@ -1,6 +1,6 @@
-// Limba interfeței (română / engleză). Interfața e scrisă în română; în engleză textele vizibile se
-// traduc din dicționar (i18n_en.js), pe măsură ce apar în pagină: noduri de text și atributele
-// title / placeholder / aria-label / alt. Ce nu are traducere rămâne în română.
+// Interface language (Romanian / English). The interface is written in Romanian; in English the visible
+// texts are translated from the dictionary (i18n_en.js) as they appear on the page: text nodes and the
+// title / placeholder / aria-label / alt attributes. Anything without a translation stays in Romanian.
 import { EN } from "./i18n_en.js";
 
 const STORE = "drawcad.lang";
@@ -10,7 +10,7 @@ export function getLang() {
   try {
     const v = localStorage.getItem(STORE);
     if (v === "ro" || v === "en") return v;
-  } catch (_) { /* stocare indisponibilă */ }
+  } catch (_) { /* storage unavailable */ }
   const nav = (typeof navigator !== "undefined" && (navigator.languages || [navigator.language])) || [];
   return [...nav].some((l) => String(l || "").toLowerCase().startsWith("ro")) || !nav.length ? "ro" : "en";
 }
@@ -18,7 +18,7 @@ export function getLang() {
 export function setLang(l) {
   try {
     localStorage.setItem(STORE, l);
-  } catch (_) { /* stocare indisponibilă */ }
+  } catch (_) { /* storage unavailable */ }
 }
 
 let LANG = null;
@@ -51,13 +51,13 @@ function lookup(text, depth = 0) {
   if (!/[A-Za-zĂÂÎȘȚăâîșț]/.test(k)) return null;
   const whole = lookupPattern(k, depth);
   if (whole != null) return whole;
-  // „· text” la începutul unui fragment
+  // "· text" at the start of a fragment
   const lead = /^([·•—–]\s+)(.+)$/.exec(k);
   if (lead && depth < 3) {
     const t = lookup(lead[2], depth + 1);
     if (t != null) return lead[1] + t;
   }
-  // texte compuse din bucăți despărțite prin „ · ”: fiecare bucată separat
+  // texts made of pieces separated by " · ": each piece separately
   if (depth < 3 && k.includes(" · ")) {
     const parts = k.split(" · ");
     let any = false;
@@ -78,7 +78,7 @@ function lookupPattern(k, depth) {
     let i = 1;
     return p.en.replace(/\{\}/g, () => {
       const g = m[i++] ?? "";
-      // valorile pot fi și ele texte de tradus („în 4 s”, „· scan înclinat 0,6°”)
+      // the values may be translatable texts as well ("în 4 s", "· scan înclinat 0,6°")
       if (depth < 2 && /[a-zăâîșț]{2}/i.test(g)) {
         const t = lookup(g, depth + 1);
         if (t != null) return g.match(/^\s*/)[0] + t + g.match(/\s*$/)[0];
@@ -89,7 +89,7 @@ function lookupPattern(k, depth) {
   return null;
 }
 
-/** Traducerea unui text (în română: textul neschimbat). */
+/** Translation of a text (in Romanian: the text unchanged). */
 export function tr(text) {
   if (lang() === "ro" || text == null) return text;
   if (!exact) prepare();
@@ -138,7 +138,7 @@ function walk(root) {
   }
 }
 
-/** Pornește traducerea automată a paginii (doar în engleză). */
+/** Starts the automatic translation of the page (English only). */
 export function startI18n() {
   document.documentElement.lang = lang();
   if (lang() === "ro") return;
@@ -152,7 +152,7 @@ export function startI18n() {
       else if (m.type === "attributes") translateAttrs(m.target);
     }
   }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ATTRS });
-  // titlul ferestrei se schimbă din cod (numele documentului)
+  // the window title is changed from code (the document name)
   const t = document.querySelector("title");
   if (t) new MutationObserver(() => {
     const v = tr(document.title);
