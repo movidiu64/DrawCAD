@@ -15,7 +15,15 @@ export const COLORS = {
 
 const colorOf = (c) => COLORS[c] || (typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c) ? c : "#111");
 
-const BASE_MAX_PX = 20e6; // pagina întreagă
+// pagina întreagă: ~12 MP (≈ 48 MB decodați în browser); peste, la zoom mare, vine zona de detaliu
+const BASE_MAX_PX = 12e6;
+
+// imaginile paginii se țin ca ImageBitmap: la înlocuire se eliberează imediat (close), nu când
+// ajunge colectorul de gunoi la ele — la zoom înainte și înapoi se adunau altfel sute de MB
+const toBitmap = (im) => (typeof createImageBitmap === "function" ? createImageBitmap(im) : Promise.reject(new Error("fără ImageBitmap"))).catch(() => im);
+const release = (x) => {
+  if (x && typeof x.close === "function") x.close();
+};
 const DETAIL_MAX_PX = 22e6; // zona de detaliu (serverul acceptă până la 24 MP)
 
 export function drawPrims(ctx, prims, zoom, color = colorOf, minPx = 0.8, opts = {}) {
@@ -87,14 +95,28 @@ export class View {
     this.redraw();
   }
 
+  dropDetail() {
+    if (!this.detail) return;
+    if (this.detail.blob) URL.revokeObjectURL(this.detail.blob);
+    release(this.detail.img);
+    this.detail = null;
+  }
+
+  dropImage() {
+    release(this.img);
+    this.img = null;
+    if (this.imgBlob) URL.revokeObjectURL(this.imgBlob);
+    this.imgBlob = null;
+    this.dropDetail();
+  }
+
   setPage(docId, n, w, h, keepView = false) {
     this.docId = docId;
     this.pageN = n;
     this.pageW = w;
     this.pageH = h;
-    this.img = null;
+    this.dropImage();
     this.imgScale = 0;
-    this.detail = null;
     this.detailKey = null;
     if (!keepView) this.fit();
     this.loadImage(true);
@@ -102,7 +124,7 @@ export class View {
 
   clear() {
     this.docId = null;
-    this.img = null;
+    this.dropImage();
     this.pageW = this.pageH = 0;
     this.redraw();
   }
@@ -166,7 +188,7 @@ export class View {
     if (!this.docId || !this.pageW) return;
     const want = this.zoom * this.dpr;
     const q = Math.pow(2, Math.ceil(Math.log2(want) * 2) / 2); // trepte de √2
-    // pagina întreagă cel mult ~20 MP; peste, la zoom mare, se randează doar zona vizibilă
+    // pagina întreagă cel mult ~12 MP; peste, la zoom mare, se randează doar zona vizibilă
     const maxBase = Math.sqrt(BASE_MAX_PX / (this.pageW * this.pageH));
     const scale = Math.min(Math.max(q, 0.25), 16, Math.max(0.25, Math.pow(2, Math.floor(Math.log2(maxBase) * 2) / 2)));
     this.detailNeeded = want > scale * 1.05;
@@ -181,13 +203,22 @@ export class View {
     let blobUrl = null;
     im.onload = () => {
       if (this.loadingKey !== key) return;
-      if (this.imgBlob) URL.revokeObjectURL(this.imgBlob);
-      this.imgBlob = blobUrl;
-      this.img = im;
-      this.imgScale = scale;
-      this.imgQuery = extra;
-      this.loadingKey = null;
-      this.redraw();
+      toBitmap(im).then((bmp) => {
+        if (this.loadingKey !== key) {
+          if (bmp !== im) release(bmp);
+          return;
+        }
+        if (this.imgBlob) URL.revokeObjectURL(this.imgBlob);
+        this.imgBlob = null;
+        if (bmp !== im && blobUrl) URL.revokeObjectURL(blobUrl);
+        else this.imgBlob = blobUrl;
+        release(this.img);
+        this.img = bmp;
+        this.imgScale = scale;
+        this.imgQuery = extra;
+        this.loadingKey = null;
+        this.redraw();
+      });
     };
     im.onerror = () => {
       this.loadingKey = null;
@@ -255,10 +286,22 @@ export class View {
         if (blobUrl) URL.revokeObjectURL(blobUrl);
         return;
       }
-      if (this.detail && this.detail.blob) URL.revokeObjectURL(this.detail.blob);
-      this.detail = { img: im, rect, scale, page, doc, query: q2, blob: blobUrl };
-      this.detailKey = null;
-      this.redraw();
+      toBitmap(im).then((bmp) => {
+        if (this.detailKey !== key) {
+          if (bmp !== im) release(bmp);
+          if (blobUrl) URL.revokeObjectURL(blobUrl);
+          return;
+        }
+        let blob = blobUrl;
+        if (bmp !== im && blobUrl) {
+          URL.revokeObjectURL(blobUrl);
+          blob = null;
+        }
+        this.dropDetail();
+        this.detail = { img: bmp, rect, scale, page, doc, query: q2, blob };
+        this.detailKey = null;
+        this.redraw();
+      });
     };
     im.onerror = () => {
       if (this.detailKey === key) this.detailKey = null;

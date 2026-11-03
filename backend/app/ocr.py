@@ -88,12 +88,12 @@ def render_gray(pdf_bytes: bytes, n: int, page_wh) -> tuple[np.ndarray, float]:
     scale = DPI / 72
     if w * h * scale * scale > MAX_PX:
         scale = (MAX_PX / (w * h)) ** 0.5
-    png = pdfcore.render_png(pdf_bytes, n, scale)
-    im = Image.open(io.BytesIO(png)).convert("L")
-    return np.asarray(im), scale
+    # direct ca matrice gri, fără PNG intermediar (la 60 MP: ~60 MB în loc de câteva sute)
+    return pdfcore.render_array(pdf_bytes, n, scale, gray=True), scale
 
 
-def remove_long_lines(gray: np.ndarray, px_mm: float, min_mm: float = 7.0, dark: int = 150, ragged: bool = True) -> np.ndarray:
+def remove_long_lines(gray: np.ndarray, px_mm: float, min_mm: float = 7.0, dark: int = 150, ragged: bool = True,
+                      inplace: bool = False) -> np.ndarray:
     """Șterge liniile orizontale și verticale mai lungi de `min_mm` (cadre, linii de cotă, chenare),
     ca literele să rămână libere pentru OCR. Textul rămâne aproape intact."""
     b = gray < dark
@@ -101,34 +101,30 @@ def remove_long_lines(gray: np.ndarray, px_mm: float, min_mm: float = 7.0, dark:
 
     def runs(mask, L=L):  # pe rânduri: pixelii aflați în secvențe continue mai lungi de L
         out = np.zeros_like(mask)
-        m = np.pad(mask, ((0, 0), (1, 1))).astype(np.int8)
-        d = np.diff(m, axis=1)
         for r in np.nonzero(mask.any(axis=1))[0]:
-            st = np.nonzero(d[r] == 1)[0]
-            en = np.nonzero(d[r] == -1)[0]
+            # rând cu rând: fără copii int8 ale întregii imagini (la 60 MP, 2 × 60 MB)
+            d = np.diff(mask[r].view(np.int8), prepend=np.int8(0), append=np.int8(0))
+            st = np.nonzero(d == 1)[0]
+            en = np.nonzero(d == -1)[0]
             for s, e in zip(st, en):
                 if e - s >= L:
                     out[r, s:e] = True
         return out
 
-    def shift(m, k):
-        out = np.zeros_like(m)
-        if k > 0:
-            out[:, k:] = m[:, :-k]
-        elif k < 0:
-            out[:, :k] = m[:, -k:]
-        else:
-            out[:] = m
-        return out
-
     def close(mask, r=1):  # închidere pe rânduri: golurile de până la 2r pixeli (zgomot de scanare) se umplu
+        # deplasările se fac pe loc, pe felii, nu cu matrici noi pentru fiecare
         d = mask.copy()
         for k in range(1, r + 1):
-            d |= shift(mask, k) | shift(mask, -k)
+            d[:, k:] |= mask[:, :-k]
+            d[:, :-k] |= mask[:, k:]
         e = d.copy()
         for k in range(1, r + 1):
-            e &= shift(d, k) & shift(d, -k)
-        return e | mask
+            e[:, k:] &= d[:, :-k]
+            e[:, :k] = False
+            e[:, :-k] &= d[:, k:]
+            e[:, -k:] = False
+        e |= mask
+        return e
 
     def edges(core, mask):
         """Marginile zdrențuite ale liniei: pixelii lipiți de ea (până la 3 rânduri deasupra /
@@ -138,15 +134,34 @@ def remove_long_lines(gray: np.ndarray, px_mm: float, min_mm: float = 7.0, dark:
         for k in (1, 2, 3):
             near[k:] |= core[:-k]
             near[:-k] |= core[k:]
-        thin_v = mask & ~runs(mask.T, 4).T
-        return near & thin_v & ~core
+        thin = runs(mask.T, 4).T  # trăsăturile verticale lungi…
+        np.logical_not(thin, out=thin)  # …nu; restul pixelilor negri da
+        thin &= mask
+        near &= thin
+        del thin
+        np.greater(near, core, out=near)  # near și nu core (pe loc, fără ~core)
+        return near
 
-    hk = runs(close(b)) & b
-    vk = (runs(close(b.T)) & b.T)
-    kill = (hk | edges(hk, b) | (vk | edges(vk, b.T)).T) if ragged else (hk | vk.T)
+    hk = runs(close(b))
+    hk &= b
+    vk = runs(close(b.T))
+    vk &= b.T
+    if ragged:
+        kill = edges(hk, b)
+        kill |= hk
+        del hk
+        ev = edges(vk, b.T)
+        ev |= vk
+        del vk
+        kill |= ev.T
+        del ev
+    else:
+        kill = hk | vk.T
+        del hk, vk
+    del b
     if not kill.any():
         return gray
-    out = gray.copy()
+    out = gray if inplace else gray.copy()
     out[kill] = 255
     return out
 
@@ -156,12 +171,25 @@ def _denoise(gray: np.ndarray) -> np.ndarray:
     Randările curate din PDF vectorial trec practic neschimbate."""
     from PIL import ImageFilter
 
-    from .vectorize import otsu
+    from .vectorize import otsu_hist
 
-    im = Image.fromarray(gray).filter(ImageFilter.MedianFilter(3))
-    a = np.asarray(im)
-    t = otsu(a)
-    return np.where(a < t, 0, 255).astype(np.uint8)
+    # pe fâșii (cu un rând de margine pentru filtru): memoria suplimentară e cât o fâșie;
+    # pragul Otsu se ia din histograma întregii imagini filtrate
+    h = gray.shape[0]
+    out = np.empty_like(gray)
+    hist = np.zeros(256, dtype=np.int64)
+    S = 1024
+    for i in range(0, h, S):
+        a0, a1 = max(0, i - 1), min(h, i + S + 1)
+        f = np.asarray(Image.fromarray(np.ascontiguousarray(gray[a0:a1])).filter(ImageFilter.MedianFilter(3)))
+        f = f[i - a0:i - a0 + min(S, h - i)]
+        out[i:i + f.shape[0]] = f
+        hist += np.bincount(f.ravel(), minlength=256)
+    t = otsu_hist(hist)
+    for i in range(0, h, S):
+        c = out[i:i + S]
+        c[:] = np.where(c < t, np.uint8(0), np.uint8(255))
+    return out
 
 
 def _tesseract(img: Image.Image, lng: str, dpi: int) -> list[dict]:
@@ -291,7 +319,7 @@ def _iou(a, b):
 def estimate_skew(gray: np.ndarray) -> float:
     """Înclinarea scanului (grade, sens trigonometric pe ecran), din profilul de proiecție: la
     unghiul corect, liniile orizontale ale desenului cad pe cât mai puține rânduri."""
-    im = Image.fromarray(np.where(gray < 150, 255, 0).astype(np.uint8))
+    im = Image.fromarray(np.where(gray < 150, np.uint8(255), np.uint8(0)))
     f = 1000 / max(im.size)
     if f < 1:
         im = im.resize((max(1, int(im.width * f)), max(1, int(im.height * f))), Image.BILINEAR)
@@ -321,6 +349,7 @@ def ocr_page(pdf_bytes: bytes, n: int, page_wh, rotated: bool = True, scan: bool
     gray, scale = render_gray(pdf_bytes, n, page_wh)
     px_mm = scale * 72 / 25.4
     den = _denoise(gray)
+    del gray  # matricile paginii sunt mari (zeci de MB): se eliberează pe măsură ce nu mai trebuie
     # scanul înclinat se îndreaptă întâi: liniile lungi devin exact orizontale / verticale și se pot
     # șterge fără să atingă literele; coordonatele se întorc la final în pagina originală
     skew = estimate_skew(den)
@@ -332,7 +361,8 @@ def ocr_page(pdf_bytes: bytes, n: int, page_wh, rotated: bool = True, scan: bool
     ragged = RAGGED if scan is None else scan
     if scan is None and RAGGED is None:
         ragged = bool(skew)
-    clean = remove_long_lines(work, px_mm, ragged=ragged)
+    clean = remove_long_lines(work, px_mm, ragged=ragged, inplace=True)  # `work` nu mai trebuie după
+    del work, den
     img = Image.fromarray(clean)
     dpi = scale * 72
     lines = []

@@ -36,6 +36,9 @@ DATA_DIR = Path(_env("DATA", "/data"))
 FRONTEND_DIR = Path(_env("FRONTEND", Path(__file__).resolve().parents[2] / "frontend"))
 MAX_UPLOAD = int(_env("MAX_UPLOAD_MB", "200")) * 1024 * 1024
 MAX_RENDER_PX = int(_env("MAX_RENDER_PX", "12000"))
+# o randare de pagină întreagă: cel mult atâția megapixeli (bitmap-ul are 3 octeți pe pixel);
+# interfața cere cel mult ~20 MP, detaliile de la zoom mare vin separat, pe zone
+MAX_RENDER_MP = float(_env("MAX_RENDER_MP", "40"))
 # documentele nefolosite atâtea zile se șterg automat (0 = niciodată)
 RETENTION_DAYS = float(_env("RETENTION_DAYS", "30"))
 
@@ -108,11 +111,15 @@ class LRU(OrderedDict):
         return val
 
 
-CACHE_MB = int(_env("CACHE_MB", "512"))
-_bytes_cache = LRU(8, CACHE_MB * 1024 * 1024 // 2)
-_render_cache = LRU(64, CACHE_MB * 1024 * 1024 // 2)
-_snap_cache = LRU(32)
-_ink_cache = LRU(8, CACHE_MB * 1024 * 1024 // 4)
+# memoria totală a cache-urilor din RAM (PDF-uri de lucru, randări, pagini înnegrite); e o limită,
+# nu o rezervare: se umple doar cu ce se folosește
+CACHE_MB = int(_env("CACHE_MB", "256"))
+_bytes_cache = LRU(8, CACHE_MB * 1024 * 1024 * 2 // 5)
+_render_cache = LRU(64, CACHE_MB * 1024 * 1024 * 2 // 5)
+# geometria de snap / textele paginii: ținute ca JSON gata serializat (un obiect Python cu zeci de mii
+# de puncte ocupă de ~10× mai mult decât textul lui), cu buget de memorie
+_snap_cache = LRU(32, 64 * 1024 * 1024)
+_ink_cache = LRU(8, CACHE_MB * 1024 * 1024 // 5)
 
 
 def _source(doc_id, n, ink):
@@ -477,10 +484,7 @@ async def api_render(request: Request):
     if not (scale > 0 and scale < 1000):
         return _err("Scară invalidă")
     p = meta["pages"][n]
-    max_side = max(p["w"], p["h"]) * scale
-    if max_side > MAX_RENDER_PX:
-        scale = MAX_RENDER_PX / max(p["w"], p["h"])
-    scale = round(max(0.1, scale), 3)
+    scale = round(max(0.1, _cap_scale(p, scale)), 3)
     # înnegrire pentru tipărire: tot desenul (ink) și/sau obiecte anume (bk = id-uri separate prin virgulă)
     ink = None
     if request.query_params.get("ink"):
@@ -502,6 +506,20 @@ async def api_render(request: Request):
 
 
 CLIP_MAX_PX = 24e6  # o zonă de detaliu: cât un ecran 4K de câteva ori
+
+
+def _json_bytes(obj) -> bytes:
+    """JSON compact, ca la JSONResponse (pentru cache-uri ținute ca octeți)."""
+    return json.dumps(obj, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
+
+
+def _cap_scale(p, scale):
+    """Scara unei randări de pagină întreagă, limitată la latura și la numărul de pixeli maxim."""
+    if max(p["w"], p["h"]) * scale > MAX_RENDER_PX:
+        scale = MAX_RENDER_PX / max(p["w"], p["h"])
+    if p["w"] * p["h"] * scale * scale > MAX_RENDER_MP * 1e6:
+        scale = (MAX_RENDER_MP * 1e6 / (p["w"] * p["h"])) ** 0.5
+    return scale
 
 
 def _clip(raw, page):
@@ -555,8 +573,8 @@ async def api_preview(request: Request):
         scale = round(max(0.1, min(float(body.get("scale", 2)), 64)), 3)
         if (clip[2] - clip[0]) * (clip[3] - clip[1]) * scale * scale > CLIP_MAX_PX:
             return _err("Zonă prea mare")
-    elif p and max(p["w"], p["h"]) * scale > MAX_RENDER_PX:
-        scale = MAX_RENDER_PX / max(p["w"], p["h"])
+    elif p:
+        scale = _cap_scale(p, scale)
     scale = round(max(0.1, scale), 3)
     ink = body.get("ink") or None
     key = ("pv", doc_id, n, scale, json.dumps(ops, sort_keys=True), json.dumps(ink, sort_keys=True), clip)
@@ -652,10 +670,10 @@ async def api_snap(request: Request):
         return _err("Pagină inexistentă", 404)
 
     def work():
-        return _snap_cache.get_or((doc_id, n), lambda: pdfcore.snap_points(_original(doc_id), n))
+        return _snap_cache.get_or((doc_id, n), lambda: _json_bytes(pdfcore.snap_points(_original(doc_id), n)))
 
     # geometria vine doar din original, care nu se schimbă: browserul o poate păstra
-    return JSONResponse(await run_in_threadpool(work), headers={"Cache-Control": "private, max-age=3600"})
+    return Response(await run_in_threadpool(work), media_type="application/json", headers={"Cache-Control": "private, max-age=3600"})
 
 
 async def api_objects(request: Request):
@@ -681,7 +699,7 @@ async def api_objects(request: Request):
 
 # OCR-ul și vectorizarea țin procesorul ocupat zeci de secunde: câte una pe rând
 _HEAVY = asyncio.Semaphore(1)
-_text_cache = LRU(32)
+_text_cache = LRU(32, 32 * 1024 * 1024)
 VECTOR_TIMEOUT = float(_env("VECTOR_TIMEOUT", "240"))
 VECTOR_PX_MM = 8.0  # rezoluția vectorizării (≈ 200 DPI): destul pentru linii de 0,25 mm
 
@@ -712,6 +730,7 @@ async def _ocr_run(doc_id, n, meta_page):
             return cached
         scan = True if meta_page.get("paths", 1) == 0 else None  # fără linii vectoriale = imagine
         res = await run_in_threadpool(lambda: ocrmod.ocr_page(_original(doc_id), n, (meta_page["w"], meta_page["h"]), scan=scan))
+        await run_in_threadpool(pdfcore.release_memory)  # matricile OCR au zeci–sute de MB
         _write_json(_cache_dir(doc_id, "ocr") / f"{_pkey(doc_id, n)}.json", res)
         return res
 
@@ -754,8 +773,8 @@ async def api_text(request: Request):
         n, _meta = _page_index(doc_id, request.path_params["n"])
     except (ValueError, FileNotFoundError, IndexError):
         return _err("Pagină inexistentă", 404)
-    items = await run_in_threadpool(lambda: _text_cache.get_or((doc_id, n), lambda: ocrmod.native_text(_original(doc_id), n)))
-    return JSONResponse({"items": items}, headers={"Cache-Control": "private, max-age=3600"})
+    body = await run_in_threadpool(lambda: _text_cache.get_or((doc_id, n), lambda: _json_bytes({"items": ocrmod.native_text(_original(doc_id), n)})))
+    return Response(body, media_type="application/json", headers={"Cache-Control": "private, max-age=3600"})
 
 
 async def _vectorize(doc_id, n, pdf_bytes, masks, key):
@@ -776,7 +795,7 @@ async def _vectorize(doc_id, n, pdf_bytes, masks, key):
         scale = VECTOR_PX_MM * 25.4 / 72
         if info["w"] * info["h"] * scale * scale > 45e6:
             scale = (45e6 / (info["w"] * info["h"])) ** 0.5
-        png = await run_in_threadpool(pdfcore.render_png, pdf_bytes, n, scale)
+        png = await run_in_threadpool(lambda: pdfcore.render_png(pdf_bytes, n, scale, gray=True))
         with tempfile.TemporaryDirectory(prefix="drawcad-vec-") as td:
             ip, op, mp = (os.path.join(td, f) for f in ("in.png", "out.json", "masks.json"))
             with open(ip, "wb") as f:

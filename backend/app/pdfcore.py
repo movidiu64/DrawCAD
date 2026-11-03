@@ -14,6 +14,7 @@ import re
 import threading
 from dataclasses import dataclass
 
+import numpy as np
 import pikepdf
 import pypdfium2 as pdfium
 import pypdfium2.raw as R
@@ -350,7 +351,7 @@ def apply_layout(pdf_bytes: bytes, layout: list[dict]) -> bytes:
 
 
 def _to_png(img, out):
-    """PNG rapid; desenele alb-negru / gri (majoritatea) se salvează pe un singur canal, de ~2× mai mic."""
+    """PNG rapid din imagine PIL (folosit pentru imaginile mici); gri → un singur canal."""
     from PIL import ImageChops
 
     if img.mode == "RGB":
@@ -363,11 +364,125 @@ def _to_png(img, out):
     img.save(out, format="PNG", compress_level=1)
 
 
-def render_png(pdf_bytes: bytes, page_index: int, scale: float, removals=None, ink=None, clip=None) -> bytes:
+_PNG_ROWS = 256  # rânduri comprimate deodată: memoria suplimentară e cât o fâșie, nu cât imaginea
+
+
+def _is_gray(arr) -> bool:
+    """Toate pixelii au R = G = B? Verificat pe fâșii, ca să nu se aloce imaginea de trei ori."""
+    if arr.ndim == 2:
+        return True
+    for i in range(0, arr.shape[0], _PNG_ROWS):
+        c = arr[i:i + _PNG_ROWS]
+        if not (np.array_equal(c[..., 0], c[..., 1]) and np.array_equal(c[..., 1], c[..., 2])):
+            return False
+    return True
+
+
+def png_from_array(arr, level: int = 1) -> bytes:
+    """PNG direct din matricea bitmap-ului (H×W gri sau H×W×3 RGB), comprimat pe fâșii.
+    Fără copii PIL ale întregii imagini: la o pagină de 100 MP vârful de memorie scade de la
+    ~11 la ~3 octeți pe pixel. Desenele alb-negru / gri se scriu pe un singur canal."""
+    import struct
+    import zlib
+
+    if arr.ndim == 3 and _is_gray(arr):
+        arr = arr[..., 0]
+    h, w = arr.shape[:2]
+    ch = 1 if arr.ndim == 2 else 3
+
+    def chunk(tag, data):
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+    z = zlib.compressobj(level)
+    parts = []
+    row = w * ch
+    prev = np.zeros(row, dtype=np.uint8)
+    for i in range(0, h, _PNG_ROWS):
+        c = arr[i:i + _PNG_ROWS].reshape(-1, row)
+        n = c.shape[0]
+        # filtrul „Up” (2): diferența față de rândul de deasupra (modulo 256). La desene, rândurile
+        # vecine sunt aproape la fel, deci se comprimă de 2–4× mai bine decât fără filtru
+        buf = np.empty((n, row + 1), dtype=np.uint8)
+        buf[:, 0] = 2
+        buf[0, 1:] = c[0] - prev
+        if n > 1:
+            np.subtract(c[1:], c[:-1], out=buf[1:, 1:])
+        prev = c[-1].copy()
+        parts.append(z.compress(buf.tobytes()))
+    parts.append(z.flush())
+    ihdr = struct.pack(">IIBBBBB", w, h, 8, 0 if ch == 1 else 2, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", b"".join(parts)) + chunk(b"IEND", b"")
+
+
+def _bitmap_array(bmp):
+    """Vederea numpy peste pixelii bitmap-ului (fără copiere), RGB sau gri."""
+    arr = bmp.to_numpy()
+    if arr.ndim == 3 and arr.shape[2] == 4:
+        arr = arr[..., :3]
+    return arr
+
+
+_LIBC = None
+
+
+def release_memory():
+    """Dă înapoi sistemului memoria liberă rămasă după o randare mare (glibc o păstrează altfel
+    în proces, iar serverul rămâne cu sute de MB ocupați degeaba). Fără efect în afara Linux."""
+    global _LIBC
+    if _LIBC is None:
+        try:
+            _LIBC = ctypes.CDLL("libc.so.6")
+            _LIBC.malloc_trim.argtypes = [ctypes.c_size_t]
+        except (OSError, AttributeError):
+            _LIBC = False
+    if _LIBC:
+        _LIBC.malloc_trim(0)
+
+
+def to_gray(arr):
+    """RGB → gri pe fâșii, cu aceeași formulă ca PIL convert("L") (rezultat identic, bit cu bit)."""
+    if arr.ndim == 2:
+        return np.array(arr)
+    out = np.empty(arr.shape[:2], dtype=np.uint8)
+    for i in range(0, arr.shape[0], _PNG_ROWS):
+        c = arr[i:i + _PNG_ROWS].astype(np.uint32)
+        out[i:i + _PNG_ROWS] = (c[..., 0] * 19595 + c[..., 1] * 38470 + c[..., 2] * 7471 + 0x8000) >> 16
+    return out
+
+
+def render_png(pdf_bytes: bytes, page_index: int, scale: float, removals=None, ink=None, clip=None, gray: bool = False) -> bytes:
     """Pagina ca PNG. `clip` = (x0, y0, x1, y1) în coordonate vizuale (puncte): doar zona aceea,
-    pentru zoom mare (detaliul vizibil la rezoluție mare, fără toată pagina)."""
+    pentru zoom mare (detaliul vizibil la rezoluție mare, fără toată pagina).
+    `gray`: PNG în tonuri de gri (OCR, vectorizare)."""
     if ink and ink.get("all"):
         pdf_bytes = ink_pdf(pdf_bytes, {page_index}, ink.get("fills", "black"), bool(ink.get("images")))
+    bmp = _render_bitmap(pdf_bytes, page_index, scale, removals, clip)
+    big = False
+    try:
+        # compresia se face în afara lacătului PDFium: altă pagină se poate randa între timp
+        arr = _bitmap_array(bmp)
+        big = arr.shape[0] * arr.shape[1] > 4e6
+        return png_from_array(to_gray(arr) if gray else arr)
+    finally:
+        with PDFIUM_LOCK:
+            bmp.close()
+        if big:
+            release_memory()
+
+
+def render_array(pdf_bytes: bytes, page_index: int, scale: float, gray: bool = True):
+    """Pagina ca matrice numpy (copie proprie), fără PNG intermediar. Randarea e mereu color:
+    modul gri al PDFium netezește altfel marginile, iar OCR-ul și vectorizarea sunt reglate pe asta."""
+    bmp = _render_bitmap(pdf_bytes, page_index, scale, None, None)
+    try:
+        arr = _bitmap_array(bmp)
+        return to_gray(arr) if gray else np.array(arr)
+    finally:
+        with PDFIUM_LOCK:
+            bmp.close()
+
+
+def _render_bitmap(pdf_bytes, page_index, scale, removals, clip):
     with PDFIUM_LOCK:
         doc = pdfium.PdfDocument(pdf_bytes)
         try:
@@ -382,12 +497,9 @@ def render_png(pdf_bytes: bytes, page_index: int, scale: float, removals=None, i
                 y0, y1 = max(0.0, min(y0, y1)), min(H, max(y0, y1))
                 # tăietura PDFium e în orientarea afișată: stânga, jos, dreapta, sus
                 crop = (x0, H - y1, W - x1, y0)
-            bmp = page.render(scale=scale, rotation=0, crop=crop, may_draw_forms=True, draw_annots=True)
-            img = bmp.to_pil()
-            out = io.BytesIO()
-            _to_png(img, out)
+            bmp = page.render(scale=scale, rotation=0, crop=crop, may_draw_forms=True, draw_annots=True, rev_byteorder=True)
             page.close()
-            return out.getvalue()
+            return bmp
         finally:
             doc.close()
 

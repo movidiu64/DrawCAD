@@ -58,6 +58,7 @@ class App {
       if (w == null) {
         this.measureCtx.font = `${size}px osifont`;
         w = this.measureCtx.measureText(txt).width;
+        if (this.mcache.size > 20000) this.mcache.clear(); // textele scrise literă cu literă se adună
         this.mcache.set(key, w);
       }
       return w;
@@ -794,7 +795,9 @@ class App {
     this.lastHistKey = key;
     this.lastHistTime = now;
     this.undo.push(JSON.stringify(this.annots));
-    if (this.undo.length > 200) this.undo.shift();
+    // cel mult 200 de pași și ~20 milioane de caractere (la desene cu mii de adnotări fiecare pas e mare)
+    let chars = this.undo.reduce((n, st) => n + st.length, 0);
+    while (this.undo.length > 1 && (this.undo.length > 200 || chars > 20e6)) chars -= this.undo.shift().length;
     this.redo = [];
     this.updateButtons();
   }

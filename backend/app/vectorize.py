@@ -25,7 +25,12 @@ PT_MM = 25.4 / 72
 
 
 def otsu(gray: np.ndarray) -> int:
-    hist = np.bincount(gray.ravel(), minlength=256).astype(np.float64)
+    return otsu_hist(np.bincount(gray.ravel(), minlength=256))
+
+
+def otsu_hist(hist) -> int:
+    """Pragul Otsu dintr-o histogramă de 256 de valori (se poate aduna pe fâșii)."""
+    hist = np.asarray(hist, dtype=np.float64)
     total = hist.sum()
     if total == 0:
         return 128
@@ -42,12 +47,14 @@ def otsu(gray: np.ndarray) -> int:
 
 def _neighbors_code(img: np.ndarray) -> np.ndarray:
     """Pentru fiecare pixel, vecinii lui ca număr pe 8 biți: N, NE, E, SE, S, SV, V, NV."""
-    P = np.pad(img, 1)
+    P = np.pad(img.astype(np.uint8, copy=False), 1)
     h, w = img.shape
     code = np.zeros((h, w), np.uint8)
+    tmp = np.empty((h, w), np.uint8)  # o singură matrice de lucru, refolosită pentru toți vecinii
     shifts = [(0, 1), (0, 2), (1, 2), (2, 2), (2, 1), (2, 0), (1, 0), (0, 0)]
     for bit, (dy, dx) in enumerate(shifts):
-        code |= (P[dy:dy + h, dx:dx + w] << bit).astype(np.uint8)
+        np.left_shift(P[dy:dy + h, dx:dx + w], bit, out=tmp)
+        code |= tmp
     return code
 
 
@@ -73,7 +80,9 @@ def thin(b: np.ndarray, max_iter: int = 60) -> np.ndarray:
         changed = False
         for step in (0, 1):
             code = _neighbors_code(img)
-            m = _LUT[step][code] & (img == 1)
+            m = _LUT[step][code]
+            del code
+            m &= img.view(bool)  # img are doar 0 / 1
             if m.any():
                 img[m] = 0
                 changed = True
@@ -108,6 +117,7 @@ def trace(sk: np.ndarray):
     deg_img[1:-1, 1:-1] = np.where(sk == 1, popcnt[code], 0)
     S = bytes(pad.ravel())
     D = bytes(deg_img.ravel())
+    del code
     offs = (-Wp - 1, -Wp, -Wp + 1, -1, 1, Wp - 1, Wp, Wp + 1)
     flat = np.flatnonzero(pad.ravel())
     degf = deg_img.ravel()[flat]
@@ -205,7 +215,8 @@ def trace(sk: np.ndarray):
             loops.append([xy(q) for q in chain])
 
     out = []
-    for ka, kb, chain in edges:
+    for i, (ka, kb, chain) in enumerate(edges):
+        edges[i] = None  # lanțul de indici nu mai trebuie: memoria lui se refolosește pentru puncte
         pts = [xy(q) for q in chain]
         if ka[0] == "c":
             pts[0] = cpts[ka[1]]

@@ -110,11 +110,12 @@ Aplicația s-a numit inițial „Cotare”: variabilele vechi `COTARE_*` sunt ac
 | `PUID` / `PGID` | `99` / `100` | utilizatorul cu care rulează aplicația |
 | `DRAWCAD_MAX_UPLOAD_MB` | `200` | dimensiunea maximă a unui fișier încărcat |
 | `DRAWCAD_MAX_RENDER_PX` | `12000` | latura maximă, în pixeli, a randării unei pagini |
+| `DRAWCAD_MAX_RENDER_MP` | `40` | megapixelii maximi ai randării unei pagini întregi (zoomul mare se randează pe zone) |
 | `DRAWCAD_MODE` | `private` | `personal`, `private` sau `session` (vezi „Mod de lucru”) |
 | `DRAWCAD_MAX_PAGES` | `300` | numărul maxim de pagini al unui document |
 | `DRAWCAD_MAX_IMAGE_MPX` | `400` | megapixelii maximi ai unei imagini încărcate |
 | `DRAWCAD_PASSWORD` | gol | parolă HTTP Basic (utilizator `drawcad`); gol = fără parolă |
-| `DRAWCAD_CACHE_MB` | `512` | memoria pentru cache-ul de randări |
+| `DRAWCAD_CACHE_MB` | `256` | memoria maximă a cache-urilor din RAM (PDF-uri, randări); se ocupă doar cât se folosește |
 | `DRAWCAD_RETENTION_DAYS` | `30` | zile după care un document nefolosit se șterge de pe server; `0` = niciodată |
 | `DRAWCAD_OCR_LANG` | `ron+eng` | limbile pentru OCR (coduri Tesseract; imaginea are română și engleză) |
 | `DRAWCAD_OCR_TIMEOUT` | `150` | secunde maxime pentru OCR-ul unei pagini |

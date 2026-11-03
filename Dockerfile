@@ -7,6 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DRAWCAD_FONT=/app/frontend/fonts/osifont.ttf \
     PUID=99 \
     OMP_THREAD_LIMIT=1 \
+    MALLOC_ARENA_MAX=2 \
     PGID=100
 
 # Tesseract pentru recunoașterea textului (OCR) pe desene scanate: română + engleză
