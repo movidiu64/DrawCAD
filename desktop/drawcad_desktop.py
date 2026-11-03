@@ -290,6 +290,11 @@ def selftest(report: str | None) -> int:
 
         st = out["steps"]
         st["health"] = call("GET", "/api/health")
+        for _ in range(90):  # detectarea limbilor OCR rulează în fundal la pornire
+            if not st["health"].get("ocrPending"):
+                break
+            time.sleep(1)
+            st["health"] = call("GET", "/api/health")
         pdf = _sample_pdf()
         meta = call("POST", "/api/open", pdf, {"X-Filename": "autotest.pdf"})
         st["open"] = {"id": meta["id"], "pages": len(meta["pages"])}
@@ -357,6 +362,11 @@ def main(argv: list[str]) -> int:
         setup_env()
         return run_module(argv[2], argv[3:])
     redirect_output()
+    import logging
+
+    logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(name)s: %(message)s", stream=sys.stderr)
+    log = logging.getLogger("drawcad")
+    t_start = time.time()
     setup_env()
     args = argv[1:]
     if "--selftest" in args:
@@ -379,6 +389,9 @@ def main(argv: list[str]) -> int:
     if not existing:
         srv = LocalServer(port)
         srv.start()
+    took = time.time() - t_start
+    if took > 5:
+        log.warning("pornire lentă: serverul a fost gata după %.1f s", took)
     url = f"http://127.0.0.1:{port}/"
     if files:
         doc_id = upload(port, files[0])

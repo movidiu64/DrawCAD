@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import sys
 import tempfile
 import time
@@ -54,20 +55,41 @@ def _run_kw() -> dict:
     return kw
 
 
+_LANGS_LOCK = threading.Lock()
+_LANGS_FAIL = 0.0  # momentul ultimei detectări eșuate: se reîncearcă după un minut
+
+
 def available_langs() -> list[str]:
-    global _LANGS
-    if _LANGS is None:
+    """Limbile Tesseract instalate. Prima rulare poate dura (pe Windows, antivirusul verifică
+    executabilul la prima pornire): rezultatul bun se ține minte, un eșec se reîncearcă mai târziu."""
+    global _LANGS, _LANGS_FAIL
+    if _LANGS is not None:
+        return _LANGS
+    with _LANGS_LOCK:
+        if _LANGS is not None:
+            return _LANGS
+        if _LANGS_FAIL and time.time() - _LANGS_FAIL < 60:
+            return []
         exe = _exe()
         if not exe:
             _LANGS = []
+            return _LANGS
+        try:
+            r = subprocess.run([exe, "--list-langs"], timeout=60, **_run_kw())
+            out = r.stdout or r.stderr or ""
+            langs = [ln.strip() for ln in out.splitlines()[1:] if ln.strip() and ln.strip() != "osd"]
+        except Exception:  # noqa: BLE001
+            langs = []
+        if langs:
+            _LANGS = langs
         else:
-            try:
-                r = subprocess.run([exe, "--list-langs"], timeout=10, **_run_kw())
-                out = r.stdout or r.stderr or ""
-                _LANGS = [ln.strip() for ln in out.splitlines()[1:] if ln.strip() and ln.strip() != "osd"]
-            except Exception:  # noqa: BLE001
-                _LANGS = []
-    return _LANGS
+            _LANGS_FAIL = time.time()
+        return langs
+
+
+def langs_known() -> bool:
+    """Detectarea limbilor s-a terminat (cu sau fără Tesseract)."""
+    return _LANGS is not None
 
 
 def lang() -> str | None:

@@ -271,6 +271,18 @@ class App {
     else this.view.redraw();
   }
 
+  pollOcrLang(tries = 20) {
+    setTimeout(async () => {
+      try {
+        const h = await (await fetch("api/health")).json();
+        if (h.ocr) this.ocrLang = h.ocr;
+        else if (h.ocrPending && tries > 1) this.pollOcrLang(tries - 1);
+      } catch (_) {
+        if (tries > 1) this.pollOcrLang(tries - 1);
+      }
+    }, 3000);
+  }
+
   async init() {
     startI18n(); // în engleză, textele apar traduse pe măsură ce se construiește interfața
     await document.fonts.load("16px osifont").catch(() => {});
@@ -280,6 +292,8 @@ class App {
       this.mode = h.mode || "personal";
       this.ocrLang = h.ocr || null;
       this.desktop = !!h.desktop;
+      // la prima pornire Tesseract poate răspunde greu: interfața pornește oricum, OCR-ul apare după
+      if (h.ocrPending) this.pollOcrLang();
     } catch (_) {
       this.retentionDays = 0;
     }

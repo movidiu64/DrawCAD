@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import make_sample  # noqa: E402
 
 MM = 72 / 25.4
+_STATE = {}  # pagina și erorile din consolă, pentru raportul de eșec
 
 
 def main(url, out):
@@ -29,6 +30,7 @@ def main(url, out):
         page.set_default_timeout(60000)  # CI poate fi lent (citirea izolată a fișierului durează câteva secunde)
         page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
         page.on("pageerror", lambda e: errors.append(str(e)))
+        _STATE.update(page=page, errors=errors, out=out)
         page.goto(url)
         page.evaluate("localStorage.clear()")
         # interfața în română (implicit ar urma limba browserului, care în CI e engleza)
@@ -318,5 +320,31 @@ def main(url, out):
     print("ERORI CONSOLĂ:", errors or "niciuna")
 
 
+def _report_failure(exc):
+    """Un rând clar despre ce pas a picat (linia din acest fișier și mesajul), plus o captură."""
+    import traceback
+
+    tb = traceback.extract_tb(exc.__traceback__)
+    here = [f for f in tb if f.filename.endswith("e2e_smoke.py")]
+    where = f"e2e_smoke.py:{here[-1].lineno} `{(here[-1].line or '').strip()}`" if here else "?"
+    msg = str(exc).strip().splitlines()
+    print(f"E2E EȘUAT la {where}: {type(exc).__name__}: {msg[0] if msg else ''}", flush=True)
+    for ln in msg[1:8]:
+        print(f"  » {ln}", flush=True)
+    if _STATE.get("errors"):
+        print("ERORI CONSOLĂ:", " | ".join(_STATE["errors"][-10:]), flush=True)
+    page = _STATE.get("page")
+    if page is not None:
+        try:
+            page.screenshot(path=str(Path(_STATE["out"]) / "esec.png"))
+            print("captură: esec.png", flush=True)
+        except Exception:  # noqa: BLE001
+            pass
+
+
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8765", sys.argv[2] if len(sys.argv) > 2 else "e2e_out")
+    try:
+        main(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8765", sys.argv[2] if len(sys.argv) > 2 else "e2e_out")
+    except Exception as e:  # noqa: BLE001
+        _report_failure(e)
+        raise

@@ -98,8 +98,11 @@ jobs:
           Get-Content e2e_out/e2e.log | Select-Object -Last 30 | Write-Host
           Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue
           if ($code -ne 0) {
-            $tail = (Get-Content e2e_out/e2e.log | Select-Object -Last 15) -join ' | '
-            Write-Host "::error::e2e pe executabil eșuat: $tail"
+            $why = (Get-Content e2e_out/e2e.log | Select-String -Pattern "^E2E EȘUAT|^  » |^ERORI CONSOLĂ" | Select-Object -First 10 | ForEach-Object { $_.Line }) -join ' | '
+            if (-not $why) { $why = (Get-Content e2e_out/e2e.log | Select-Object -Last 15) -join ' | ' }
+            Write-Host "::error::e2e pe executabil eșuat: $why"
+            $log = Join-Path $env:LOCALAPPDATA "DrawCAD\drawcad.log"
+            if (Test-Path $log) { Write-Host "::error::Jurnal server: $((Get-Content $log -Tail 20) -join ' | ')" }
             exit 1
           }
 

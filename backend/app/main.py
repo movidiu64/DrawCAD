@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from collections import OrderedDict
@@ -691,7 +692,7 @@ async def api_objects(request: Request):
     rect = body.get("rect")
     if not isinstance(rect, list) or len(rect) != 4 or not all(_finite(v) for v in rect):
         return _err("rect lipsă")
-    res = await run_in_threadpool(pdfcore.objects_in_rect, _original(doc_id), n, rect)
+    res = await run_in_threadpool(lambda: pdfcore.objects_in_rect(_original(doc_id), n, rect))
     return JSONResponse({"objects": res})
 
 
@@ -745,8 +746,8 @@ async def api_ocr(request: Request):
     except (ValueError, FileNotFoundError, IndexError):
         return _err("Pagină inexistentă", 404)
     if request.method == "GET":
-        return JSONResponse({"ocr": _ocr_cached(doc_id, n), "lang": ocrmod.lang()})
-    if not ocrmod.available():
+        return JSONResponse({"ocr": _ocr_cached(doc_id, n), "lang": await _ocr_lang()})
+    if not await _ocr_lang():
         return _err("OCR indisponibil: Tesseract nu e instalat pe server", 501)
     try:
         body = await _json_body(request, 4096)
@@ -855,7 +856,7 @@ async def _export_dxf(doc_id, prims, rem, sel, opts, color, base_name):
 
     from . import dxfout, ocr as ocrmod
 
-    original = _original(doc_id)
+    original = await run_in_threadpool(_original, doc_id)  # prima dată: citire + aranjarea paginilor
     meta = _read_json(_doc_dir(doc_id) / "meta.json", {})
     n_pages = len(meta.get("pages", []))
     idxs = sorted({i for i in (sel or range(n_pages)) if 0 <= i < n_pages})
@@ -880,7 +881,7 @@ async def _export_dxf(doc_id, prims, rem, sel, opts, color, base_name):
         lines = []
         if want["ocr"]:
             cached = _ocr_cached(doc_id, i)
-            if cached is None and scan and ocrmod.available():
+            if cached is None and scan and await _ocr_lang():
                 cached = await _ocr_run(doc_id, i, meta["pages"][i])
             native = [t for t in content["texts"]]
             nboxes = []
@@ -1016,10 +1017,27 @@ async def api_export(request: Request):
     return Response(data, media_type=media, headers=headers)
 
 
+async def _ocr_lang(wait: float | None = None):
+    """Limbile OCR fără să blocheze serverul: detectarea rulează Tesseract (la prima pornire pe
+    Windows poate dura zeci de secunde). Cu `wait`, după atâtea secunde se întoarce „încă nu știu”."""
+    from . import ocr as ocrmod
+
+    fut = run_in_threadpool(ocrmod.lang)
+    if wait is None:
+        return await fut
+    try:
+        return await asyncio.wait_for(asyncio.shield(asyncio.ensure_future(fut)), wait)
+    except asyncio.TimeoutError:
+        return None
+
+
 async def api_health(request: Request):
     from . import ocr as ocrmod
 
-    return JSONResponse({"ok": True, "retentionDays": RETENTION_DAYS, "mode": MODE, "ocr": ocrmod.lang(), "dxf": True, "desktop": DESKTOP})
+    # interfața așteaptă răspunsul la pornire: nu mai mult de o secundă pentru OCR
+    lang = await _ocr_lang(wait=1.0)
+    return JSONResponse({"ok": True, "retentionDays": RETENTION_DAYS, "mode": MODE, "ocr": lang,
+                         "ocrPending": lang is None and not ocrmod.langs_known(), "dxf": True, "desktop": DESKTOP})
 
 
 async def api_workspace(request: Request):
@@ -1068,6 +1086,16 @@ routes = [
 async def lifespan(_app):
     # încărcări întrerupte la o oprire anterioară
     shutil.rmtree(INCOMING, ignore_errors=True)
+
+    def warm():
+        # detectarea limbilor OCR (rulează Tesseract) se face din start, nu la prima cerere
+        with contextlib.suppress(Exception):
+            from . import ocr as ocrmod
+
+            ocrmod.available_langs()
+
+    threading.Thread(target=warm, name="drawcad-warmup", daemon=True).start()
+
     async def periodic():
         while True:
             with contextlib.suppress(Exception):
@@ -1187,7 +1215,16 @@ class SecurityMiddleware:
                 message["headers"] = headers
             await send(message)
 
-        return await self.app(scope, receive, send_wrapped)
+        if not DESKTOP:
+            return await self.app(scope, receive, send_wrapped)
+        # aplicația desktop: cererile lente ajung în jurnal (%LOCALAPPDATA%\\DrawCAD\\drawcad.log)
+        t0 = time.monotonic()
+        try:
+            return await self.app(scope, receive, send_wrapped)
+        finally:
+            dt = time.monotonic() - t0
+            if dt > 3:
+                logging.getLogger("drawcad").warning("cerere lentă: %s %s %.1f s", scope["method"], scope.get("path"), dt)
 
 
 DOCS.mkdir(parents=True, exist_ok=True)
