@@ -346,6 +346,24 @@ class ApiTest(unittest.TestCase):
         self.assertIsNone(got["ocr"])
 
     @unittest.skipUnless(__import__("shutil").which("tesseract"), "Tesseract missing")
+    def test_ocr_skewed_photo(self):
+        """A skewed photo: OCR straightens it first (regression: the rotated image is read-only)."""
+        from PIL import Image, ImageDraw
+
+        from app import ocr
+
+        img = Image.new("L", (2400, 1700), 255)
+        d = ImageDraw.Draw(img)
+        d.rectangle([100, 100, 2300, 1600], outline=0, width=4)
+        d.line([300, 900, 2100, 900], fill=0, width=3)
+        img = img.rotate(1.5, fillcolor=255)
+        b = io.BytesIO()
+        img.save(b, format="PNG", dpi=(200, 200))
+        pdf = pdfcore.image_to_pdf(b.getvalue(), None)[0]
+        res = ocr.ocr_page(pdf, 0, (2400 * 72 / 200, 1700 * 72 / 200), scan=True)
+        self.assertNotEqual(res["skew"], 0)
+
+    @unittest.skipUnless(__import__("shutil").which("tesseract"), "Tesseract missing")
     def test_ocr_and_searchable_pdf(self):
         import pypdfium2 as pdfium
 

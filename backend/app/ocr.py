@@ -183,7 +183,8 @@ def remove_long_lines(gray: np.ndarray, px_mm: float, min_mm: float = 7.0, dark:
     del b
     if not kill.any():
         return gray
-    out = gray if inplace else gray.copy()
+    # in place only on an array we own (np.asarray of a PIL image is read-only)
+    out = gray if inplace and gray.flags.writeable else gray.copy()
     out[kill] = 255
     return out
 
