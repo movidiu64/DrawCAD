@@ -22,7 +22,7 @@ Open a PDF exported from CAD, or a scan or photo of a drawing, add dimensions, t
 
 ## Features
 
-- 📏 **Dimensions**: linear, aligned, diameter, radius, angle, chamfer, leaders and text, with AutoCAD-like object snaps (endpoint, midpoint, center, intersection, apparent intersection, extension, tracking, polar, perpendicular, tangent).
+- 📏 **Dimensions**: linear, aligned, diameter, radius, angle, ordinate (from a base point), chamfer, leaders and text, with AutoCAD-like object snaps (endpoint, midpoint, center, intersection, apparent intersection, extension, tracking, polar, perpendicular, tangent).
 - 🎯 **Tolerances**: ±, deviations, and ISO 286 fits with automatic limits (`Ø25k6 (+0.015/+0.002)`).
 - ⌖ **GD&T** (ISO 1101): all 14 characteristics, modifiers, datums. **Surface roughness** (ISO 1302 / 21920-1).
 - 🔺 **Revisions**: strike-through value, new value and revision triangle, plus an auto-filled revision table.

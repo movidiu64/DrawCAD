@@ -70,6 +70,32 @@ export const TOOLS = [
       if (pts.length === 1) return { line: [pts[0], cur] };
       return this.make([pts[0], pts[1], cur], app);
     } },
+  { id: "dimOrd", label: "Ordonate", key: "", group: "Cote", icon: "M5 4v16h15M5 20l-2-2M9 20V8M14 20V11M19 20V6M5 15h4M5 10h9",
+    kind: "poly", min: 2, place: true,
+    hint: "Baza (cota 0) → punctele de cotat · Enter sau click dreapta → poziția rândului: sub / deasupra = cote pe X, stânga / dreapta = pe Y",
+    placeHint: "Click pentru rândul de cote: sub sau deasupra punctelor = cote pe X, la stânga sau la dreapta = pe Y · Esc renunță",
+    make(pts, app, _closed, cur) {
+      const [base, ...rest] = pts;
+      const at = cur || pts[pts.length - 1];
+      const xs = pts.map((q) => q[0]);
+      const ys = pts.map((q) => q[1]);
+      const dx = at[0] < Math.min(...xs) ? Math.min(...xs) - at[0] : at[0] > Math.max(...xs) ? at[0] - Math.max(...xs) : 0;
+      const dy = at[1] < Math.min(...ys) ? Math.min(...ys) - at[1] : at[1] > Math.max(...ys) ? at[1] - Math.max(...ys) : 0;
+      const axis = dx > dy ? "y" : "x";
+      return { type: "ord", axis, base, pts: rest, row: axis === "x" ? at[1] : at[0] };
+    },
+    preview(pts, cur, app) {
+      if (app.placing) return this.make(pts, app, false, cur);
+      // while picking: a small cross on each point, the base with a circle-like square
+      const r = 1.6 * K;
+      const lines = [];
+      pts.forEach((q, i) => {
+        const m = i === 0 ? r * 1.6 : r;
+        lines.push([[q[0] - m, q[1]], [q[0] + m, q[1]]], [[q[0], q[1] - m], [q[0], q[1] + m]]);
+      });
+      lines.push([pts[pts.length - 1], cur]);
+      return { lines };
+    } },
   { id: "dimAng", label: "Unghi", key: "U", group: "Cote", icon: "M4 20h16M4 20L17 6M12 20a8 8 0 0 0-2.6-5.9",
     kind: "clicks", n: 4, hint: "Vârful → un punct pe prima latură → un punct pe a doua → poziția arcului (alege sectorul)",
     make: (pts) => ({ type: "ang", v: pts[0], p1: pts[1], p2: pts[2], p3: pts[3], nominal: null, tol: { mode: "none" } }),

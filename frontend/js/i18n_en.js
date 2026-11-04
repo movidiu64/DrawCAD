@@ -826,4 +826,13 @@ export const EN = {
   "Desenate cu snap pe contur: stau pe aceleași linii, dimensiunea lor reală se recalculează.": "Drawn with snap on the outline: they stay on the same lines, their real size is recalculated.",
   "Își păstrează dimensiunile reale": "Keep their real dimensions",
   "Desenate cu valori scrise (ex. linie de 10): se scalează față de punctul lor de start și rămân 10.": "Drawn with typed values (e.g. a line of 10): they are scaled about their start point and stay 10.",
+  "Ordonate": "Ordinate",
+  "Cote ordonate": "Ordinate dimensions",
+  "Baza (cota 0) → punctele de cotat · Enter sau click dreapta → poziția rândului: sub / deasupra = cote pe X, stânga / dreapta = pe Y": "Base (value 0) → the points to dimension · Enter or right click → row position: below / above = X values, left / right = Y values",
+  "Click pentru rândul de cote: sub sau deasupra punctelor = cote pe X, la stânga sau la dreapta = pe Y · Esc renunță": "Click to place the row: below or above the points = X values, left or right = Y values · Esc cancels",
+  "Axa": "Axis",
+  "Pe X (linii verticale)": "X (vertical lines)",
+  "Pe Y (linii orizontale)": "Y (horizontal lines)",
+  "Valori față de bază (mm reali):": "Values from the base (real mm):",
+  "Trage de pătrățelul de la capătul liniilor ca să muți rândul de cote; de punctele de pe piesă ca să le muți. Valorile apropiate se depărtează singure, cu linia frântă.": "Drag the handle at the end of the lines to move the row; drag the points on the part to move them. Values that are close together spread apart by themselves, with a jogged line.",
 };

@@ -16,6 +16,7 @@ export const DEFAULT_ALIASES = {
   dimDiaC: ["DDI", "DIMDIAMETER"],
   dimRad: ["DRA", "DIMRADIUS"],
   dimAng: ["DAN", "DIMANGULAR"],
+  dimOrd: ["DOR", "DIMORDINATE", "ORD"],
   chamfer: ["CHA", "TES", "CHAMFER"],
   lead: ["LE", "QLEADER", "MLD", "MLEADER"],
   text: ["T", "MT", "MTEXT", "DT", "TEXT"],

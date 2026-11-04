@@ -297,6 +297,17 @@ export class Panel {
       ${this.tolHtml(a, b)}`;
   }
 
+  html_ord(a) {
+    const b = this.app.builtOf(a);
+    const vals = b && b.values ? b.values.map((v) => fmtNum(v, ",", 2)).join(" · ") : "";
+    return `<div class="sec"><div class="h">Cote ordonate</div>
+      <div class="field"><span class="lbl">Axa</span><div class="seg">
+        <button data-act="ordaxis" data-v="x" class="${a.axis !== "y" ? "on" : ""}">Pe X (linii verticale)</button>
+        <button data-act="ordaxis" data-v="y" class="${a.axis === "y" ? "on" : ""}">Pe Y (linii orizontale)</button></div></div>
+      <div class="sub">Valori față de bază (mm reali): <span class="mono">${esc(vals)}</span></div>
+      <div class="sub">Trage de pătrățelul de la capătul liniilor ca să muți rândul de cote; de punctele de pe piesă ca să le muți. Valorile apropiate se depărtează singure, cu linia frântă.</div></div>`;
+  }
+
   html_ang(a) {
     const b = this.app.builtOf(a);
     return `<div class="sec"><div class="h">Valoare</div>
@@ -911,6 +922,15 @@ export class Panel {
         break;
       case "bshape":
         upd((a) => { a.shape = v; });
+        break;
+      case "ordaxis":
+        upd((a) => {
+          if ((a.axis || "x") === v) return;
+          // the row moves to the matching side: 10 mm past the points
+          const all = [a.base, ...a.pts];
+          a.axis = v;
+          a.row = v === "x" ? Math.max(...all.map((q) => q[1])) + 10 * K : Math.min(...all.map((q) => q[0])) - 10 * K;
+        });
         break;
       case "bend":
         upd((a) => { a.end = v; });

@@ -43,6 +43,7 @@ export const TYPE_NAMES = {
   balloon: "Reper de poziție",
   bom: "Listă de componente",
   ink: "Înnegrire linii originale",
+  ord: "Cote ordonate",
 };
 
 export function typeName(a) {
@@ -883,7 +884,100 @@ function buildRedact(a) {
   return { prims, handles: [{ k: "r0", p: [a.r[0], a.r[1]] }, { k: "r1", p: [a.r[2], a.r[3]] }] };
 }
 
-const BUILDERS = { dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, ink: buildInk, shape: buildShape, section: buildSection, detail: buildDetail, balloon: buildBalloon, bom: buildBom };
+// ------------------------------------------------------------------ ordinate dimensions
+/**
+ * Ordinate dimensions (AutoCAD DIMORDINATE, ISO 129-1 coordinate dimensioning): distances from a
+ * base point, along one axis. axis "x": vertical extension lines ending at the row y = a.row, with
+ * the values written along them (read from below); axis "y": horizontal lines ending at x = a.row.
+ * Values are absolute, in real mm. Points with the same value keep only the one closest to the row.
+ * Values too close to each other spread apart and their extension lines get a jog.
+ */
+export function ordinateItems(a, S) {
+  const ax = a.axis === "y" ? 1 : 0;
+  const all = [a.base, ...(a.pts || [])].filter((p) => Array.isArray(p));
+  const byVal = new Map();
+  for (const p of all) {
+    const d = ax === 0 ? p[0] - a.base[0] : a.base[1] - p[1];
+    const v = round(Math.abs(d / K) * (S.scale || 1), 2);
+    const key = v.toFixed(2);
+    const prev = byVal.get(key);
+    if (!prev || Math.abs(a.row - p[1 - ax]) < Math.abs(a.row - prev.p[1 - ax])) byVal.set(key, { p, v });
+  }
+  return [...byVal.values()].sort((u, w) => u.p[ax] - w.p[ax]);
+}
+
+/** Spreads 1-D positions so neighbors are at least `gap` apart, each cluster centered on its wishes. */
+export function spreadSlots(want, gap) {
+  const cl = want.map((w, i) => ({ lo: i, hi: i, sum: w, n: 1 }));
+  const pos = (c) => c.sum / c.n - ((c.n - 1) * gap) / 2;
+  for (let merged = true; merged;) {
+    merged = false;
+    for (let i = 0; i + 1 < cl.length; i++) {
+      const A = cl[i];
+      const B = cl[i + 1];
+      if (pos(A) + A.n * gap > pos(B) + 1e-9) {
+        cl.splice(i, 2, { lo: A.lo, hi: B.hi, sum: A.sum + B.sum, n: A.n + B.n });
+        merged = true;
+        break;
+      }
+    }
+  }
+  const out = [];
+  for (const c of cl) for (let j = 0; j < c.n; j++) out.push(pos(c) + j * gap);
+  return out;
+}
+
+function buildOrd(a, S, measure) {
+  const c = a.layer || "add";
+  const ax = a.axis === "y" ? 1 : 0; // coordinate along which the values are measured
+  const items = ordinateItems(a, S);
+  const prims = [];
+  const h = S.h;
+  const slots = spreadSlots(items.map((it) => it.p[ax]), h * 1.7);
+  const J = h * 1.6; // length of the jog zone before the row
+  const tgap = h * 0.4;
+  for (let i = 0; i < items.length; i++) {
+    const { p, v } = items[i];
+    const s = slots[i];
+    const across = p[1 - ax];
+    const d = a.row >= across ? 1 : -1; // direction from the point towards the row
+    const P = (u, w) => (ax === 0 ? [u, w] : [w, u]); // (along, across) → page point
+    const start = across + d * Math.min(S.gap, Math.abs(a.row - across) / 2);
+    if (Math.abs(s - p[ax]) < 0.01) {
+      prims.push(lineP(P(p[ax], start), P(p[ax], a.row), S, c));
+    } else {
+      const k1 = a.row - d * J;
+      const k2 = a.row - d * J * 0.35;
+      const pts = [P(p[ax], start)];
+      if ((k1 - start) * d > 0) pts.push(P(p[ax], k1));
+      pts.push(P(s, k2), P(s, a.row));
+      for (let j = 0; j + 1 < pts.length; j++) prims.push(lineP(pts[j], pts[j + 1], S, c));
+    }
+    const txt = fmtNum(v, S.sep, 2);
+    const w = measure(txt, S.F);
+    let origin;
+    let ang;
+    if (ax === 0) {
+      // vertical text, read from below (ISO 129 method 1), centered on the line
+      ang = 90;
+      origin = d > 0 ? [s + h / 2, a.row + tgap + w] : [s + h / 2, a.row - tgap];
+    } else {
+      ang = 0;
+      origin = d > 0 ? [a.row + tgap, s + h / 2] : [a.row - tgap - w, s + h / 2];
+    }
+    prims.push({ t: "T", p: origin, s: S.F, a: ang, txt, tw: w, c });
+  }
+  const along = items.map((it) => it.p[ax]);
+  const mid = along.length ? (Math.min(...along) + Math.max(...along)) / 2 : a.base[ax];
+  const rowH = ax === 0 ? [mid, a.row] : [a.row, mid];
+  return {
+    prims,
+    values: items.map((it) => it.v),
+    handles: [{ k: "base", p: a.base }, ...(a.pts || []).map((q, i) => ({ k: `pts.${i}`, p: q })), { k: "row", p: rowH }],
+  };
+}
+
+const BUILDERS = { ord: buildOrd, dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, ink: buildInk, shape: buildShape, section: buildSection, detail: buildDetail, balloon: buildBalloon, bom: buildBom };
 
 // characters without a glyph in osifont → existing equivalents (same on screen and in the PDF)
 const GLYPH_SUBST = { "…": "...", "„": '"', "”": '"', "“": '"', "«": '"', "»": '"', "‚": ",", "‘": "'", "\u00a0": " ", "−": "-" };
@@ -892,7 +986,7 @@ export function fontSafe(txt) {
   return String(txt ?? "").replace(GLYPH_RE, (ch) => GLYPH_SUBST[ch]);
 }
 
-export const SCALABLE = new Set(["dim", "rad", "ang", "rough", "lead", "text", "note", "gdt", "datum", "strike", "revtab", "section", "detail", "balloon", "bom"]);
+export const SCALABLE = new Set(["ord", "dim", "rad", "ang", "rough", "lead", "text", "note", "gdt", "datum", "strike", "revtab", "section", "detail", "balloon", "bom"]);
 export const SCALE_MIN = 0.3;
 export const SCALE_MAX = 5;
 
@@ -904,7 +998,7 @@ export function scaledS(S, k) {
 
 /** Fixed point when resizing: the annotation's main anchor. */
 export function scaleAnchor(a) {
-  return a.target || a.p || a.pos || a.v || a.c || (a.pts && a.pts[1]) || a.p1 || (a.r && [a.r[0], a.r[1]]) || [0, 0];
+  return a.base || a.target || a.p || a.pos || a.v || a.c || (a.pts && a.pts[1]) || a.p1 || (a.r && [a.r[0], a.r[1]]) || [0, 0];
 }
 
 export function build(a, S, measure) {
@@ -1025,6 +1119,10 @@ export function setHandle(a, k, pt, built) {
     a.r = [a.r[0], a.r[1], pt[0], pt[1]];
     return;
   }
+  if (k === "row") {
+    a.row = round(a.axis === "y" ? pt[0] : pt[1], 2);
+    return;
+  }
   if (k.startsWith("pts.")) {
     const i = Number(k.slice(4));
     a.pts = a.pts.map((q, j) => (j === i ? [...pt] : q));
@@ -1035,14 +1133,15 @@ export function setHandle(a, k, pt, built) {
 
 export function moveAnnot(a, dx, dy) {
   const mv = (p) => (p ? [p[0] + dx, p[1] + dy] : p);
-  for (const k of ["p1", "p2", "p3", "c", "p", "v", "target", "pos", "vp", "tp", "elbow"]) if (a[k]) a[k] = mv(a[k]);
+  for (const k of ["p1", "p2", "p3", "c", "p", "v", "target", "pos", "vp", "tp", "elbow", "base"]) if (a[k]) a[k] = mv(a[k]);
+  if (a.type === "ord" && typeof a.row === "number") a.row += a.axis === "y" ? dx : dy;
   if (a.pts) a.pts = a.pts.map(mv);
   if (a.r) a.r = [a.r[0] + dx, a.r[1] + dy, a.r[2] + dx, a.r[3] + dy];
 }
 
 /** Annotation points, offered as snap targets. */
 export function annotSnapPoints(built) {
-  return (built.handles || []).filter((h) => h.p && h.k !== "tx" && h.k !== "sc").map((h) => h.p);
+  return (built.handles || []).filter((h) => h.p && h.k !== "tx" && h.k !== "sc" && h.k !== "row").map((h) => h.p);
 }
 
 /** Primitives for export: without elements that exist only in the editor. */

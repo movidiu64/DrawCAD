@@ -2,7 +2,7 @@
 // stay on the drawing. Coordinates are visual (points, y down); rotation is clockwise, like /Rotate.
 import { build, moveAnnot } from "./annots.js";
 
-const POINT_KEYS = ["p1", "p2", "p3", "c", "p", "v", "target", "pos", "vp", "tp", "elbow"];
+const POINT_KEYS = ["p1", "p2", "p3", "c", "p", "v", "target", "pos", "vp", "tp", "elbow", "base"];
 // annotations that always stay horizontal (tables): moved whole, not rotated point by point
 const UPRIGHT = new Set(["revtab", "bom"]);
 
@@ -39,6 +39,13 @@ export function rotateAnnot(a, deg, W, H, S = null, measure = null) {
       return a;
     }
   }
+  if (a.type === "ord" && typeof a.row === "number" && a.base) {
+    // the row is a line x = row or y = row: rotate a point of it; a quarter turn swaps the axis
+    const q = R(a.axis === "y" ? [a.row, a.base[1]] : [a.base[0], a.row]);
+    const axis = deg % 180 === 90 ? (a.axis === "y" ? "x" : "y") : a.axis || "x";
+    a.row = axis === "y" ? q[0] : q[1];
+    a.axis = axis;
+  }
   for (const k of POINT_KEYS) if (a[k]) a[k] = R(a[k]);
   if (Array.isArray(a.pts)) a.pts = a.pts.map(R);
   if (Array.isArray(a.r) && a.r.length === 4) {
@@ -66,6 +73,7 @@ export function scaleAnnot(a, k) {
   if (Array.isArray(a.pts)) a.pts = a.pts.map(M);
   if (Array.isArray(a.r) && a.r.length === 4) a.r = a.r.map((v) => v * k);
   if (typeof a.textShift === "number") a.textShift *= k;
+  if (a.type === "ord" && typeof a.row === "number") a.row *= k;
   return a;
 }
 

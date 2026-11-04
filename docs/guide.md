@@ -4,7 +4,7 @@
 
 DrawCAD is a self-hosted web app (Docker) for adding to a PDF or a scan:
 
-- **dimensions**: linear, aligned, diameter, radius and angular, plus chamfers, leaders and free text;
+- **dimensions**: linear, aligned, diameter, radius, angular and ordinate (from a base point, on X or Y), plus chamfers, leaders and free text;
 - **tolerances**: ±, deviations, ISO 286 fits with automatic limits (e.g. `Ø25k6 (+0,015/+0,002)`);
 - **GD&T** to ISO 1101: all 14 characteristics, Ø, the Ⓜ Ⓛ Ⓟ Ⓕ CZ modifiers, datums A/B/C, plus datum symbols;
 - **surface roughness** to ISO 1302 / ISO 21920-1: with or without material removal, parameter (Ra, Rz…), process, directly on the surface or with a leader;
@@ -163,7 +163,7 @@ Dimensions do not change on calibration: they measure the drawing.
 
 **Command history:** in the command line, arrow up / down browses previously used commands, most recent first, as in AutoCAD. The list appears above the command line and Enter starts the chosen one. In AutoCAD commands mode, arrow up works directly on the drawing when nothing is selected (with a selection, the arrows move it). Once you start typing, the arrows pick from the suggestions. The history keeps the last 50 commands, including those started from the toolbar or with keys, and is stored in the browser.
 
-The default aliases follow AutoCAD: `L` line, `PL` polyline, `REC` rectangle, `C` circle, `A` arc, `H` hatch, `CM` center mark, `DLI` / `DAL` / `DDI` / `DRA` / `DAN` dimensions, `LE` leader, `T` / `MT` text, `TOL` GD&T, `E` erase (with a selection: deletes the selection), `DI` measure, `P` pan, `U` undo, `Z` fit page, `OS` / `OR` snap / ortho, `OP` settings. Commands without an AutoCAD equivalent have short names: `RUG` roughness, `NOTE`, `REV` revision table, `BOM`, `SEC` section, `DET` detail, `BAL` balloon, `STR` strike dimension, `WO` cover, `CALIB` calibration. The tool name works too ("circle", "radius", in Romanian or English).
+The default aliases follow AutoCAD: `L` line, `PL` polyline, `REC` rectangle, `C` circle, `A` arc, `H` hatch, `CM` center mark, `DLI` / `DAL` / `DDI` / `DRA` / `DAN` / `DOR` dimensions, `LE` leader, `T` / `MT` text, `TOL` GD&T, `E` erase (with a selection: deletes the selection), `DI` measure, `P` pan, `U` undo, `Z` fit page, `OS` / `OR` snap / ortho, `OP` settings. Commands without an AutoCAD equivalent have short names: `RUG` roughness, `NOTE`, `REV` revision table, `BOM`, `SEC` section, `DET` detail, `BAL` balloon, `STR` strike dimension, `WO` cover, `CALIB` calibration. The tool name works too ("circle", "radius", in Romanian or English).
 
 In the same dialog every tool can get another key and other aliases. Duplicates are flagged and block saving. The configuration is kept in the browser (in the desktop app, on the computer), for all documents.
 
@@ -264,6 +264,13 @@ While dragging, the label shows the value: the Δx/Δy offset, the resize percen
 **Toolbar and layers:** toolbar groups collapse from their title (the state is remembered); a tool's key opens its group. In the document panel, the eye next to each layer (Original, Added, Revisions, Deletions) hides it on screen only, for checking; the export contains everything.
 
 **Roughness (Q):** click twice at the same point for a symbol directly on the surface, or click a second time elsewhere for a symbol with a leader. A direct symbol can sit above the surface or to its left; for surfaces seen from below or from the right, ISO 1302 requires a leader.
+
+**Ordinate dimensions** (the `DOR` command, like DIMORDINATE): distances from a base point, without dimension lines, as in the drawing of a plate with holes.
+1. Click the base (it gets the value 0), then each point to dimension, with snap.
+2. Press Enter or right click: the cursor now places the row of values.
+3. Click below or above the points for X values (vertical lines, text read from below), or to the left or right for Y values (horizontal lines). X and Y are done as two separate commands.
+
+The values are absolute distances from the base, in real mm (at drawing scale). Points with the same value appear once. Values too close to each other spread apart and their lines get a jog, as in AutoCAD. In the panel you can switch the axis; dragging the handle at the end of the lines moves the row.
 
 **Angular dimension (U):** click the vertex, a point on each leg, then the arc position. The arc position picks one of the four sectors: the angle, its supplement or their opposites.
 

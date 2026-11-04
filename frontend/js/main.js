@@ -89,11 +89,27 @@ class App {
    * Esc, Enter with a command in progress or right click: finishes the polyline, stops the line chain,
    * drops the picked points; with no command in progress it deselects, then returns to Select.
    */
-  escape() {
+  escape(confirm = false) {
     const t = TOOL_BY_ID[this.tool];
+    if (this.placing && confirm) {
+      // Enter / Space / right click while placing the ordinate row: place it at the cursor
+      const at = this._ordPt || this.clicks[this.clicks.length - 1];
+      this.toolClick(at);
+      return;
+    }
     if (this.dyn) this.dynReset();
     const db = $("dynBox");
     if (db) db.hidden = true;
+    if (this.placing) {
+      // Esc while placing the ordinate row: drop the whole command
+      this.placing = false;
+      this.clicks = [];
+      this.view.overlay = null;
+      this.setHint(t.hint);
+      this.clearAcq();
+      this.view.redraw();
+      return;
+    }
     if (this.clicks.length && t.kind === "poly") {
       this.finishPoly(false);
       return;
@@ -216,6 +232,17 @@ class App {
   toolClick(pt) {
     const t = TOOL_BY_ID[this.tool];
     if (this.dyn) this.dynReset();
+    if (t.kind === "poly" && this.placing) {
+      // ordinates: the last click places the row (and decides the axis)
+      const pts = this.clicks;
+      this.placing = false;
+      this.clicks = [];
+      this.view.overlay = null;
+      this.setHint(t.hint);
+      this.clearAcq();
+      this.addAnnot(finalize(t.make(pts, this, false, pt)));
+      return;
+    }
     if (t.kind === "poly") {
       const v = this.view;
       const near = (q) => {
@@ -262,6 +289,13 @@ class App {
   /** Finishes the polyline or hatch in progress. */
   finishPoly(close) {
     const t = TOOL_BY_ID[this.tool];
+    if (t.place && this.clicks.length >= (t.min || 2)) {
+      // the points are picked: now the cursor places the row, the next click sets it
+      this.placing = true;
+      this.setHint(t.placeHint);
+      this.updateOverlay(this._dynPt || this.lastPt || this.clicks[this.clicks.length - 1], null);
+      return;
+    }
     const pts = this.clicks;
     this.clicks = [];
     this.view.overlay = null;
@@ -463,6 +497,7 @@ class App {
     }
     this.tool = id;
     this.clicks = [];
+    this.placing = false;
     if (this.dyn) this.dynReset();
     if ($("dynBox")) $("dynBox").hidden = true;
     this.lastMeasure = null;
@@ -769,6 +804,8 @@ class App {
         return a.letter || "";
       case "balloon":
         return `poz. ${a.num}`;
+      case "ord":
+        return `${a.axis === "y" ? "Y" : "X"}: ${((b && b.values) || []).map((v) => fmtNum(v, this.settings.sep || ",", 2)).join(" · ")}`.slice(0, 48);
       case "strike":
         return a.newText ? `→ ${a.newText}` : "tăiată";
       case "rough":
@@ -1636,7 +1673,7 @@ class App {
       if (!d) return;
       if (d.kind === "rclick") {
         clearTimeout(this.pressTimer);
-        this.escape();
+        this.escape(true);
         return;
       }
       if (d.kind === "tap") {
@@ -1911,6 +1948,7 @@ class App {
 
   updateOverlay(pt, sn) {
     const t = TOOL_BY_ID[this.tool];
+    if (this.placing) this._ordPt = pt;
     let prims = null;
     if (this.clicks.length && t.preview) {
       const pv = t.preview(this.clicks, pt, this);
@@ -1924,7 +1962,8 @@ class App {
     this.view.redraw();
     const t2 = TOOL_BY_ID[this.tool];
     if (this.clicks.length) {
-      if (t2.kind === "poly") this.setHint(`${t2.hint} · ${this.clicks.length} puncte`);
+      if (this.placing) this.setHint(t2.placeHint);
+      else if (t2.kind === "poly") this.setHint(`${t2.hint} · ${this.clicks.length} puncte`);
       else if (t2.chain) this.setHint(t2.hint);
       else this.setHint(`${t2.hint} · pas ${this.clicks.length + 1}/${t2.n} · Esc renunță`);
     }
@@ -1948,7 +1987,7 @@ class App {
   /** The tool expects a point relative to the last click: values can be typed on the keyboard. */
   dynTool() {
     const t = TOOL_BY_ID[this.tool];
-    return !!(this.doc && this.dyn.on && this.clicks.length && t && (t.kind === "clicks" || t.kind === "poly"));
+    return !!(this.doc && this.dyn.on && this.clicks.length && !this.placing && t && (t.kind === "clicks" || t.kind === "poly"));
   }
 
   dynReset() {
@@ -2428,7 +2467,7 @@ class App {
         return;
       }
       if (e.key === "Escape" || (e.key === "Enter" && this.clicks.length)) {
-        this.escape();
+        this.escape(e.key === "Enter");
         return;
       }
       if ((e.key === "ArrowUp" || e.key === "ArrowDown") && autocad && !this.sel.size && !this.clicks.length) {
@@ -2479,7 +2518,7 @@ class App {
         if (tap && this.keyCfg && this.keyCfg.mode === "autocad" && !dlg.isModalOpen()) {
           const tag = document.activeElement && document.activeElement.tagName;
           if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
-            if (this.clicks.length) this.escape();
+            if (this.clicks.length) this.escape(true);
             else this.repeatCmd();
           }
         }
