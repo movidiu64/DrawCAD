@@ -56,6 +56,17 @@ _WS_RE = re.compile(r"^[A-Za-z0-9_-]{24,64}$")
 DOCS = DATA_DIR / "docs"
 # the desktop app (Windows): serves locally only and answers only to these host names
 DESKTOP = str(_env("DESKTOP", "")).strip() == "1"
+
+
+def _version() -> str:
+    """App version: written by the build into frontend/version.txt (release tag or commit)."""
+    try:
+        return (FRONTEND_DIR / "version.txt").read_text(encoding="utf-8").strip()[:40] or "dev"
+    except OSError:
+        return "dev"
+
+
+VERSION = _version()
 ALLOWED_HOSTS = {h.strip().lower() for h in _env("ALLOWED_HOSTS", "").split(",") if h.strip()}
 
 
@@ -1037,7 +1048,8 @@ async def api_health(request: Request):
     # the interface waits for this answer at startup: no more than one second for OCR
     lang = await _ocr_lang(wait=1.0)
     return JSONResponse({"ok": True, "retentionDays": RETENTION_DAYS, "mode": MODE, "ocr": lang,
-                         "ocrPending": lang is None and not ocrmod.langs_known(), "dxf": True, "desktop": DESKTOP})
+                         "ocrPending": lang is None and not ocrmod.langs_known(), "dxf": True, "desktop": DESKTOP,
+                         "version": VERSION})
 
 
 async def api_workspace(request: Request):

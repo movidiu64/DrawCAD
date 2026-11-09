@@ -680,6 +680,7 @@ export function settingsDialog(app) {
       <div class="lbl">Taste și comenzi · pentru toate documentele</div>
       <div class="row"><button class="ghost" id="sKeys">Taste și comenzi…</button><span class="sub">Acum: ${keyConfig().mode === "autocad" ? "comenzi AutoCAD (L, C, DLI… + Spațiu)" : "taste directe (o tastă = o unealtă); Enter deschide linia de comandă"}.</span></div>
     </div>
+    <div class="sub" translate="no" style="text-align:right;margin-top:-4px">DrawCAD ${esc(app.version || "dev")}</div>
     <div class="foot"><label class="chk" style="flex:1"><input type="checkbox" id="sDef"> Folosește ca implicit pentru documente noi</label>
       <button class="ghost" data-close>Închide</button><button class="primary" id="sSave">Aplică</button></div>`);
   const pending = {};

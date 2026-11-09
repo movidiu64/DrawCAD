@@ -23,7 +23,7 @@ The original is never modified. Annotations are stored separately and applied on
 
 ## Installation
 
-The `ghcr.io/movidiu64/drawcad:latest` image is built by GitHub Actions on every push to `main`, after the tests and the browser test on the container pass. `compose.yaml` is all you need to install it.
+The `ghcr.io/movidiu64/drawcad:latest` image is built by GitHub Actions on every push to `main`, after the tests and the browser test on the container pass. Releases are also published under their version (`:1.2.3` and `:1.2`). The running version is shown at the bottom of **Settings**. `compose.yaml` is all you need to install it.
 
 ### With Dockhand (Git stack) — recommended
 
@@ -106,7 +106,7 @@ The app was originally called "Cotare": the old `COTARE_*` variables are still a
 
 | Variable | Default | Role |
 |---|---|---|
-| `DRAWCAD_TAG` | `latest` | image tag; a commit SHA pins the version |
+| `DRAWCAD_TAG` | `latest` | image tag; a release version (`1.2.3`, `1.2`) or a commit SHA pins the version |
 | `DRAWCAD_PORT` | `8478` | port on the server |
 | `DRAWCAD_DATA_DIR` | `/mnt/user/appdata/drawcad` | data folder on the server |
 | `PUID` / `PGID` | `99` / `100` | user the app runs as |

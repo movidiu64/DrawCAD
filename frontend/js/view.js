@@ -27,6 +27,7 @@ const release = (x) => {
 const DETAIL_MAX_PX = 22e6; // detail area (the server accepts up to 24 MP)
 
 export function drawPrims(ctx, prims, zoom, color = colorOf, minPx = 0.8, opts = {}) {
+  let font = null; // setting ctx.font is slow: only when the size changes
   for (const p of prims) {
     const col = color(p.c);
     ctx.strokeStyle = col;
@@ -53,12 +54,20 @@ export function drawPrims(ctx, prims, zoom, color = colorOf, minPx = 0.8, opts =
       if (p.fill) ctx.fill();
       if (!p.nostroke) ctx.stroke();
     } else if (p.t === "T") {
-      ctx.save();
-      ctx.translate(p.p[0], p.p[1]);
-      ctx.rotate((-(p.a || 0) * Math.PI) / 180);
-      ctx.font = `${p.s}px osifont`;
-      ctx.fillText(p.txt, 0, 0);
-      ctx.restore();
+      const f = `${p.s}px osifont`;
+      if (f !== font) {
+        ctx.font = f;
+        font = f;
+      }
+      if (!p.a) {
+        ctx.fillText(p.txt, p.p[0], p.p[1]);
+      } else {
+        ctx.save();
+        ctx.translate(p.p[0], p.p[1]);
+        ctx.rotate((-p.a * Math.PI) / 180);
+        ctx.fillText(p.txt, 0, 0);
+        ctx.restore();
+      }
     }
   }
   ctx.setLineDash([]);
@@ -361,8 +370,16 @@ export class View {
     const app = this.app;
     const single = app.sel.size === 1;
     const hv = app.hover;
+    // only what is on screen is drawn: zoomed in on a large drawing, most annotations are skipped
+    const m = 4 / z;
+    const vx0 = -this.panX / z - m;
+    const vy0 = -this.panY / z - m;
+    const vx1 = (this.canvas.width / d - this.panX) / z + m;
+    const vy1 = (this.canvas.height / d - this.panY) / z + m;
     for (const { a, built } of app.visibleBuilt()) {
       const on = app.isSelected(a.id);
+      const bb = built.bbox;
+      if (!on && bb && (bb[2] < vx0 || bb[0] > vx1 || bb[3] < vy0 || bb[1] > vy1)) continue;
       if (hv && hv.a.id === a.id && hv.kind === "body" && !on) {
         // under the cursor: the outline lights up slightly, to show what would be grabbed
         ctx.globalAlpha = 0.22;

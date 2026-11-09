@@ -835,4 +835,9 @@ export const EN = {
   "Pe Y (linii orizontale)": "Y (horizontal lines)",
   "Valori față de bază (mm reali):": "Values from the base (real mm):",
   "Trage de pătrățelul de la capătul liniilor ca să muți rândul de cote; de punctele de pe piesă ca să le muți. Valorile apropiate se depărtează singure, cu linia frântă.": "Drag the handle at the end of the lines to move the row; drag the points on the part to move them. Values that are close together spread apart by themselves, with a jogged line.",
+  "aplicat la export": "applied on export",
+  "({} pagină)": "({} page)",
+  "({} pagini)": "({} pages)",
+  "{} obiect devine negru la export (și pe ecran).{}": "{} object becomes black on export (and on screen).{}",
+  "{} obiecte devin negre la export (și pe ecran).{}": "{} objects become black on export (and on screen).{}",
 };

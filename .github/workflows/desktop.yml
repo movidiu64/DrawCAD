@@ -36,6 +36,7 @@ jobs:
           elseif ("${{ github.ref_type }}" -eq "tag") { $v = "${{ github.ref_name }}".TrimStart("v") }
           else { $v = "0.0.0-dev.${{ github.run_number }}" }
           "version=$v" >> $env:GITHUB_OUTPUT
+          Set-Content -Path frontend/version.txt -Value $v -Encoding ascii -NoNewline
           Write-Host "Versiune: $v"
 
       - name: Python dependencies

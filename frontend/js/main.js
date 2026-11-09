@@ -326,6 +326,7 @@ class App {
       this.mode = h.mode || "personal";
       this.ocrLang = h.ocr || null;
       this.desktop = !!h.desktop;
+      this.version = h.version || "";
       // on first start Tesseract may answer slowly: the interface starts anyway, OCR shows up later
       if (h.ocrPending) this.pollOcrLang();
     } catch (_) {
