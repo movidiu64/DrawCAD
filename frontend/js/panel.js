@@ -301,8 +301,9 @@ export class Panel {
     const b = this.app.builtOf(a);
     const items = (b && b.items) || [];
     const step = Number(a.round) || 0;
-    const fields = items.map((it) => `<input type="text" class="mono ordv${it.ov != null ? " ov" : ""}" data-ord="${it.idx}"
-        value="${it.ov != null ? fmtNum(it.ov, ",", 3) : ""}" placeholder="${fmtNum(it.auto, ",", 2)}" aria-label="Valoare ${fmtNum(it.auto, ",", 2)}">`).join("");
+    // the field holds the value as drawn: edit only what is wrong (e.g. the decimals)
+    const fields = items.map((it) => `<input type="text" class="mono ordv${it.ov != null ? " ov" : ""}" data-ord="${it.idx}" data-auto="${it.auto}"
+        value="${fmtNum(it.v, ",", 3)}" placeholder="${fmtNum(it.auto, ",", 2)}" title="Măsurat: ${fmtNum(it.auto, ",", 2)}" aria-label="Valoare ${fmtNum(it.auto, ",", 2)}">`).join("");
     const nOv = items.filter((it) => it.ov != null).length;
     return `<div class="sec"><div class="h">Cote ordonate</div>
       <div class="field"><span class="lbl">Axa</span><div class="seg">
@@ -312,7 +313,7 @@ export class Panel {
         ${[[0, "Exact"], [0.1, "0,1"], [0.5, "0,5"], [1, "1"]].map(([v, l]) => `<button data-act="ordround" data-v="${v}" class="${step === v ? "on" : ""}">${l}</button>`).join("")}</div></div>
       <div class="field"><span class="lbl">Valori (mm reali), în ordinea de pe desen</span>
         <div class="ordvals">${fields}</div></div>
-      <div class="sub">Scrie valoarea corectă peste cea măsurată; câmpul gol revine la valoarea măsurată (cea gri). Tab trece la următoarea.</div>
+      <div class="sub">Corectează direct valoarea din câmp (de ex. doar zecimalele); câmpurile modificate au chenar portocaliu, iar un câmp golit revine la valoarea măsurată. Tab trece la următoarea și o selectează.</div>
       ${nOv ? `<div class="btns"><button class="ghost" data-act="ordreset">Revino la valorile măsurate (${nOv})</button></div>` : ""}
       <div class="sub">Trage de pătrățelul de la capătul liniilor ca să muți rândul de cote; de punctele de pe piesă ca să le muți. Valorile apropiate se depărtează singure, cu linia frântă.</div></div>`;
   }
@@ -618,8 +619,11 @@ export class Panel {
       // ordinate values: typed over the measured ones (empty = measured again)
       inp.addEventListener("input", () => {
         const idx = Number(inp.dataset.ord);
-        const v = parseNum(inp.value);
+        const auto = Number(inp.dataset.auto);
+        let v = parseNum(inp.value);
         if (inp.value.trim() !== "" && v == null) return;
+        // the measured value typed back (or an empty field) = no override
+        if (v != null && Math.abs(Math.abs(v) - auto) < 1e-9) v = null;
         app.updateSel((a) => {
           const ov = Array.from({ length: (a.pts || []).length + 1 }, (_, i) => (a.ov && a.ov[i] != null ? a.ov[i] : null));
           ov[idx] = v == null ? null : Math.abs(v);

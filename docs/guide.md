@@ -272,7 +272,7 @@ While dragging, the label shows the value: the Δx/Δy offset, the resize percen
 
 The values are absolute distances from the base, in real mm (at drawing scale). Measured on a PDF or a scan they are rarely round (10,04, 25,01…), so the panel offers both:
 - **Rounding** of all measured values: exact, 0,1, 0,5 or 1 mm;
-- **the values themselves**, one small field per dimension in drawing order: type the correct value over the measured one (shown in gray), Tab moves to the next; an empty field goes back to the measured value.
+- **the values themselves**, one small field per dimension in drawing order, filled with the value as drawn: correct only what is wrong (e.g. the decimals). Changed fields get an orange border, Tab moves to the next one, and an emptied field goes back to the measured value.
 
 Points with the same value appear once. Values too close to each other spread apart and their lines get a jog, as in AutoCAD. In the panel you can switch the axis; dragging the handle at the end of the lines moves the row.
 

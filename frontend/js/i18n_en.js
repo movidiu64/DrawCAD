@@ -842,7 +842,8 @@ export const EN = {
   "Rotunjire valori măsurate": "Rounding of measured values",
   "Exact": "Exact",
   "Valori (mm reali), în ordinea de pe desen": "Values (real mm), in drawing order",
-  "Scrie valoarea corectă peste cea măsurată; câmpul gol revine la valoarea măsurată (cea gri). Tab trece la următoarea.": "Type the correct value over the measured one; an empty field goes back to the measured value (the gray one). Tab moves to the next one.",
+  "Corectează direct valoarea din câmp (de ex. doar zecimalele); câmpurile modificate au chenar portocaliu, iar un câmp golit revine la valoarea măsurată. Tab trece la următoarea și o selectează.": "Correct the value right in the field (e.g. just the decimals); changed fields have an orange border, and an emptied field goes back to the measured value. Tab moves to the next one and selects it.",
+  "Măsurat: {}": "Measured: {}",
   "Revino la valorile măsurate ({})": "Back to the measured values ({})",
   "Valoare {}": "Value {}",
 };
