@@ -341,3 +341,8 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
 .dynbox .df.lock { border-color: #4c8dff; }
 .dynbox .df.lock b::before { content: "🔒"; font-size: 9px; margin-right: 3px; }
 @keyframes dynblink { 50% { opacity: 0; } }
+
+/* ordinate values: one small field per value, wrapping */
+.ordvals { display: flex; flex-wrap: wrap; gap: 4px; }
+.ordvals input.ordv { width: 64px; text-align: center; padding: 4px; }
+.ordvals input.ordv.ov { border-color: var(--accent); }

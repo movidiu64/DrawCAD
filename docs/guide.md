@@ -270,7 +270,11 @@ While dragging, the label shows the value: the Δx/Δy offset, the resize percen
 2. Press Enter or right click: the cursor now places the row of values.
 3. Click below or above the points for X values (vertical lines, text read from below), or to the left or right for Y values (horizontal lines). X and Y are done as two separate commands.
 
-The values are absolute distances from the base, in real mm (at drawing scale). Points with the same value appear once. Values too close to each other spread apart and their lines get a jog, as in AutoCAD. In the panel you can switch the axis; dragging the handle at the end of the lines moves the row.
+The values are absolute distances from the base, in real mm (at drawing scale). Measured on a PDF or a scan they are rarely round (10,04, 25,01…), so the panel offers both:
+- **Rounding** of all measured values: exact, 0,1, 0,5 or 1 mm;
+- **the values themselves**, one small field per dimension in drawing order: type the correct value over the measured one (shown in gray), Tab moves to the next; an empty field goes back to the measured value.
+
+Points with the same value appear once. Values too close to each other spread apart and their lines get a jog, as in AutoCAD. In the panel you can switch the axis; dragging the handle at the end of the lines moves the row.
 
 **Angular dimension (U):** click the vertex, a point on each leg, then the arc position. The arc position picks one of the four sectors: the angle, its supplement or their opposites.
 

@@ -894,15 +894,22 @@ function buildRedact(a) {
  */
 export function ordinateItems(a, S) {
   const ax = a.axis === "y" ? 1 : 0;
-  const all = [a.base, ...(a.pts || [])].filter((p) => Array.isArray(p));
+  const all = [a.base, ...(a.pts || [])];
+  const step = Number(a.round) > 0 ? Number(a.round) : 0;
   const byVal = new Map();
-  for (const p of all) {
+  all.forEach((p, idx) => {
+    if (!Array.isArray(p)) return;
     const d = ax === 0 ? p[0] - a.base[0] : a.base[1] - p[1];
-    const v = round(Math.abs(d / K) * (S.scale || 1), 2);
-    const key = v.toFixed(2);
+    let auto = Math.abs(d / K) * (S.scale || 1);
+    // measured on a PDF or a scan the values are never round: optional rounding for all of them
+    if (step) auto = Math.round(auto / step) * step;
+    auto = round(auto, 2);
+    const ov = a.ov && a.ov[idx] != null && Number.isFinite(Number(a.ov[idx])) ? Number(a.ov[idx]) : null;
+    const v = ov ?? auto;
+    const key = v.toFixed(3);
     const prev = byVal.get(key);
-    if (!prev || Math.abs(a.row - p[1 - ax]) < Math.abs(a.row - prev.p[1 - ax])) byVal.set(key, { p, v });
-  }
+    if (!prev || Math.abs(a.row - p[1 - ax]) < Math.abs(a.row - prev.p[1 - ax])) byVal.set(key, { p, v, auto, ov, idx });
+  });
   return [...byVal.values()].sort((u, w) => u.p[ax] - w.p[ax]);
 }
 
@@ -953,7 +960,7 @@ function buildOrd(a, S, measure) {
       pts.push(P(s, k2), P(s, a.row));
       for (let j = 0; j + 1 < pts.length; j++) prims.push(lineP(pts[j], pts[j + 1], S, c));
     }
-    const txt = fmtNum(v, S.sep, 2);
+    const txt = fmtNum(v, S.sep, 3);
     const w = measure(txt, S.F);
     let origin;
     let ang;
@@ -973,6 +980,7 @@ function buildOrd(a, S, measure) {
   return {
     prims,
     values: items.map((it) => it.v),
+    items: items.map(({ v, auto, ov, idx }) => ({ v, auto, ov, idx })),
     handles: [{ k: "base", p: a.base }, ...(a.pts || []).map((q, i) => ({ k: `pts.${i}`, p: q })), { k: "row", p: rowH }],
   };
 }

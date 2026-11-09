@@ -56,3 +56,16 @@ test("ordinate: move, row handle and page rotation", () => {
   assert.equal(r.axis, "y");
   assert.deepEqual(build(r, S, measure).values, v0);
 });
+
+test("ordinate: typed values replace the measured ones, rounding for the rest", () => {
+  const a = { type: "ord", axis: "x", base: mm(0, 0), pts: [mm(10.04, 0), mm(25.3, 0), mm(40.7, 0)], row: 30 * K };
+  assert.deepEqual(build(a, S, measure).values, [0, 10.04, 25.3, 40.7]);
+  a.round = 1;
+  assert.deepEqual(build(a, S, measure).values, [0, 10, 25, 41]);
+  a.ov = [null, null, 25.5, 40];
+  const b = build(a, S, measure);
+  assert.deepEqual(b.values, [0, 10, 25.5, 40]);
+  assert.deepEqual(texts(b).map((p) => p.txt), ["0", "10", "25,5", "40"]);
+  assert.deepEqual(b.items.map((it) => it.idx), [0, 1, 2, 3]);
+  assert.equal(b.items[3].auto, 41);
+});

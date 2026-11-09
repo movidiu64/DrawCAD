@@ -299,12 +299,21 @@ export class Panel {
 
   html_ord(a) {
     const b = this.app.builtOf(a);
-    const vals = b && b.values ? b.values.map((v) => fmtNum(v, ",", 2)).join(" · ") : "";
+    const items = (b && b.items) || [];
+    const step = Number(a.round) || 0;
+    const fields = items.map((it) => `<input type="text" class="mono ordv${it.ov != null ? " ov" : ""}" data-ord="${it.idx}"
+        value="${it.ov != null ? fmtNum(it.ov, ",", 3) : ""}" placeholder="${fmtNum(it.auto, ",", 2)}" aria-label="Valoare ${fmtNum(it.auto, ",", 2)}">`).join("");
+    const nOv = items.filter((it) => it.ov != null).length;
     return `<div class="sec"><div class="h">Cote ordonate</div>
       <div class="field"><span class="lbl">Axa</span><div class="seg">
         <button data-act="ordaxis" data-v="x" class="${a.axis !== "y" ? "on" : ""}">Pe X (linii verticale)</button>
         <button data-act="ordaxis" data-v="y" class="${a.axis === "y" ? "on" : ""}">Pe Y (linii orizontale)</button></div></div>
-      <div class="sub">Valori față de bază (mm reali): <span class="mono">${esc(vals)}</span></div>
+      <div class="field"><span class="lbl">Rotunjire valori măsurate</span><div class="seg">
+        ${[[0, "Exact"], [0.1, "0,1"], [0.5, "0,5"], [1, "1"]].map(([v, l]) => `<button data-act="ordround" data-v="${v}" class="${step === v ? "on" : ""}">${l}</button>`).join("")}</div></div>
+      <div class="field"><span class="lbl">Valori (mm reali), în ordinea de pe desen</span>
+        <div class="ordvals">${fields}</div></div>
+      <div class="sub">Scrie valoarea corectă peste cea măsurată; câmpul gol revine la valoarea măsurată (cea gri). Tab trece la următoarea.</div>
+      ${nOv ? `<div class="btns"><button class="ghost" data-act="ordreset">Revino la valorile măsurate (${nOv})</button></div>` : ""}
       <div class="sub">Trage de pătrățelul de la capătul liniilor ca să muți rândul de cote; de punctele de pe piesă ca să le muți. Valorile apropiate se depărtează singure, cu linia frântă.</div></div>`;
   }
 
@@ -603,6 +612,30 @@ export class Panel {
       inp.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === "Escape") inp.blur();
         e.stopPropagation();
+      });
+    });
+    el.querySelectorAll("[data-ord]").forEach((inp) => {
+      // ordinate values: typed over the measured ones (empty = measured again)
+      inp.addEventListener("input", () => {
+        const idx = Number(inp.dataset.ord);
+        const v = parseNum(inp.value);
+        if (inp.value.trim() !== "" && v == null) return;
+        app.updateSel((a) => {
+          const ov = Array.from({ length: (a.pts || []).length + 1 }, (_, i) => (a.ov && a.ov[i] != null ? a.ov[i] : null));
+          ov[idx] = v == null ? null : Math.abs(v);
+          a.ov = ov.some((x) => x != null) ? ov : undefined;
+        }, `ord${idx}`);
+        inp.classList.toggle("ov", v != null);
+      });
+      inp.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === "Escape") inp.blur();
+        e.stopPropagation();
+      });
+      inp.addEventListener("blur", () => {
+        // after leaving the field the list is redrawn in drawing order (a value may have moved)
+        setTimeout(() => {
+          if (!el.contains(document.activeElement) || !document.activeElement.dataset.ord) this.render();
+        }, 0);
       });
     });
     el.querySelectorAll("[data-datum]").forEach((inp) => {
@@ -922,6 +955,12 @@ export class Panel {
         break;
       case "bshape":
         upd((a) => { a.shape = v; });
+        break;
+      case "ordround":
+        upd((a) => { a.round = Number(v) || undefined; });
+        break;
+      case "ordreset":
+        upd((a) => { delete a.ov; });
         break;
       case "ordaxis":
         upd((a) => {
