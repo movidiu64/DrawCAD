@@ -117,20 +117,24 @@ jobs:
           Compress-Archive -Path dist\DrawCAD\* -DestinationPath "dist\DrawCAD-${{ steps.ver.outputs.version }}-portabil.zip"
           Get-ChildItem dist -File | ForEach-Object { Write-Host "::notice::$($_.Name): $([math]::Round($_.Length / 1MB, 1)) MB" }
 
+      # Artifacts count against the account's shared storage (~230 MB per build here): keep
+      # them only briefly. Releases (v* tags) are not affected and stay.
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: DrawCAD-windows
           path: |
             dist/DrawCAD-*-setup.exe
             dist/DrawCAD-*-portabil.zip
-          retention-days: 14
+          retention-days: 2
 
       - uses: actions/upload-artifact@v4
         if: always()
+        continue-on-error: true
         with:
           name: e2e-windows
           path: e2e_out
-          retention-days: 7
+          retention-days: 2
 
       - name: Release
         if: github.event_name == 'release' || (github.event_name == 'push' && github.ref_type == 'tag')

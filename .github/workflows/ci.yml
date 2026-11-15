@@ -48,6 +48,9 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - name: Build the image
         uses: docker/build-push-action@v6
+        env:
+          # The build record is uploaded as an artifact: keep it one day.
+          DOCKER_BUILD_RECORD_RETENTION_DAYS: 1
         with:
           context: .
           load: true
@@ -102,9 +105,11 @@ jobs:
           true
       - uses: actions/upload-artifact@v4
         if: always()
+        continue-on-error: true
         with:
           name: e2e
           path: e2e_out
+          retention-days: 2
       - name: Publish the image to GHCR
         # main → :latest and :<commit sha>; a v1.2.3 tag (or a release) → :1.2.3 and :1.2
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
