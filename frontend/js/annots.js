@@ -247,6 +247,52 @@ function placeRuns(lab, origin, tu, up, ang, c) {
 
 // ------------------------------------------------------------------ builders per type
 
+/**
+ * Linear dimensions in a series, as DIMCONTINUE and DIMBASELINE do: `pts` are the points to
+ * dimension, `at` the position of the (first) dimension line. Placed below or above the points the
+ * dimensions are horizontal, to the left or right vertical.
+ *  - "chain": the points sorted along the axis, one dimension between each pair, all on one line;
+ *  - "base": every dimension from the first point, the shortest nearest the part, the next ones
+ *    `step` further away.
+ * Returns the geometry of each dimension: { orient, p1, p2, p3 }.
+ */
+export function dimSeries(pts, at, mode, step) {
+  if (!Array.isArray(pts) || pts.length < 2 || !at) return [];
+  const xs = pts.map((q) => q[0]);
+  const ys = pts.map((q) => q[1]);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  const dxo = at[0] < x0 ? x0 - at[0] : at[0] > x1 ? at[0] - x1 : 0;
+  const dyo = at[1] < y0 ? y0 - at[1] : at[1] > y1 ? at[1] - y1 : 0;
+  const orient = dyo > dxo ? "h" : dxo > dyo ? "v" : x1 - x0 >= y1 - y0 ? "h" : "v";
+  const ax = orient === "h" ? 0 : 1; // the coordinate the dimensions measure
+  const eps = 0.05 * K;
+  const out = [];
+  if (mode === "base") {
+    const base = pts[0];
+    const rest = pts.slice(1).filter((q) => Math.abs(q[ax] - base[ax]) >= eps);
+    rest.sort((u, w) => Math.abs(u[ax] - base[ax]) - Math.abs(w[ax] - base[ax]));
+    // the same length twice: kept once
+    const seen = [];
+    const lo = orient === "h" ? y0 : x0;
+    const hi = orient === "h" ? y1 : x1;
+    const a = at[1 - ax];
+    const dir = a > hi ? 1 : a < lo ? -1 : a >= base[1 - ax] ? 1 : -1; // away from the part
+    for (const q of rest) {
+      if (seen.some((v) => Math.abs(v - q[ax]) < eps)) continue;
+      seen.push(q[ax]);
+      const k = out.length;
+      const p3 = orient === "h" ? [at[0], at[1] + dir * k * step] : [at[0] + dir * k * step, at[1]];
+      out.push({ orient, p1: [...base], p2: [...q], p3 });
+    }
+    return out;
+  }
+  const sorted = [...pts].sort((u, w) => u[ax] - w[ax]);
+  const kept = [sorted[0]];
+  for (const q of sorted.slice(1)) if (q[ax] - kept[kept.length - 1][ax] >= eps) kept.push(q);
+  for (let i = 0; i + 1 < kept.length; i++) out.push({ orient, p1: [...kept[i]], p2: [...kept[i + 1]], p3: [...at] });
+  return out;
+}
+
 function buildDim(a, S, measure) {
   const c = a.layer || "add";
   const { p1, p2, p3 } = a;

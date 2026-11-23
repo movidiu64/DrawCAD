@@ -1,5 +1,5 @@
 // Tool definitions: icon, key, steps and the annotation they produce.
-import { newId, K } from "./annots.js";
+import { newId, K, dimSeries } from "./annots.js";
 import { trackSweep } from "./shapes.js";
 
 const shape = (app, kind, pts, extra = {}) => ({ type: "shape", kind, pts, ...app.drawStyle, ...extra });
@@ -15,6 +15,37 @@ function autoOrient(p1, p2, c) {
   if (dyo > dxo) return "h";
   if (dxo > dyo) return "v";
   return Math.abs(p2[0] - p1[0]) >= Math.abs(p2[1] - p1[1]) ? "h" : "v";
+}
+
+/** Tool for a series of linear dimensions (chain or from a common base). */
+function dimSeriesTool(mode) {
+  const across = "sub sau deasupra punctelor = cote orizontale, la stânga sau la dreapta = verticale";
+  return {
+    kind: "poly",
+    min: 2,
+    place: true,
+    placeHint: mode === "base"
+      ? `Click pentru prima linie de cotă (cea mai scurtă cotă), ${across}; următoarele se etajează spre exterior · Esc renunță`
+      : `Click pentru linia de cotă: ${across} · Esc renunță`,
+    make(pts, app, _closed, cur) {
+      const S = app.S();
+      const step = Math.max(7 * K, S.h * 2.4); // distance between baseline dimensions (paper)
+      return dimSeries(pts, cur || pts[pts.length - 1], mode, step).map((g) => ({
+        type: "dim", kind: "lin", ...g, prefix: "", nominal: null, tol: app.defaultTol(""),
+      }));
+    },
+    preview(pts, cur, app) {
+      if (app.placing) return this.make(pts, app, false, cur);
+      const r = 1.6 * K;
+      const lines = [];
+      pts.forEach((q, i) => {
+        const m = i === 0 && mode === "base" ? r * 1.6 : r;
+        lines.push([[q[0] - m, q[1]], [q[0] + m, q[1]]], [[q[0], q[1] - m], [q[0], q[1] + m]]);
+      });
+      lines.push([pts[pts.length - 1], cur]);
+      return { lines };
+    },
+  };
 }
 
 function dimTool(kind, prefix) {
@@ -96,6 +127,10 @@ export const TOOLS = [
       lines.push([pts[pts.length - 1], cur]);
       return { lines };
     } },
+  { id: "dimCont", label: "În lanț", key: "", group: "Cote", icon: "M3 6v12M10 6v12M21 6v12M3 12h18M3 12l2.5-1.5M3 12l2.5 1.5M10 12l-2.5-1.5M10 12l-2.5 1.5M10 12l2.5-1.5M10 12l2.5 1.5M21 12l-2.5-1.5M21 12l-2.5 1.5",
+    hint: "Punctele de cotat, unul după altul (cu snap) · Enter sau click dreapta → poziția liniei de cotă; cotele se așază cap la cap", ...dimSeriesTool("chain") },
+  { id: "dimBase", label: "Față de bază", key: "", group: "Cote", icon: "M3 4v16M11 10v10M20 4v16M3 8h17M3 15h8M3 8l2.5-1.5M3 8l2.5 1.5M20 8l-2.5-1.5M20 8l-2.5 1.5M3 15l2.5-1.5M3 15l2.5 1.5M11 15l-2.5-1.5M11 15l-2.5 1.5",
+    hint: "Baza (de unde pleacă toate cotele) → punctele de cotat · Enter sau click dreapta → poziția primei linii de cotă", ...dimSeriesTool("base") },
   { id: "holes", label: "Tabel găuri", key: "", group: "Cote", icon: "M3 4h11v9H3zM3 7h11M7 4v9M10 4v9M18 15.5a2.5 2.5 0 1 0 0.01 0M18 15.5h0",
     kind: "clicks", n: 1,
     hint: "Click pentru colțul dreapta-jos al tabelului · X, Y și Ø se iau din cotele ordonate ale paginii (DOR) și din cercurile găurilor",

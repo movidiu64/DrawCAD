@@ -18,6 +18,8 @@ export const DEFAULT_ALIASES = {
   dimAng: ["DAN", "DIMANGULAR"],
   dimOrd: ["DOR", "DIMORDINATE", "ORD"],
   holes: ["HOLETABLE", "HT", "GAURI"],
+  dimCont: ["DCO", "DIMCONTINUE", "LANT"],
+  dimBase: ["DBA", "DIMBASELINE"],
   chamfer: ["CHA", "TES", "CHAMFER"],
   lead: ["LE", "QLEADER", "MLD", "MLEADER"],
   text: ["T", "MT", "MTEXT", "DT", "TEXT"],
@@ -132,7 +134,7 @@ export function resolveCommand(input, cfg) {
 }
 
 /** Suggestions for what has been typed so far, like AutoCAD autocomplete. */
-export function suggest(input, cfg, max = 8) {
+export function suggest(input, cfg, max = 12) {
   const q = String(input || "").trim().toUpperCase();
   if (!q) return [];
   const n = norm(q);

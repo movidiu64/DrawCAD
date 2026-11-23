@@ -240,7 +240,7 @@ class App {
       this.view.overlay = null;
       this.setHint(t.hint);
       this.clearAcq();
-      this.addAnnot(finalize(t.make(pts, this, false, pt)));
+      this.addMade(t.make(pts, this, false, pt));
       return;
     }
     if (t.kind === "poly") {
@@ -303,7 +303,7 @@ class App {
     this.view.overlay = null;
     this.setHint(t.hint);
     this.clearAcq();
-    if (pts.length >= (t.min || 2)) this.addAnnot(finalize(t.make(pts, this, close || t.closed)));
+    if (pts.length >= (t.min || 2)) this.addMade(t.make(pts, this, close || t.closed));
     else this.view.redraw();
   }
 
@@ -1043,6 +1043,30 @@ class App {
     if (!list.length) return;
     this.pushHistory();
     list.forEach(fn);
+    this.changed();
+  }
+
+  /** Adds what a tool made: one annotation, or several at once (a series of dimensions),
+   *  as one undo step. */
+  addMade(made) {
+    if (!Array.isArray(made)) {
+      if (made) this.addAnnot(finalize(made));
+      return;
+    }
+    if (!made.length) {
+      dlg.toast("Nu e nimic de cotat: punctele sunt pe aceeași linie de măsurare.");
+      this.view.redraw();
+      return;
+    }
+    if (made.length === 1) {
+      this.addAnnot(finalize(made[0]));
+      return;
+    }
+    this.pushHistory();
+    const items = made.map((x) => ({ ...finalize(x), page: this.page }));
+    if (this.hidden.has("add")) this.hidden.delete("add");
+    this.annots.push(...items);
+    this.selectMany(items.map((a) => a.id));
     this.changed();
   }
 
@@ -2007,6 +2031,7 @@ class App {
       if (pv && (pv.line || pv.lines)) {
         prims = (pv.lines || [pv.line]).map((l) => ({ t: "L", p: [...l[0], ...l[1]], w: 0.6, c: "preview", dash: true }));
       }
+      else if (Array.isArray(pv)) prims = pv.flatMap((x) => build({ ...x, layer: "add" }, this.S(), this.measure).prims);
       else if (pv) prims = build({ ...pv, layer: "add" }, this.S(), this.measure).prims;
     }
     if (!prims && t.id === "measure" && this.lastMeasure) prims = this.lastMeasure;

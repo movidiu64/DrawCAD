@@ -262,6 +262,22 @@ def main(url, out):
         page.click("[data-act=hlsync]")
         assert page.evaluate("window.cotare.selected().rows[1].d") == "M30"
         page.screenshot(path=str(out / "tabel_gauri.png"))
+        # 16. chain and baseline dimensions over the same centers (+ the quadrant of the Ø40 circle)
+        page.keyboard.press("Escape")
+        page.click('[data-tool="dimCont"]')
+        for q in [(240, 95), (145, 167.5), (260, 95)]:
+            click(*q)
+        page.keyboard.press("Enter")
+        click(200, 192)
+        page.click('[data-tool="dimBase"]')
+        for q in [(145, 167.5), (260, 95), (240, 95)]:
+            click(*q)
+        page.keyboard.press("Enter")
+        click(200, 86)
+        dims = page.evaluate("""window.cotare.annots.filter(a => a.type === 'dim').slice(-4)
+            .map(a => [Math.round(window.cotare.builtOf(a).measured * 100) / 100, Math.round(a.p3[1] / (72/25.4))])""")
+        assert sorted(dims) == [[20, 192], [95, 86], [95, 192], [115, 78]], dims
+        page.screenshot(path=str(out / "cote_lant_baza.png"))
         page.keyboard.press("Escape")
         page.keyboard.press("f")
         page.wait_for_timeout(300)
@@ -273,7 +289,7 @@ def main(url, out):
         page.screenshot(path=str(out / "editor.png"))
 
         kinds = page.evaluate("window.cotare.annots.map(a => a.type)")
-        assert len(kinds) == 18, kinds
+        assert len(kinds) == 22, kinds
 
         # export
         page.click("#btnExport")
@@ -317,15 +333,15 @@ def main(url, out):
         # reopen: dimensions come back editable
         prev_id = page.evaluate("window.cotare.doc.id")
         page.set_input_files("#fileInput", str(path))
-        # wait for the new document (loading takes time), not the old one which already had 18 annotations
-        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 18")
+        # wait for the new document (loading takes time), not the old one which already had 22 annotations
+        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 22")
         # closing without changes: straight to the start page
         page.click("#btnClose")
         page.wait_for_function("window.cotare.doc === null && !document.getElementById('emptyState').hidden")
         page.wait_for_function("document.querySelectorAll('#recentList [data-doc]').length >= 1", timeout=5000)
         # reopen from Recent, one change, then close with the prompt
         page.click("#recentList [data-doc]")
-        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 18")
+        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 22")
         page.wait_for_timeout(300)
         page.keyboard.press("t")
         click(100, 30)

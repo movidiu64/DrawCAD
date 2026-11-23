@@ -897,4 +897,12 @@ export const EN = {
   "Ascunse": "Hidden",
   "Antet jos": "Header at bottom",
   "Pătrățelul e colțul dreapta-jos al tabelului. Mutat, tabelul își lasă etichetele pe găuri.": "The small square is the table's bottom-right corner. When the table moves, its labels stay on the holes.",
+  "În lanț": "Chain",
+  "Față de bază": "Baseline",
+  "Punctele de cotat, unul după altul (cu snap) · Enter sau click dreapta → poziția liniei de cotă; cotele se așază cap la cap": "The points to dimension, one after the other (with snap) · Enter or right click → position of the dimension line; the dimensions are placed end to end",
+  "Baza (de unde pleacă toate cotele) → punctele de cotat · Enter sau click dreapta → poziția primei linii de cotă": "The base (where all dimensions start) → the points to dimension · Enter or right click → position of the first dimension line",
+  "sub sau deasupra punctelor = cote orizontale, la stânga sau la dreapta = verticale": "below or above the points = horizontal dimensions, to the left or right = vertical",
+  "Click pentru linia de cotă: {} · Esc renunță": "Click for the dimension line: {} · Esc cancels",
+  "Click pentru prima linie de cotă (cea mai scurtă cotă), {}; următoarele se etajează spre exterior · Esc renunță": "Click for the first dimension line (the shortest dimension), {}; the next ones are stacked outwards · Esc cancels",
+  "Nu e nimic de cotat: punctele sunt pe aceeași linie de măsurare.": "Nothing to dimension: the points lie on the same measuring line.",
 };
