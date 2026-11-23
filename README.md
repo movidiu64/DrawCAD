@@ -14,7 +14,7 @@ Self-hosted, runs in your browser, no CAD license needed.
 [![Release](https://img.shields.io/github/v/release/movidiu64/DrawCAD?include_prereleases)](https://github.com/movidiu64/DrawCAD/releases)
 ![UI: English | Română](https://img.shields.io/badge/UI-English%20%7C%20Rom%C3%A2n%C4%83-lightgrey)
 
-<img src="docs/screenshot.png" alt="DrawCAD editor with dimensions, ISO 286 fit, GD&T and a revision on a shaft drawing" width="100%">
+<img src="docs/screenshot.png" alt="DrawCAD editor: a flange drawing dimensioned in DrawCAD with ISO 286 fits, GD&T frames, datums and ordinate dimensions" width="100%">
 
 </div>
 
