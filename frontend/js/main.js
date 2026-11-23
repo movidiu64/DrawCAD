@@ -1614,7 +1614,7 @@ class App {
       }
       if (d && d.kind === "marquee") {
         const crossing = raw[0] < d.start[0];
-        this.view.overlay = { rect: [d.start[0], d.start[1], raw[0], raw[1]], rectColor: crossing ? "#3ccf8e" : "#4c9aff" };
+        this.view.overlay = { rect: [d.start[0], d.start[1], raw[0], raw[1]], rectColor: crossing ? COLORS.selCrossing : COLORS.selWindow };
         this.view.redraw();
         return;
       }

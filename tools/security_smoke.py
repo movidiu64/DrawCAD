@@ -50,9 +50,9 @@ if mode in ("private", "session"):
     # another browser (without the first one's cookie) does not see and cannot open the document
     other = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
     st, _h, _ = call("GET", f"/api/doc/{meta['id']}", opener=other)
-    assert st == 404, f"document vizibil din alt browser: {st}"
+    assert st == 404, f"document visible from another browser: {st}"
     st, _h, lst = call("GET", "/api/docs", opener=other)
-    assert meta["id"] not in lst.decode(), "document listat pentru alt browser"
+    assert meta["id"] not in lst.decode(), "document listed for another browser"
     print(f"isolation between browsers ({mode}): OK")
 print("security: OK", meta["removed"])
 _ = io

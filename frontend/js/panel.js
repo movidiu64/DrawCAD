@@ -3,7 +3,7 @@ import { typeName, newId, fmtNum, parseNum, build, derive, K, SCALABLE, SCALE_MI
 import { LTYPES, LTYPE_BY_ID, WIDTHS, PRESETS, resizeShape } from "./shapes.js";
 import { fmtDev } from "./iso286.js";
 import { GDT_SYMBOLS, GDT_BY_ID, MODIFIERS, symbolPrims } from "./gdt.js";
-import { drawPrims } from "./view.js";
+import { drawPrims, COLORS } from "./view.js";
 import { TOOL_BY_ID, DRAW_TOOLS } from "./tools.js";
 import { commandList, keyConfig } from "./commands.js";
 import { tr } from "./i18n.js";
@@ -156,7 +156,7 @@ export class Panel {
         <div class="sub">1 = scara 1:1 · 2 = scara 1:2 · 0,5 = scara 2:1</div>
       </div>
       <div class="sec"><div class="h">Straturi</div>
-        ${[["orig", "background:#e8eaed", "Original PDF", "neatins"], ["add", "background:#4c8dff", "Adăugate", counts.add], ["rev", "background:#ff6b6b", "Revizii", counts.rev], ["del", "border:1px dashed #a3acb7", "Ștergeri / acoperiri", counts.del]]
+        ${[["orig", "background:var(--layer-orig)", "Original PDF", "neatins"], ["add", "background:var(--layer-add)", "Adăugate", counts.add], ["rev", "background:var(--layer-rev)", "Revizii", counts.rev], ["del", "border:1px dashed var(--layer-del)", "Ștergeri / acoperiri", counts.del]]
           .map(([k, st, name, n]) => {
             const off = app.hidden.has(k);
             return `<div class="layer ${off ? "off" : ""}"><i style="${st}"></i><span style="flex:1">${name}</span><span class="${k === "orig" ? "sub" : "mono sub"}">${n}</span>
@@ -175,7 +175,7 @@ export class Panel {
     const app = this.app;
     const list = app.annots.filter((a) => a.page === app.page);
     if (!list.length) return "";
-    const col = (a) => (["white", "redact", "ink"].includes(a.type) ? "#a3acb7" : a.layer === "rev" ? "#ff6b6b" : "#4c8dff");
+    const col = (a) => (["white", "redact", "ink"].includes(a.type) ? "var(--layer-del)" : a.layer === "rev" ? "var(--layer-rev)" : "var(--layer-add)");
     return `<div class="sec"><div class="h">Adnotări pe pagina ${app.page + 1} · ${list.length}</div>
       <div class="annlist">${list.map((a) => `<div class="it ${app.sel.has(a.id) ? "on" : ""}" data-ann="${esc(a.id)}" title="Click: selectează și centrează">
         <i style="background:${col(a)}"></i><span class="t">${esc(typeName(a))}</span><span class="v" translate="no">${esc(app.annotLabel(a))}</span>
@@ -454,7 +454,7 @@ export class Panel {
     const ds = a.datums || ["", "", ""];
     const datums = sym.datum === "none" ? "" : `<div class="row">${["Primară", "Secundară", "Terțiară"].map((l, i) => `<div class="field"><label for="gd${i}">${l}</label><input type="text" class="mono" id="gd${i}" data-datum="${i}" value="${esc(ds[i] || "")}" placeholder="—" style="text-align:center"></div>`).join("")}</div>`;
     return `<div class="sec"><div class="h">Caracteristică</div><div class="symgrid">${grid}</div>
-      <div class="sub"><b style="color:#e8eaed">${esc(sym.name)}</b> · ${esc(note)}</div></div>
+      <div class="sub"><b style="color:var(--text)">${esc(sym.name)}</b> · ${esc(note)}</div></div>
       <div class="sec"><div class="h">Zonă de toleranță</div>
         <div class="row"><div class="pills"><button data-act="dia" class="${a.dia ? "on" : ""}" title="Zonă cilindrică">Ø</button></div>
         <div class="field"><input type="text" class="mono" id="gVal" data-f="val" value="${esc(a.val)}" aria-label="Valoare toleranță"></div></div>
@@ -570,11 +570,11 @@ export class Panel {
   }
 
   coverColorHtml(a) {
-    const c = (a.color || "#ffffff").toLowerCase();
+    const c = (a.color || COLORS.white).toLowerCase();
     return `<div class="field"><span class="lbl">Culoare</span><div class="row">
       <input type="color" id="cvColor" value="${esc(c)}" aria-label="Culoarea acoperirii">
-      <button class="ghost sw ${c === "#ffffff" ? "on" : ""}" data-act="cvcolor" data-v="#ffffff" title="Alb" aria-label="Alb"><i style="background:#fff"></i></button>
-      <button class="ghost sw ${c === "#f4f1e8" ? "on" : ""}" data-act="cvcolor" data-v="#f4f1e8" title="Hârtie" aria-label="Hârtie"><i style="background:#f4f1e8"></i></button>
+      <button class="ghost sw ${c === COLORS.white ? "on" : ""}" data-act="cvcolor" data-v="${COLORS.white}" title="Alb" aria-label="Alb"><i style="background:${COLORS.white}"></i></button>
+      <button class="ghost sw ${c === COLORS.coverPaper ? "on" : ""}" data-act="cvcolor" data-v="${COLORS.coverPaper}" title="Hârtie" aria-label="Hârtie"><i style="background:${COLORS.coverPaper}"></i></button>
       ${window.EyeDropper ? `<button class="ghost" data-act="cvpick" title="Ia culoarea de pe ecran">Pipetă</button>` : ""}
       <span class="mono sub">${esc(c)}</span></div></div>`;
   }
@@ -726,7 +726,7 @@ export class Panel {
       const ctx = cv.getContext("2d");
       const on = cv.parentElement.classList.contains("on");
       ctx.lineCap = "round";
-      drawPrims(ctx, symbolPrims(cv.dataset.sym, 6, 6, 32, 2.6, "x"), 1, () => (on ? "#15181c" : "#e8eaed"));
+      drawPrims(ctx, symbolPrims(cv.dataset.sym, 6, 6, 32, 2.6, "x"), 1, () => (on ? COLORS.uiDark : COLORS.uiLight));
     });
   }
 
@@ -1040,6 +1040,6 @@ export class Panel {
     const ox = (cv.width - (x1 - x0) * z) / 2 - x0 * z;
     const oy = (cv.height - (y1 - y0) * z) / 2 - y0 * z;
     ctx.setTransform(z, 0, 0, z, ox, oy);
-    drawPrims(ctx, prims, z, () => "#2f6fd6", 1);
+    drawPrims(ctx, prims, z, () => COLORS.preview, 1);
   }
 }

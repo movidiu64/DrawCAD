@@ -93,29 +93,50 @@ WORD = re.compile(r"[A-Za-zĂÂÎȘȚăâîșț]{2,}")
 CODEY = re.compile(r"^[\w.#:\-/\[\]=*>+~^$|()'\" ,%]*$")
 
 
+ATTR = re.compile(r'(?:title|placeholder|aria-label|alt)=\\?"((?:[^"\\]|\\(?!"))*)\\?"')
+ATTR_LIST = re.compile(r'\b[\w-]+=\\?"')  # a piece of a tag (`class="x" title="y"`) between ${…}
+
+
 def segments(text):
     """The visible texts of a literal: the parts between HTML tags + the interface attributes."""
-    segs = []
-    for m in re.finditer(r'(?:title|placeholder|aria-label|alt)="([^"]*)"', text):
-        segs.append(m.group(1))
+    segs = [m.group(1) for m in ATTR.finditer(text)]
     plain = re.sub(r"<[^>]*>", "\x01", text)
     for part in plain.split("\x01"):
-        segs.append(part)
+        if not ATTR_LIST.search(part):
+            segs.append(part)
     return segs
 
 
+# not interface text: CSS selectors, SVG path data, CSS fonts / media queries / inline styles
+NOT_UI = [
+    re.compile(r"^(?!#[0-9a-fA-F]{3,8}\b)[#.\[][\w-]"),  # selector: #id, .class, [attr] (not a #hex color)
+    re.compile(r"^[a-z][a-z-]*( [a-z-]+)* \{\}$"),          # CSS classes + a variable one: "savestate {}"
+    re.compile(r"^[\w-]+(\[[^\]]*\])?(, ?[#.\w\[][^,]*)+$"),  # selector list: "input, select, button.primary"
+    re.compile(r":not\(|^textarea\b|^input\b"),
+    re.compile(r"^[Mm][\d.\s-]+[A-Za-z\d.\s,-]*$"),        # SVG path data
+    re.compile(r"^\{?\}?\d*px\b|\bpx [\w-]+(, ?[\w-]+)*$"),  # CSS font: "16px osifont, sans-serif"
+    re.compile(r"^\((max|min)-(width|height)"),           # media query
+    re.compile(r"^[a-z-]+: ?[^ ]"),                       # inline style: "border:1px dashed …"
+]
+# a value with units only ("2,5 mm", "{} × {} mm", "Ra 1,6", "IT{} ({} mm)"): nothing to translate
+UNITS = re.compile(r"\{\}|\b(mm|px|DPI|IT|Ra|Rz|L|X|Y|Δx|Δy)\b|[\d.,×=·°()+−\-/ ]")
+
+
 def is_ui(s):
-    t = s.replace("\x00", "").strip()
+    t = s.replace("\x00", "{}").strip()
     if not WORD.search(t):
+        return False
+    if any(p.search(t) for p in NOT_UI):
+        return False
+    if not WORD.search(UNITS.sub(" ", t)):
         return False
     if re.search(r"[ăâîșțĂÂÎȘȚ]", t):
         return True
-    if " " in t.strip() and not re.match(r"^[a-z\-]+( [a-z\-]+)*$", t):  # clase CSS: „mini on”
+    if " " in t.strip() and not re.match(r"^[a-z\-]+( [a-z\-]+)*$", t):  # CSS classes: "mini on"
         return True
     if re.match(r"^[A-ZĂÂÎȘȚ][a-zăâîșț]+[.:…]?$", t):  # a capitalized word: "Gata", "Setări"
         return True
     return False
-
 
 def main():
     found = {}

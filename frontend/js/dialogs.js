@@ -5,6 +5,7 @@ import { MM_POSITIONS, MM_DEFAULT, MM_SPECIAL, markingConfig } from "./mmenu.js"
 import { TOOLS } from "./tools.js";
 import { lang as uiLang, setLang, LANGS } from "./i18n.js";
 import { SHEETS } from "./pages.js";
+import { COLORS } from "./view.js";
 import { commandList, conflicts, defaultKeyConfig, keyConfig, saveKeyConfig, labelOf, RESERVED_KEYS, DEFAULT_ALIASES, ACTIONS } from "./commands.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -927,7 +928,7 @@ export async function redactDialog(app, annot, isNew) {
   };
   const auto = () => objs.filter((o) => !o.locked && (o.inside || (o.frac ?? 0) >= FRAC || glyphIn(o))).map((o) => o.id);
   const ids = new Set(isNew || !annot.ids ? auto() : annot.ids);
-  let color = annot.color || "#ffffff";
+  let color = annot.color || COLORS.white;
   let picking = false;
   const label = (o) => {
     if (o.type === "text") return `Text „${esc(o.text || "?")}”`;
@@ -963,8 +964,8 @@ export async function redactDialog(app, annot, isNew) {
         <div class="coverctl" id="rCoverCtl">
           <span class="lbl">Culoare</span>
           <div class="row"><input type="color" id="rColor" aria-label="Culoarea acoperirii">
-            <button class="ghost sw" data-sw="#ffffff" title="Alb" aria-label="Alb"><i style="background:#fff"></i></button>
-            <button class="ghost sw" data-sw="#f4f1e8" title="Hârtie" aria-label="Hârtie"><i style="background:#f4f1e8"></i></button>
+            <button class="ghost sw" data-sw="${COLORS.white}" title="Alb" aria-label="Alb"><i style="background:${COLORS.white}"></i></button>
+            <button class="ghost sw" data-sw="${COLORS.coverPaper}" title="Hârtie" aria-label="Hârtie"><i style="background:${COLORS.coverPaper}"></i></button>
             <button class="ghost" id="rPick" title="Ia culoarea dintr-un punct al desenului"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4.5l5 5M17 2l5 5-3 3-5-5zM14 7l-9 9-1 4 4-1 9-9"/></svg> Pipetă</button></div>
           <span class="sub mono" id="rColorTxt"></span>
         </div>
@@ -1010,7 +1011,7 @@ export async function redactDialog(app, annot, isNew) {
   const setColor = (c) => {
     color = c.toLowerCase();
     colorInp.value = color;
-    dlg.querySelector("#rColorTxt").textContent = color === "#ffffff" ? "#ffffff · alb" : color;
+    dlg.querySelector("#rColorTxt").textContent = color === COLORS.white ? `${COLORS.white} · alb` : color;
     dlg.querySelectorAll("[data-sw]").forEach((b) => b.classList.toggle("on", b.dataset.sw === color));
     schedulePreview();
   };
@@ -1097,7 +1098,7 @@ export async function redactDialog(app, annot, isNew) {
     cv.style.width = `${Math.round(w)}px`;
     cv.style.height = `${Math.round(h)}px`;
     const ctx = cv.getContext("2d");
-    ctx.fillStyle = "#fff";
+    ctx.fillStyle = COLORS.white;
     ctx.fillRect(0, 0, cv.width, cv.height);
     const k = 2 * pvScale;
     ctx.setTransform(k, 0, 0, k, -crop[0] * k, -crop[1] * k);
@@ -1108,13 +1109,13 @@ export async function redactDialog(app, annot, isNew) {
   const drawBefore = (hoverId) => {
     paint(dlg.querySelector("#rBefore"), beforeImg, (ctx, k) => {
       ctx.setLineDash([4 / k, 3 / k]);
-      ctx.strokeStyle = "#c62828";
+      ctx.strokeStyle = COLORS.rev;
       ctx.lineWidth = 1.2 / k;
       ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
       ctx.setLineDash([]);
       const o = objs.find((q) => q.id === hoverId);
       if (o) {
-        ctx.strokeStyle = "#f2a93b";
+        ctx.strokeStyle = COLORS.sel;
         ctx.lineWidth = 3 / k;
         if (o.poly) {
           for (const poly of o.poly) {
@@ -1145,7 +1146,7 @@ export async function redactDialog(app, annot, isNew) {
         const url = await api.previewRemoval(app.doc.id, annot.page, ops(), imgScale);
         const im = await loadImg(url);
         paint(dlg.querySelector("#rAfter"), im, mode === "zone" && cover ? (ctx) => {
-          ctx.fillStyle = "#fff";
+          ctx.fillStyle = COLORS.white;
           ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
         } : null);
         URL.revokeObjectURL(url);
@@ -1221,13 +1222,13 @@ export async function inkDialog(app, annot, isNew) {
     cv.style.width = `${Math.round(w)}px`;
     cv.style.height = `${Math.round(h)}px`;
     const ctx = cv.getContext("2d");
-    ctx.fillStyle = "#fff";
+    ctx.fillStyle = COLORS.white;
     ctx.fillRect(0, 0, cv.width, cv.height);
     const k = 2 * pvScale;
     ctx.setTransform(k, 0, 0, k, -crop[0] * k, -crop[1] * k);
     if (im) ctx.drawImage(im, 0, 0, im.width / imgScale, im.height / imgScale);
     ctx.setLineDash([4 / k, 3 / k]);
-    ctx.strokeStyle = "#2e9d5b";
+    ctx.strokeStyle = COLORS.edgreen;
     ctx.lineWidth = 1.2 / k;
     ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
   };

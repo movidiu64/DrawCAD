@@ -2,7 +2,10 @@
 import * as api from "./api.js";
 import { tr } from "./i18n.js";
 
+// The only place for colors in JS (canvas drawing cannot use CSS variables; the interface uses the
+// :root tokens in app.css). tools/check_rules.py fails on a hex color anywhere else in the JS.
 export const COLORS = {
+  // primitive colors (annotation layers and editor-only marks)
   add: "#2f6fd6",
   rev: "#c62828",
   white: "#ffffff",
@@ -11,16 +14,31 @@ export const COLORS = {
   edgreen: "#2e9d5b",
   sel: "#f2a93b",
   preview: "#2f6fd6",
+  // editor
+  canvasBg: "#2b3038",
+  inkDefault: "#111111",
+  hitMark: "#f08c00",
+  snapMark: "#3ccf8e",
+  acquired: "#e07b00",
+  tipLine: "#4a525d",
+  tipBg: "#f1f3f5",
+  selWindow: "#4c9aff",
+  selCrossing: "#3ccf8e",
+  // swatches for symbol previews in the dark panel
+  uiDark: "#15181c",
+  uiLight: "#e8eaed",
+  // cover colors offered in the panel / removal dialog (values stored in annotations)
+  coverPaper: "#f4f1e8",
 };
 
-const colorOf = (c) => COLORS[c] || (typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c) ? c : "#111");
+const colorOf = (c) => COLORS[c] || (typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c) ? c : COLORS.inkDefault);
 
 // whole page: ~12 MP (≈ 48 MB decoded in the browser); beyond that, at high zoom, the detail area takes over
 const BASE_MAX_PX = 12e6;
 
 // page images are kept as ImageBitmap: when replaced they are released immediately (close), not when
 // the garbage collector gets to them — zooming in and out would otherwise pile up hundreds of MB
-const toBitmap = (im) => (typeof createImageBitmap === "function" ? createImageBitmap(im) : Promise.reject(new Error("fără ImageBitmap"))).catch(() => im);
+const toBitmap = (im) => (typeof createImageBitmap === "function" ? createImageBitmap(im) : Promise.reject(new Error("no ImageBitmap"))).catch(() => im);
 const release = (x) => {
   if (x && typeof x.close === "function") x.close();
 };
@@ -346,14 +364,14 @@ export class View {
     const ctx = this.ctx;
     const d = this.dpr;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = "#2b3038";
+    ctx.fillStyle = COLORS.canvasBg;
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     if (!this.pageW) return;
     const z = this.zoom;
     ctx.setTransform(d * z, 0, 0, d * z, d * this.panX, d * this.panY);
     ctx.shadowColor = "rgba(0,0,0,0.45)";
     ctx.shadowBlur = 24 * d;
-    ctx.fillStyle = "#fff";
+    ctx.fillStyle = COLORS.white;
     ctx.fillRect(0, 0, this.pageW, this.pageH);
     ctx.shadowBlur = 0;
     if (this.img && !this.app.hidden.has("orig")) {
@@ -421,7 +439,7 @@ export class View {
     if (app.hit && app.hit.page === app.page) {
       const [x0, y0, x1, y1] = app.hit.box;
       const m = 3 / z;
-      ctx.strokeStyle = "#f08c00";
+      ctx.strokeStyle = COLORS.hitMark;
       ctx.lineWidth = 2.5 / z;
       ctx.strokeRect(x0 - m, y0 - m, x1 - x0 + 2 * m, y1 - y0 + 2 * m);
     }
@@ -492,13 +510,13 @@ export class View {
     }
     for (const h of built.handles || []) {
       if (!h.p) continue;
-      ctx.fillStyle = h.k === "tx" ? "#ffffff" : COLORS.sel;
-      ctx.strokeStyle = h.k === "tx" ? COLORS.sel : "#ffffff";
+      ctx.fillStyle = h.k === "tx" ? COLORS.white : COLORS.sel;
+      ctx.strokeStyle = h.k === "tx" ? COLORS.sel : COLORS.white;
       ctx.lineWidth = 1.2 / this.zoom;
       if (h.k === "sc") {
         // resize handle: white outline with a diagonal arrow
         const q = s * 1.15;
-        ctx.fillStyle = "#ffffff";
+        ctx.fillStyle = COLORS.white;
         ctx.strokeStyle = COLORS.sel;
         ctx.lineWidth = 1.6 / this.zoom;
         ctx.fillRect(h.p[0] - q / 2, h.p[1] - q / 2, q, q);
@@ -529,7 +547,7 @@ export class View {
     // tracking / extension / polar lines: dotted, green, extended past the point
     if (sn.guides) {
       ctx.save();
-      ctx.strokeStyle = "#3ccf8e";
+      ctx.strokeStyle = COLORS.snapMark;
       ctx.lineWidth = 1 / z;
       ctx.setLineDash([3 / z, 4 / z]);
       for (const g of sn.guides) {
@@ -544,7 +562,7 @@ export class View {
       }
       ctx.restore();
     }
-    ctx.strokeStyle = "#e07b00";
+    ctx.strokeStyle = COLORS.acquired;
     ctx.lineWidth = 2 / z;
     ctx.beginPath();
     const X = (r) => {
@@ -630,13 +648,13 @@ export class View {
     ctx.font = "12px system-ui, sans-serif";
     const w = ctx.measureText(txt).width + 12;
     ctx.fillStyle = "rgba(21,24,28,0.92)";
-    ctx.strokeStyle = subtle ? "#4a525d" : "#e07b00";
+    ctx.strokeStyle = subtle ? COLORS.tipLine : COLORS.acquired;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.rect(sx, sy, w, 20);
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = "#f1f3f5";
+    ctx.fillStyle = COLORS.tipBg;
     ctx.fillText(txt, sx + 6, sy + 14);
     ctx.restore();
   }
@@ -646,7 +664,7 @@ export class View {
     const ctx = this.ctx;
     const z = this.zoom;
     const s = 4 / z;
-    ctx.strokeStyle = "#3ccf8e";
+    ctx.strokeStyle = COLORS.snapMark;
     ctx.lineWidth = 1.6 / z;
     ctx.beginPath();
     for (const q of acq) {
