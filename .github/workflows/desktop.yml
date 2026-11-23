@@ -1,14 +1,21 @@
 name: Desktop Windows
 
 # Desktop app: PyInstaller + Tesseract (Romanian, English) + Inno Setup installer.
-# Every push to main builds and tests it; a v* tag publishes it to Releases.
+# Every push to main builds and tests it. A v* tag (also the one GitHub creates when a release is
+# published from the web page) attaches the installer and the ZIP to that tag's release, creating
+# the release if it does not exist. Only the tag push triggers it: listening to `release` too ran
+# two builds for one release, and the second one failed.
+# To (re)attach the files to an existing release: Actions → Desktop Windows → Run workflow, tag = v1.2.3.
 on:
   push:
     branches: [main]
     tags: ["v*"]
-  release:
-    types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build and attach the files to (e.g. v1.0.0); empty = just build"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -23,21 +30,24 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Version
         id: ver
         run: |
-          if ("${{ github.event_name }}" -eq "release") { $v = "${{ github.event.release.tag_name }}".TrimStart("v") }
-          elseif ("${{ github.ref_type }}" -eq "tag") { $v = "${{ github.ref_name }}".TrimStart("v") }
-          else { $v = "0.0.0-dev.${{ github.run_number }}" }
+          $tag = "${{ inputs.tag }}"
+          if (-not $tag -and "${{ github.ref_type }}" -eq "tag") { $tag = "${{ github.ref_name }}" }
+          if ($tag) { $v = $tag.TrimStart("v") } else { $v = "0.0.0-dev.${{ github.run_number }}" }
           "version=$v" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
           Set-Content -Path frontend/version.txt -Value $v -Encoding ascii -NoNewline
-          Write-Host "Versiune: $v"
+          Write-Host "Version: $v"
 
       - name: Python dependencies
         run: |
@@ -119,7 +129,9 @@ jobs:
 
       # Artifacts count against the account's shared storage (~230 MB per build here): keep
       # them only briefly. Releases (v* tags) are not affected and stay.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
+        # Release builds attach the files to the release instead (saves artifact storage).
+        if: steps.ver.outputs.tag == ''
         continue-on-error: true
         with:
           name: DrawCAD-windows
@@ -128,8 +140,8 @@ jobs:
             dist/DrawCAD-*-portabil.zip
           retention-days: 2
 
-      - uses: actions/upload-artifact@v4
-        if: always()
+      - uses: actions/upload-artifact@v6
+        if: failure()
         continue-on-error: true
         with:
           name: e2e-windows
@@ -137,15 +149,18 @@ jobs:
           retention-days: 2
 
       - name: Release
-        if: github.event_name == 'release' || (github.event_name == 'push' && github.ref_type == 'tag')
+        if: steps.ver.outputs.tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $tag = "${{ steps.ver.outputs.tag }}"
           $files = (Get-ChildItem dist -File -Include *-setup.exe, *-portabil.zip -Recurse).FullName
-          if ("${{ github.event_name }}" -eq "release") {
-            # release created from GitHub: the files are attached to it
-            gh release upload "${{ github.event.release.tag_name }}" $files --clobber
+          gh release view $tag --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            # release already published from the web page: attach the files to it
+            gh release upload $tag $files --clobber --repo "${{ github.repository }}"
           } else {
-            gh release create "${{ github.ref_name }}" $files `
+            gh release create $tag $files --repo "${{ github.repository }}" `
               --title "DrawCAD ${{ steps.ver.outputs.version }}" --notes "Installer for Windows 10/11 (64-bit) and the portable version (ZIP)."
           }
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::Could not attach the files to release $tag"; exit 1 }

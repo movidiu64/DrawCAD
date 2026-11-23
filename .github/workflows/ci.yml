@@ -6,6 +6,11 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to rebuild and publish to GHCR (e.g. v1.0.0); empty = just test"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -15,17 +20,19 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
       - name: Python dependencies
         run: pip install -r backend/requirements.txt
       - name: Tesseract (OCR)
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-ron
+      - name: Project rules (colors, i18n, overlays, agent skills)
+        run: python tools/check_rules.py
       - name: Backend tests
         working-directory: backend
         run: python -m unittest discover -s tests -v
@@ -36,21 +43,28 @@ jobs:
   docker:
     needs: test
     runs-on: ubuntu-latest
+    env:
+      # refs/tags/vX.Y.Z on a tag push or on a manual run with a tag, otherwise the pushed ref
+      REF: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.REF }}
       - name: Image name
         id: img
         run: echo "name=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
       - name: Version (shown in Settings)
         run: |
-          if [ "${GITHUB_REF#refs/tags/v}" != "$GITHUB_REF" ]; then v="${GITHUB_REF#refs/tags/v}"; else v="main-${GITHUB_SHA::7}"; fi
+          if [ "${REF#refs/tags/v}" != "$REF" ]; then v="${REF#refs/tags/v}"; else v="main-${GITHUB_SHA::7}"; fi
           echo "$v" > frontend/version.txt
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build the image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         env:
-          # The build record is uploaded as an artifact: keep it one day.
-          DOCKER_BUILD_RECORD_RETENTION_DAYS: 1
+          # No build-record artifact and no job summary: the upload counts against the
+          # artifact storage quota, and a full quota failed the whole job.
+          DOCKER_BUILD_SUMMARY: false
+          DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           context: .
           load: true
@@ -71,7 +85,7 @@ jobs:
             ${{ steps.img.outputs.name }}:test
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:8080/api/health && break; sleep 1; done
           curl -sf http://127.0.0.1:8080/api/health
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - name: Browser test on the container
@@ -103,26 +117,27 @@ jobs:
           docker ps -a --format '{{.Names}} {{.Status}}' | sed 's|^|::error title=docker ps::|'
           docker logs drawcad 2>&1 | grep -v '" 200' | tail -n 5 | sed 's|^|::error title=container::|'
           true
-      - uses: actions/upload-artifact@v4
-        if: always()
+      - uses: actions/upload-artifact@v6
+        # Screenshots and logs only when something failed (saves artifact storage).
+        if: failure()
         continue-on-error: true
         with:
           name: e2e
           path: e2e_out
           retention-days: 2
       - name: Publish the image to GHCR
-        # main → :latest and :<commit sha>; a v1.2.3 tag (or a release) → :1.2.3 and :1.2
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        # main → :latest and :<commit sha>; a v1.2.3 tag (pushed, or given to a manual run) → :1.2.3 and :1.2
+        if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'workflow_dispatch' && startsWith(env.REF, 'refs/tags/v'))
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           img="${{ steps.img.outputs.name }}"
-          if [ "${GITHUB_REF#refs/tags/v}" != "$GITHUB_REF" ]; then
-            ver="${GITHUB_REF#refs/tags/v}"
+          if [ "${REF#refs/tags/v}" != "$REF" ]; then
+            ver="${REF#refs/tags/v}"
             tags="$ver"
             minor="$(echo "$ver" | sed -nE 's/^([0-9]+\.[0-9]+)\.[0-9]+$/\1/p')"
             [ -n "$minor" ] && tags="$tags $minor"
           else
-            tags="latest ${{ github.sha }}"
+            tags="latest $(git rev-parse HEAD)"
           fi
           for t in $tags; do
             docker tag "$img:test" "$img:$t"
