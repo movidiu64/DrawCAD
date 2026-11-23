@@ -81,6 +81,11 @@ export const TOOLS = [
     hint: "Două puncte (cu snap) → distanța, Δx, Δy și unghiul, la scara desenului; nu se adaugă nimic pe desen",
     preview(pts, cur) { return { line: [pts[0], cur] }; } },
 
+  { id: "ucs", label: "Origine", key: "", group: "Navigare", icon: "M5 19V5M5 19h14M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2M3.5 17.5h3v3h-3z",
+    kind: "clicks", n: 1,
+    hint: "Click pe punctul care devine 0,0 pentru coordonatele scrise (de ex. colțul piesei) · X spre dreapta, Y în sus, în mm reali",
+    make: (pts) => ({ type: "ucs", p: pts[0] }) },
+
   { id: "dimLin", label: "Liniară", key: "D", group: "Cote", icon: "M4 6v12M20 6v12M4 12h16M4 12l3-2M4 12l3 2M20 12l-3-2M20 12l-3 2",
     hint: "Punct 1 → punct 2 → poziția liniei de cotă (orizontală sau verticală după unde muți)", ...dimTool("lin", "") },
   { id: "dimAli", label: "Aliniată", key: "A", group: "Cote", icon: "M5 15L15 5M5 15l1-3.5M5 15l3.5-1M15 5l-3.5 1M15 5l-1 3.5M3 13l4 4M13 3l4 4",

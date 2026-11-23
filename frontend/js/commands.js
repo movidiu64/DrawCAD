@@ -10,6 +10,7 @@ export const DEFAULT_ALIASES = {
   select: ["SEL", "SELECT"],
   pan: ["P", "PAN"],
   measure: ["DI", "DIST", "MEA", "MEASUREGEOM"],
+  ucs: ["UCS", "ORIGIN", "ORIGINE"],
   dimLin: ["DLI", "DIMLINEAR", "DIM"],
   dimAli: ["DAL", "DIMALIGNED"],
   dimDia: ["DDL", "DIMDIALIN"],

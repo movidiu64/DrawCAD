@@ -45,6 +45,7 @@ export const TYPE_NAMES = {
   ink: "Înnegrire linii originale",
   ord: "Cote ordonate",
   holes: "Tabel de găuri",
+  ucs: "Originea coordonatelor",
 };
 
 export function typeName(a) {
@@ -734,6 +735,30 @@ export function holeTable(ords, arcs, S, prev = null) {
   return { base: [...base], pts: items.map((it) => [...it.p]), rows };
 }
 
+/** Origin of the typed coordinates (UCS): an X / Y axes icon, on screen only, never exported. */
+function buildUcs(a, S, measure) {
+  const [x, y] = a.p;
+  const L = 8 * K;
+  const r = 0.8 * K;
+  const c = "edgreen";
+  const ln = (p, q) => ({ t: "L", p: [...p, ...q], w: 1.2, c, ed: true });
+  const prims = [
+    ln([x, y], [x + L, y]),
+    ln([x + L, y], [x + L - 1.6 * K, y - 0.8 * K]),
+    ln([x + L, y], [x + L - 1.6 * K, y + 0.8 * K]),
+    ln([x, y], [x, y - L]),
+    ln([x, y - L], [x - 0.8 * K, y - L + 1.6 * K]),
+    ln([x, y - L], [x + 0.8 * K, y - L + 1.6 * K]),
+    { t: "P", p: [x - r, y - r, x + r, y - r, x + r, y + r, x - r, y + r], close: true, w: 1.2, c, ed: true },
+  ];
+  const h = 2.5 * K;
+  const F = h / CAP;
+  for (const [txt, p] of [["X", [x + L + 0.8 * K, y + h / 2]], ["Y", [x - h * 0.35, y - L - 0.8 * K]]]) {
+    prims.push({ t: "T", p, s: F, a: 0, txt, tw: measure(txt, F), c, ed: true });
+  }
+  return { prims, handles: [{ k: "p", p: a.p }] };
+}
+
 function buildHoles(a, S, measure) {
   const b = buildTable(a, S, measure, HOLE_COLS);
   if (a.tags === false) return b;
@@ -1134,7 +1159,7 @@ function buildOrd(a, S, measure) {
   };
 }
 
-const BUILDERS = { ord: buildOrd, dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, ink: buildInk, shape: buildShape, section: buildSection, detail: buildDetail, balloon: buildBalloon, bom: buildBom, holes: buildHoles };
+const BUILDERS = { ord: buildOrd, dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, ink: buildInk, shape: buildShape, section: buildSection, detail: buildDetail, balloon: buildBalloon, bom: buildBom, holes: buildHoles, ucs: buildUcs };
 
 // characters without a glyph in osifont → existing equivalents (same on screen and in the PDF)
 const GLYPH_SUBST = { "…": "...", "„": '"', "”": '"', "“": '"', "«": '"', "»": '"', "‚": ",", "‘": "'", "\u00a0": " ", "−": "-" };

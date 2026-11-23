@@ -278,6 +278,31 @@ def main(url, out):
             .map(a => [Math.round(window.cotare.builtOf(a).measured * 100) / 100, Math.round(a.p3[1] / (72/25.4))])""")
         assert sorted(dims) == [[20, 192], [95, 86], [95, 192], [115, 78]], dims
         page.screenshot(path=str(out / "cote_lant_baza.png"))
+        # 17. typed points (as at AutoCAD's prompt): a line from 20,30 (bottom-left origin, Y up),
+        # then @40,0 and @20<90; then an origin (UCS) on the Ø10 hole and a line from 0,0 there
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
+        page.keyboard.press("i")
+        for txt in ["20,30", "@40,0", "@20<90"]:
+            page.keyboard.type(txt)
+            page.keyboard.press("Enter")
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
+        lines = page.evaluate("""window.cotare.annots.filter(a => a.type === 'shape' && a.kind === 'line').slice(-2)
+            .map(a => a.pts.map(p => [Math.round(p[0] / (72/25.4) * 100) / 100, Math.round(p[1] / (72/25.4) * 100) / 100]))""")
+        h = page.evaluate("window.cotare.doc.pages[0].h / (72/25.4)")
+        assert lines == [[[20, round(h - 30, 2)], [60, round(h - 30, 2)]], [[60, round(h - 30, 2)], [60, round(h - 50, 2)]]], (lines, h)
+        page.click('[data-tool="ucs"]')
+        click(145, 167.5)
+        page.keyboard.press("Escape")
+        page.keyboard.press("i")
+        for txt in ["0,0", "@0,-10"]:
+            page.keyboard.type(txt)
+            page.keyboard.press("Enter")
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
+        last = page.evaluate("window.cotare.annots.filter(a => a.type === 'shape' && a.kind === 'line').slice(-1)[0].pts.map(p => p.map(v => Math.round(v / (72/25.4) * 100) / 100))")
+        assert last == [[145, 167.5], [145, 177.5]], last
         page.keyboard.press("Escape")
         page.keyboard.press("f")
         page.wait_for_timeout(300)
@@ -289,7 +314,7 @@ def main(url, out):
         page.screenshot(path=str(out / "editor.png"))
 
         kinds = page.evaluate("window.cotare.annots.map(a => a.type)")
-        assert len(kinds) == 22, kinds
+        assert len(kinds) == 26, kinds
 
         # export
         page.click("#btnExport")
@@ -333,15 +358,15 @@ def main(url, out):
         # reopen: dimensions come back editable
         prev_id = page.evaluate("window.cotare.doc.id")
         page.set_input_files("#fileInput", str(path))
-        # wait for the new document (loading takes time), not the old one which already had 22 annotations
-        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 22")
+        # wait for the new document (loading takes time), not the old one which already had 26 annotations
+        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 26")
         # closing without changes: straight to the start page
         page.click("#btnClose")
         page.wait_for_function("window.cotare.doc === null && !document.getElementById('emptyState').hidden")
         page.wait_for_function("document.querySelectorAll('#recentList [data-doc]').length >= 1", timeout=5000)
         # reopen from Recent, one change, then close with the prompt
         page.click("#recentList [data-doc]")
-        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 22")
+        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 26")
         page.wait_for_timeout(300)
         page.keyboard.press("t")
         click(100, 30)

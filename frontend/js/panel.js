@@ -424,6 +424,16 @@ export class Panel {
       <div class="sub">Cu antetul jos, poziția 1 stă lângă antet și numerele cresc în sus (ISO 7573). Pătrățelul e colțul dreapta-jos.</div></div>`;
   }
 
+  html_ucs(a) {
+    const k = this.app.settings.scale || 1;
+    const pg = this.app.doc && this.app.doc.pages[a.page];
+    const fromCorner = pg ? `${fmtNum((a.p[0] / K) * k, ",", 2)} · ${fmtNum(((pg.h - a.p[1]) / K) * k, ",", 2)}` : "";
+    return `<div class="sec"><div class="h">Originea coordonatelor</div>
+      <div class="sub">Punctul 0,0 al coordonatelor scrise în linia de comandă (x,y sau polar) și al coordonatelor din bara de jos, pe această pagină. X spre dreapta, Y în sus, în mm reali (la scara desenului). Simbolul apare doar pe ecran, nu și la export.</div>
+      <div class="sub">Față de colțul stânga-jos al paginii: <b class="mono">${fromCorner}</b> mm.</div>
+      <div class="sub">Trage de pătrățel ca s-o muți. Ștearsă, originea revine în colțul stânga-jos al paginii.</div></div>`;
+  }
+
   html_holes(a) {
     const rows = a.rows || [];
     const inp = (i, col, v, extra = "") => `<input type="text" class="mono" data-row="${i}" data-col="${col}" value="${esc(v)}" ${extra}>`;

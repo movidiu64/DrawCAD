@@ -5,6 +5,7 @@ import { View, COLORS } from "./view.js";
 import { Snapper, MODES, DEFAULT_MODES, LABELS } from "./osnap.js";
 import { Panel } from "./panel.js";
 import { TOOLS, TOOL_BY_ID, finalize } from "./tools.js";
+import { parsePoint, resolvePoint, toUser, defaultOrigin, orthoActive, routeKey } from "./pointin.js";
 import * as dlg from "./dialogs.js";
 import { VIEW_LETTERS } from "./symbols.js";
 import { markingConfig, MM_ICONS } from "./mmenu.js";
@@ -91,6 +92,14 @@ class App {
    */
   escape(confirm = false) {
     const t = TOOL_BY_ID[this.tool];
+    if (this.rectStart) {
+      // a typed first corner of a drag tool: dropped
+      this.rectStart = null;
+      this.view.overlay = null;
+      this.setHint(t.hint);
+      this.view.redraw();
+      return;
+    }
     if (this.placing && confirm) {
       // Enter / Space / right click while placing the ordinate row: place it at the cursor
       const at = this._ordPt || this.clicks[this.clicks.length - 1];
@@ -231,6 +240,7 @@ class App {
   /** One click of the active tool (dimension points, polyline vertices…). */
   toolClick(pt) {
     const t = TOOL_BY_ID[this.tool];
+    this.lastPick = pt; // AutoCAD's LASTPOINT: what @ refers to
     if (this.dyn) this.dynReset();
     if (t.kind === "poly" && this.placing) {
       // ordinates: the last click places the row (and decides the axis)
@@ -286,6 +296,88 @@ class App {
         this.updateOverlay(pt, null);
       }
     }
+  }
+
+  /** A rectangle of a drag tool (strike, cover, remove, blacken), dragged or typed. */
+  commitRect(r) {
+    if (Math.abs(r[2] - r[0]) < 2 || Math.abs(r[3] - r[1]) < 2) return;
+    this.lastPick = [r[2], r[3]];
+    const t = TOOL_BY_ID[this.tool];
+    const a = t.make(r, this);
+    if (a.type === "redact") {
+      a.page = this.page;
+      dlg.redactDialog(this, a, true);
+    } else if (a.type === "ink") {
+      a.page = this.page;
+      dlg.inkDialog(this, a, true);
+    } else this.addAnnot(finalize(a));
+  }
+
+  // ------------------------------------------------------------ typed points (CMD-D1…D4)
+  /** A command that asks for points is running (any drawing or annotation tool). */
+  cmdActive() {
+    return !!(this.doc && this.tool !== "select" && this.tool !== "pan");
+  }
+
+  /** Origin of typed coordinates on a page: its UCS annotation, or the bottom-left corner. */
+  originOf(page = this.page) {
+    const u = this.annots.find((a) => a.type === "ucs" && a.page === page && Array.isArray(a.p));
+    if (u) return u.p;
+    const pg = this.doc && this.doc.pages[page];
+    return defaultOrigin(pg ? pg.h : 0);
+  }
+
+  /** The point @ and a lone distance are measured from. */
+  lastPoint() {
+    if (this.rectStart) return this.rectStart;
+    if (this.clicks.length) return this.clicks[this.clicks.length - 1];
+    return this.lastPick || null;
+  }
+
+  /** A point typed in the command line: false if it is not a point (then it may be a command). */
+  typedPoint(text) {
+    const q = parsePoint(text);
+    if (!q) return false;
+    const r = resolvePoint(q, { last: this.lastPoint(), cursor: this._dynPt || null, origin: this.originOf(), scale: this.settings.scale });
+    if (r.error) {
+      dlg.toast(r.error);
+      return true;
+    }
+    this.pointInput(r.p);
+    return true;
+  }
+
+  /** A typed point, used as a click of the running tool. */
+  pointInput(p) {
+    const t = TOOL_BY_ID[this.tool];
+    if (!t || !this.cmdActive()) return;
+    if (this.dyn) this.dynReset();
+    if (t.kind === "rect") {
+      if (!this.rectStart) {
+        this.rectStart = p;
+        this.lastPick = p;
+        this.view.overlay = { prims: [{ t: "C", p: [...p], r: 1.2, w: 0.6, c: "sel" }] };
+        this.view.redraw();
+        this.setHint(`${t.hint} · colțul opus: @lățime,înălțime sau click`);
+        return;
+      }
+      const r = [...this.rectStart, ...p];
+      this.rectStart = null;
+      this.view.overlay = null;
+      this.setHint(t.hint);
+      this.commitRect(r);
+      return;
+    }
+    this.toolClick(p);
+    this.updateCmdPrompt();
+  }
+
+  /** The command line's placeholder: the point syntax while a command runs. */
+  updateCmdPrompt() {
+    const inp = $("cmdIn");
+    if (!inp || !this.keyCfg) return;
+    if (this.cmdActive()) inp.placeholder = "Punct: click, x,y · @dx,dy · @d<unghi · sau o comandă";
+    else inp.placeholder = this.keyCfg.mode === "autocad" ? "Comandă (L, C, PL, DLI…)" : "Enter → comandă (L, C, DLI…)";
   }
 
   /** Finishes the polyline or hatch in progress. */
@@ -501,6 +593,7 @@ class App {
     this.tool = id;
     this.clicks = [];
     this.placing = false;
+    this.rectStart = null;
     if (this.dyn) this.dynReset();
     if ($("dynBox")) $("dynBox").hidden = true;
     this.lastMeasure = null;
@@ -512,6 +605,7 @@ class App {
     this.view.overlay = null;
     $("tools").querySelectorAll("[data-tool]").forEach((b) => b.classList.toggle("on", b.dataset.tool === id));
     this.setHint(TOOL_BY_ID[id].hint);
+    this.updateCmdPrompt();
     $("canvas").style.cursor = id === "pan" ? "grab" : id === "select" ? "default" : "crosshair";
     if (!this.selectedId) this.panel.render();
     this.view.redraw();
@@ -1073,6 +1167,8 @@ class App {
   addAnnot(a) {
     this.pushHistory();
     a.page = this.page;
+    // one origin per page: a new one replaces the old
+    if (a.type === "ucs") this.annots = this.annots.filter((x) => !(x.type === "ucs" && x.page === this.page));
     if (this.hidden.has(this.layerOf(a))) {
       this.hidden.delete(this.layerOf(a));
       dlg.toast("Stratul era ascuns pe ecran; l-am reafișat ca să vezi ce ai adăugat.");
@@ -1316,7 +1412,7 @@ class App {
   snapPoint(raw, e, anchor) {
     const v = this.view;
     const cfg = this.snapCfg;
-    const ortho = e.shiftKey || cfg.ortho;
+    const ortho = orthoActive(cfg.ortho, e.shiftKey);
     let pt = raw;
     let sn = null;
     if (!e.altKey) {
@@ -1817,17 +1913,7 @@ class App {
         const { pt } = this.snapPoint(raw, e, d.start);
         this.view.overlay = null;
         this.view.redraw();
-        const r = [d.start[0], d.start[1], pt[0], pt[1]];
-        if (Math.abs(r[2] - r[0]) < 2 || Math.abs(r[3] - r[1]) < 2) return;
-        const t = TOOL_BY_ID[this.tool];
-        const a = t.make(r, this);
-        if (a.type === "redact") {
-          a.page = this.page;
-          dlg.redactDialog(this, a, true);
-        } else if (a.type === "ink") {
-          a.page = this.page;
-          dlg.inkDialog(this, a, true);
-        } else this.addAnnot(finalize(a));
+        this.commitRect([d.start[0], d.start[1], pt[0], pt[1]]);
       }
     };
     cv.addEventListener("pointerup", up);
@@ -2196,7 +2282,9 @@ class App {
   }
 
   showCoords(pt, anchor) {
-    let s = `X ${fmtNum(pt[0] / K, ",", 2)} · Y ${fmtNum(pt[1] / K, ",", 2)} mm`;
+    // from the origin of typed coordinates (UCS or the bottom-left corner), Y up, real mm
+    const [ux, uy] = this.doc ? toUser(pt, this.originOf(), this.settings.scale) : [pt[0] / K, pt[1] / K];
+    let s = `X ${fmtNum(ux, ",", 2)} · Y ${fmtNum(uy, ",", 2)} mm`;
     if (anchor) {
       const dx = ((pt[0] - anchor[0]) / K) * this.settings.scale;
       const dy = ((pt[1] - anchor[1]) / K) * this.settings.scale;
@@ -2217,8 +2305,7 @@ class App {
       const bits = [c.key, c.aliases[0]].filter(Boolean);
       b.title = `${tr(c.label)}${bits.length ? ` (${[...new Set(bits)].join(" · ")})` : ""}`;
     });
-    const inp = $("cmdIn");
-    if (inp) inp.placeholder = cfg.mode === "autocad" ? "Comandă (L, C, PL, DLI…)" : "Enter → comandă (L, C, DLI…)";
+    this.updateCmdPrompt();
     if (this.panel) this.panel.render();
   }
 
@@ -2263,7 +2350,8 @@ class App {
     this._cmdBrowse = browse;
     const show = () => {
       hIdx = -1;
-      list = suggest(inp.value, this.keyCfg);
+      // a point being typed: no command suggestions
+      list = this.cmdActive() && /^[\s@#<0-9.+\-]/.test(inp.value) ? [] : suggest(inp.value, this.keyCfg);
       pick = 0;
       if (!list.length) {
         box.hidden = true;
@@ -2308,7 +2396,16 @@ class App {
         const v = inp.value.trim();
         if (!v) {
           inp.blur();
-          if (e.key !== "Tab") this.repeatCmd();
+          if (e.key === "Tab") return;
+          // during a command: finish it (polyline, series) or stop; otherwise repeat the last one
+          if (this.cmdActive() && (this.clicks.length || this.rectStart)) this.escape(true);
+          else this.repeatCmd();
+          return;
+        }
+        if (this.cmdActive() && e.key !== "Tab" && this.typedPoint(v)) {
+          // the line stays open for the next point, as at AutoCAD's prompt
+          inp.value = "";
+          box.hidden = true;
           return;
         }
         // an exact match wins; otherwise the first suggestion (or the one picked with the arrows)
@@ -2468,6 +2565,12 @@ class App {
       const tag = document.activeElement && document.activeElement.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
       const k = e.key.toLowerCase();
+      // @ # < start a typed point in the command line (AltGr on some layouts sets Ctrl+Alt)
+      if (this.cmdActive() && (e.key === "@" || e.key === "#" || e.key === "<") && !e.metaKey && !this.mmenu) {
+        e.preventDefault();
+        this.focusCmdLine(e.key);
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && k === "z") {
         e.preventDefault();
         if (e.shiftKey) this.doRedo();
@@ -2512,6 +2615,12 @@ class App {
       // during a command, digits go to the length next to the cursor (dynamic input)
       if (this.dyn && this.dynKey(e)) {
         e.preventDefault();
+        return;
+      }
+      // a point typed without the box (first point, or F12 off): into the command line
+      if (this.cmdActive() && !this.mmenu && routeKey({ dynUsable: !!(this.dyn && this.dyn.on && this.dynTool()) }, e.key) === "cmd") {
+        e.preventDefault();
+        this.focusCmdLine(e.key);
         return;
       }
       const autocad = this.keyCfg && this.keyCfg.mode === "autocad";
