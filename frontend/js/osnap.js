@@ -165,6 +165,7 @@ function addArc(grid, a) {
 export class Snapper {
   constructor(data = {}, cell = 24) {
     this.cell = cell;
+    this.arcs = data.arcs || []; // kept whole for the hole table (diameters)
     this.pg = new Grid(cell);
     this.sg = new Grid(cell);
     this.ag = new Grid(cell);

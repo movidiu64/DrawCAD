@@ -4,7 +4,7 @@
 
 DrawCAD is a self-hosted web app (Docker) for adding to a PDF or a scan:
 
-- **dimensions**: linear, aligned, diameter, radius, angular and ordinate (from a base point, on X or Y), plus chamfers, leaders and free text;
+- **dimensions**: linear, aligned, diameter, radius, angular and ordinate (from a base point, on X or Y) with a hole table built from them, plus chamfers, leaders and free text;
 - **tolerances**: ±, deviations, ISO 286 fits with automatic limits (e.g. `Ø25k6 (+0,015/+0,002)`);
 - **GD&T** to ISO 1101: all 14 characteristics, Ø, the Ⓜ Ⓛ Ⓟ Ⓕ CZ modifiers, datums A/B/C, plus datum symbols;
 - **surface roughness** to ISO 1302 / ISO 21920-1: with or without material removal, parameter (Ra, Rz…), process, directly on the surface or with a leader;
@@ -180,7 +180,7 @@ Dimensions do not change on calibration: they measure the drawing.
 
 **Command history:** in the command line, arrow up / down browses previously used commands, most recent first, as in AutoCAD. The list appears above the command line and Enter starts the chosen one. In AutoCAD commands mode, arrow up works directly on the drawing when nothing is selected (with a selection, the arrows move it). Once you start typing, the arrows pick from the suggestions. The history keeps the last 50 commands, including those started from the toolbar or with keys, and is stored in the browser.
 
-The default aliases follow AutoCAD: `L` line, `PL` polyline, `REC` rectangle, `C` circle, `A` arc, `H` hatch, `CM` center mark, `DLI` / `DAL` / `DDI` / `DRA` / `DAN` / `DOR` dimensions, `LE` leader, `T` / `MT` text, `TOL` GD&T, `E` erase (with a selection: deletes the selection), `DI` measure, `P` pan, `U` undo, `Z` fit page, `OS` / `OR` snap / ortho, `OP` settings. Commands without an AutoCAD equivalent have short names: `RUG` roughness, `NOTE`, `REV` revision table, `BOM`, `SEC` section, `DET` detail, `BAL` balloon, `STR` strike dimension, `WO` cover, `CALIB` calibration. The tool name works too ("circle", "radius", in Romanian or English).
+The default aliases follow AutoCAD: `L` line, `PL` polyline, `REC` rectangle, `C` circle, `A` arc, `H` hatch, `CM` center mark, `DLI` / `DAL` / `DDI` / `DRA` / `DAN` / `DOR` dimensions, `LE` leader, `T` / `MT` text, `TOL` GD&T, `E` erase (with a selection: deletes the selection), `DI` measure, `P` pan, `U` undo, `Z` fit page, `OS` / `OR` snap / ortho, `OP` settings. Commands without an AutoCAD equivalent have short names: `RUG` roughness, `NOTE`, `REV` revision table, `BOM`, `HT` hole table, `SEC` section, `DET` detail, `BAL` balloon, `STR` strike dimension, `WO` cover, `CALIB` calibration. The tool name works too ("circle", "radius", in Romanian or English).
 
 In the same dialog every tool can get another key and other aliases. Duplicates are flagged and block saving. The configuration is kept in the browser (in the desktop app, on the computer), for all documents.
 
@@ -292,6 +292,14 @@ The values are absolute distances from the base, in real mm (at drawing scale). 
 - **the values themselves**, one small field per dimension in drawing order, filled with the value as drawn: correct only what is wrong (e.g. the decimals). Changed fields get an orange border, Tab moves to the next one, and an emptied field goes back to the measured value.
 
 Points with the same value appear once. Values too close to each other spread apart and their lines get a jog, as in AutoCAD. In the panel you can switch the axis; dragging the handle at the end of the lines moves the row.
+
+**Hole table** (the `HT` / `HOLETABLE` command): a table with X, Y and Ø of every hole, made from the ordinate dimensions of the page.
+1. Dimension the holes with `DOR` from one base, on X and on Y (snap to the hole centers).
+2. Start the hole table and click where its bottom-right corner goes.
+
+X and Y are signed distances from the base (left of or below the base: negative), with the values typed over the measured ones in the ordinate dimensions. Ø is read from the smallest circle centered on the hole (for a counterbore, the through hole; for a thread, the tap drill: type `M8` over it). Holes of the same diameter share a letter (A1, A2…, B1…), written next to each hole on the drawing; on a scan, without circles, the holes are numbered 1, 2, 3… and Ø is typed by hand. Points without a circle (edges) are left out as soon as some points are holes; the base is a hole only if a circle is centered on it. With several sets of ordinates on the page, select one before starting: its base decides which holes are listed.
+
+Every cell can be edited in the panel. **Update from dimensions** rebuilds the table after the ordinate dimensions changed; diameters typed by hand stay. Moving the table leaves the letters on the holes; they can be hidden in the panel.
 
 **Angular dimension (U):** click the vertex, a point on each leg, then the arc position. The arc position picks one of the four sectors: the angle, its supplement or their opposites.
 

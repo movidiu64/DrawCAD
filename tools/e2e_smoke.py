@@ -230,6 +230,42 @@ def main(url, out):
         shapes = page.evaluate("window.cotare.annots.filter(a => a.type === 'shape').map(a => a.kind + ':' + a.ltype)")
         assert shapes == ["line:dash", "cross:chain"], shapes
 
+        # 15. ordinate dimensions from the center of the Ø10 hole, a corrected value, then the hole table
+        page.evaluate("() => { const v = window.cotare.view; v.zoom = 2.2; v.panX = -125*72/25.4*2.2; v.panY = -80*72/25.4*2.2; v.afterZoom(); }")
+        page.wait_for_timeout(300)
+        page.click('[data-tool="dimOrd"]')
+        click(145, 167.5)
+        click(240, 95)
+        page.keyboard.press("Enter")
+        click(190, 182)  # below the points: values on X
+        page.click('[data-tool="dimOrd"]')
+        click(145, 167.5)
+        click(240, 95)
+        page.keyboard.press("Enter")
+        click(132, 130)  # left of the points: values on Y
+        ords = page.evaluate("window.cotare.annots.filter(a => a.type === 'ord').map(a => [a.axis, window.cotare.builtOf(a).values])")
+        assert [o[0] for o in ords] == ["x", "y"] and sorted(ords[0][1]) == [0, 95] and sorted(ords[1][1]) == [0, 72.5], ords
+        # the X value typed over the measured one (as on a scan, where it is never round)
+        page.keyboard.press("Escape")
+        page.evaluate("window.cotare.select(window.cotare.annots.find(a => a.type === 'ord' && a.axis === 'x').id)")
+        page.wait_for_selector("[data-ord='1']")
+        page.fill("[data-ord='1']", "95,05")
+        page.press("[data-ord='1']", "Tab")
+        assert page.evaluate("window.cotare.builtOf(window.cotare.annots.find(a => a.type === 'ord')).values") == [0, 95.05]
+        page.keyboard.press("Escape")
+        page.click('[data-tool="holes"]')
+        click(290, 110)
+        rows = page.evaluate("window.cotare.selected().rows")
+        assert [(r["tag"], r["x"], r["y"], r["d"]) for r in rows] == [("A1", "0", "0", "10"), ("B1", "95,05", "72,5", "30")], rows
+        page.fill("[data-row='1'][data-col='d']", "M30")
+        page.press("[data-row='1'][data-col='d']", "Escape")
+        page.click("[data-act=hlsync]")
+        assert page.evaluate("window.cotare.selected().rows[1].d") == "M30"
+        page.screenshot(path=str(out / "tabel_gauri.png"))
+        page.keyboard.press("Escape")
+        page.keyboard.press("f")
+        page.wait_for_timeout(300)
+
         # select the Ø25 dimension for the screenshot
         page.keyboard.press("v")
         click(75, 90)
@@ -237,7 +273,7 @@ def main(url, out):
         page.screenshot(path=str(out / "editor.png"))
 
         kinds = page.evaluate("window.cotare.annots.map(a => a.type)")
-        assert len(kinds) == 15, kinds
+        assert len(kinds) == 18, kinds
 
         # export
         page.click("#btnExport")
@@ -281,15 +317,15 @@ def main(url, out):
         # reopen: dimensions come back editable
         prev_id = page.evaluate("window.cotare.doc.id")
         page.set_input_files("#fileInput", str(path))
-        # wait for the new document (loading takes time), not the old one which already had 15 annotations
-        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 15")
+        # wait for the new document (loading takes time), not the old one which already had 18 annotations
+        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 18")
         # closing without changes: straight to the start page
         page.click("#btnClose")
         page.wait_for_function("window.cotare.doc === null && !document.getElementById('emptyState').hidden")
         page.wait_for_function("document.querySelectorAll('#recentList [data-doc]').length >= 1", timeout=5000)
         # reopen from Recent, one change, then close with the prompt
         page.click("#recentList [data-doc]")
-        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 15")
+        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 18")
         page.wait_for_timeout(300)
         page.keyboard.press("t")
         click(100, 30)

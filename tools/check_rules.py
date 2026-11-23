@@ -40,6 +40,7 @@ EXCEPTIONS = [
     ("i18n", "js/annots.js", "Name", "English table header for drawings in English (dlang = en)"),
     ("i18n", "js/annots.js", "Qty", "English table header for drawings in English (dlang = en)"),
     ("i18n", "js/annots.js", "Remarks", "English table header for drawings in English (dlang = en)"),
+    ("i18n", "js/annots.js", "Hole", "English table header for drawings in English (dlang = en)"),
     ("i18n", "js/main.js", "Modified dimensions", "revision table text for drawings in English (dlang = en)"),
     ("i18n", "js/tools.js", "Break all sharp edges", "default note for drawings in English (dlang = en)"),
     ("i18n", "js/tools.js", "Muchiile nespecificate se teșesc", "default note for drawings in Romanian (dlang = ro): drawing text, not interface"),

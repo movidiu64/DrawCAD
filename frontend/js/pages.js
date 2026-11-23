@@ -39,6 +39,15 @@ export function rotateAnnot(a, deg, W, H, S = null, measure = null) {
       return a;
     }
   }
+  if (a.type === "holes") {
+    // the hole letters follow the holes; the table, kept horizontal, follows its center
+    const b = S ? build({ ...a, tags: false }, S, measure).size : null;
+    const [w, h] = b || [0, 0];
+    const nc = R([a.p[0] - w / 2, a.p[1] - h / 2]);
+    a.p = [nc[0] + w / 2, nc[1] + h / 2];
+    if (Array.isArray(a.pts)) a.pts = a.pts.map(R);
+    return a;
+  }
   if (a.type === "ord" && typeof a.row === "number" && a.base) {
     // the row is a line x = row or y = row: rotate a point of it; a quarter turn swaps the axis
     const q = R(a.axis === "y" ? [a.row, a.base[1]] : [a.base[0], a.row]);

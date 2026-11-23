@@ -44,6 +44,7 @@ export const TYPE_NAMES = {
   bom: "Listă de componente",
   ink: "Înnegrire linii originale",
   ord: "Cote ordonate",
+  holes: "Tabel de găuri",
 };
 
 export function typeName(a) {
@@ -602,6 +603,108 @@ function buildBom(a, S, measure) {
   return buildTable(a, S, measure, BOM_COLS);
 }
 
+export const HOLE_COLS = [
+  { key: "tag", title: "Gaură", en: "Hole", minMm: 12 },
+  { key: "x", title: "X", minMm: 16 },
+  { key: "y", title: "Y", minMm: 16 },
+  { key: "d", title: "Ø", minMm: 14 },
+];
+const HOLE_EPS = 0.75; // pt: two points closer than this are the same hole
+
+/**
+ * Hole table from the ordinate dimensions that share one base: X and Y of every hole, measured
+ * from the base (with the values typed over the measured ones), and its diameter, read from the
+ * smallest circle centered on it (`arcs`: [cx, cy, r, a0, sweep] of the page drawing).
+ * Holes of the same diameter get the same letter (A1, A2…, B1…); without any circle, 1, 2, 3…
+ * `prev` (an earlier table) keeps the diameters typed by hand. Returns { pts, rows } or null.
+ */
+export function holeTable(ords, arcs, S, prev = null) {
+  const list = (ords || []).filter((o) => o && Array.isArray(o.base));
+  if (!list.length) return null;
+  const base = list[0].base;
+  const sameBase = list.filter((o) => Math.hypot(o.base[0] - base[0], o.base[1] - base[1]) <= HOLE_EPS);
+  const scale = S.scale || 1;
+  const near = (p, q) => Math.abs(p[0] - q[0]) <= HOLE_EPS && Math.abs(p[1] - q[1]) <= HOLE_EPS;
+  const holes = [];
+  for (const o of sameBase) {
+    const ax = o.axis === "y" ? 1 : 0;
+    const step = Number(o.round) > 0 ? Number(o.round) : 0;
+    [o.base, ...(o.pts || [])].forEach((p, idx) => {
+      if (!Array.isArray(p)) return;
+      let h = holes.find((q) => near(q.p, p));
+      if (!h) {
+        h = { p, v: [null, null], step };
+        holes.push(h);
+      }
+      const ov = o.ov && o.ov[idx] != null && Number.isFinite(Number(o.ov[idx])) ? Number(o.ov[idx]) : null;
+      if (ov != null) h.v[ax] = ov;
+      if (step) h.step = step;
+    });
+  }
+  const signed = (h, ax) => {
+    const d = ax === 0 ? h.p[0] - base[0] : base[1] - h.p[1];
+    const sign = d < 0 ? -1 : 1;
+    if (h.v[ax] != null) return sign * Math.abs(h.v[ax]);
+    let v = Math.abs(d / K) * scale;
+    if (h.step) v = Math.round(v / h.step) * h.step;
+    return sign * round(v, 2);
+  };
+  const circle = (p) => {
+    const at = (arcs || []).filter((a) => Math.hypot(a[0] - p[0], a[1] - p[1]) <= Math.max(HOLE_EPS, a[2] * 0.02) && a[2] > 0.1);
+    if (!at.length) return null;
+    // a counterbore or a thread has several circles: the smallest (nearly) full one is the hole
+    const full = at.filter((a) => Math.abs(a[4] ?? Math.PI * 2) >= Math.PI * 0.99);
+    const r = Math.min(...(full.length ? full : at).map((a) => a[2]));
+    return round((2 * r * scale) / K, 1);
+  };
+  const prevRows = prev && Array.isArray(prev.pts) ? prev.pts.map((q, i) => ({ q, r: (prev.rows || [])[i] })) : [];
+  let items = holes.map((h) => {
+    const old = prevRows.find((o) => Array.isArray(o.q) && o.r && near(o.q, h.p));
+    const dia = circle(h.p);
+    const d = old && String(old.r.d || "").trim() ? String(old.r.d).trim() : dia != null ? fmtNum(dia, S.sep, 2) : "";
+    return { p: h.p, x: signed(h, 0), y: signed(h, 1), d, circle: dia != null, base: near(h.p, base) };
+  });
+  // points without a circle are edges, not holes, as soon as some of the points are holes
+  // (on a scan there are no circles: then every point but the base is listed)
+  items = items.some((it) => it.circle) ? items.filter((it) => it.circle || (!it.base && it.d)) : items.filter((it) => !it.base);
+  if (!items.length) return null;
+  items.sort((u, w) => u.x - w.x || u.y - w.y);
+  const sizes = [...new Set(items.map((it) => it.d))].filter(Boolean);
+  const dnum = (d) => parseFloat(String(d).replace(",", ".").replace(/^[^\d.-]+/, ""));
+  sizes.sort((u, w) => (dnum(u) || 0) - (dnum(w) || 0) || u.localeCompare(w));
+  const letters = "ABCDEFGHJKLMNPRSTUVWXYZ";
+  const count = {};
+  const rows = items.map((it) => {
+    let tag;
+    if (!sizes.length) tag = String(items.indexOf(it) + 1);
+    else {
+      const g = it.d ? sizes.indexOf(it.d) : sizes.length;
+      const L = letters[g % letters.length] + (g >= letters.length ? String(Math.floor(g / letters.length)) : "");
+      count[L] = (count[L] || 0) + 1;
+      tag = `${L}${count[L]}`;
+    }
+    return { tag, x: fmtNum(it.x, S.sep, 3), y: fmtNum(it.y, S.sep, 3), d: it.d };
+  });
+  return { base: [...base], pts: items.map((it) => [...it.p]), rows };
+}
+
+function buildHoles(a, S, measure) {
+  const b = buildTable(a, S, measure, HOLE_COLS);
+  if (a.tags === false) return b;
+  // the hole letters next to the holes, up and to the right, clear of the circle
+  const c = a.layer || "add";
+  (a.pts || []).forEach((q, i) => {
+    const r = (a.rows || [])[i];
+    if (!Array.isArray(q) || !r || !String(r.tag || "").trim()) return;
+    const dmm = parseFloat(String(r.d || "").replace(",", ".").replace(/^[^\d.]+/, ""));
+    const rad = Number.isFinite(dmm) ? ((dmm / 2) * K) / (S.scale || 1) : 0;
+    const off = rad * 0.75 + S.h * 0.45;
+    const txt = String(r.tag).trim();
+    b.prims.push({ t: "T", p: [q[0] + off, q[1] - off], s: S.F, a: 0, txt, tw: measure(txt, S.F), c });
+  });
+  return b;
+}
+
 function buildTable(a, S, measure, COLS) {
   const c = a.layer || "add";
   const h = S.h;
@@ -985,7 +1088,7 @@ function buildOrd(a, S, measure) {
   };
 }
 
-const BUILDERS = { ord: buildOrd, dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, ink: buildInk, shape: buildShape, section: buildSection, detail: buildDetail, balloon: buildBalloon, bom: buildBom };
+const BUILDERS = { ord: buildOrd, dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, ink: buildInk, shape: buildShape, section: buildSection, detail: buildDetail, balloon: buildBalloon, bom: buildBom, holes: buildHoles };
 
 // characters without a glyph in osifont → existing equivalents (same on screen and in the PDF)
 const GLYPH_SUBST = { "…": "...", "„": '"', "”": '"', "“": '"', "«": '"', "»": '"', "‚": ",", "‘": "'", "\u00a0": " ", "−": "-" };
@@ -994,7 +1097,7 @@ export function fontSafe(txt) {
   return String(txt ?? "").replace(GLYPH_RE, (ch) => GLYPH_SUBST[ch]);
 }
 
-export const SCALABLE = new Set(["ord", "dim", "rad", "ang", "rough", "lead", "text", "note", "gdt", "datum", "strike", "revtab", "section", "detail", "balloon", "bom"]);
+export const SCALABLE = new Set(["ord", "dim", "rad", "ang", "rough", "lead", "text", "note", "gdt", "datum", "strike", "revtab", "section", "detail", "balloon", "bom", "holes"]);
 export const SCALE_MIN = 0.3;
 export const SCALE_MAX = 5;
 
@@ -1141,6 +1244,11 @@ export function setHandle(a, k, pt, built) {
 
 export function moveAnnot(a, dx, dy) {
   const mv = (p) => (p ? [p[0] + dx, p[1] + dy] : p);
+  if (a.type === "holes") {
+    // the table moves; the hole letters stay on the holes
+    a.p = mv(a.p);
+    return;
+  }
   for (const k of ["p1", "p2", "p3", "c", "p", "v", "target", "pos", "vp", "tp", "elbow", "base"]) if (a[k]) a[k] = mv(a[k]);
   if (a.type === "ord" && typeof a.row === "number") a.row += a.axis === "y" ? dx : dy;
   if (a.pts) a.pts = a.pts.map(mv);

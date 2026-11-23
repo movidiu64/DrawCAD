@@ -424,6 +424,30 @@ export class Panel {
       <div class="sub">Cu antetul jos, poziția 1 stă lângă antet și numerele cresc în sus (ISO 7573). Pătrățelul e colțul dreapta-jos.</div></div>`;
   }
 
+  html_holes(a) {
+    const rows = a.rows || [];
+    const inp = (i, col, v, extra = "") => `<input type="text" class="mono" data-row="${i}" data-col="${col}" value="${esc(v)}" ${extra}>`;
+    const cells = rows.map((r, i) => `<div class="rtrow hlrow">
+        ${inp(i, "tag", r.tag, 'aria-label="Gaură" style="text-align:center"')}
+        ${inp(i, "x", r.x, 'aria-label="X" placeholder="X"')}
+        ${inp(i, "y", r.y, 'aria-label="Y" placeholder="Y"')}
+        ${inp(i, "d", r.d, 'aria-label="Diametru" placeholder="Ø"')}
+        <button class="icon" data-act="hldel" data-v="${i}" aria-label="Șterge rândul" title="Șterge rândul"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>`).join("");
+    return `<div class="sec"><div class="h">Găuri</div>
+      <div class="rtlist">${cells || `<span class="sub">Niciun rând.</span>`}</div>
+      <div class="btns"><button class="ghost" data-act="hlsync">Actualizează din cote</button></div>
+      <div class="sub">X și Y vin din cotele ordonate (DOR) cu aceeași bază, cu valorile corectate acolo; Ø din cel mai mic cerc al găurii. Găurile cu același diametru primesc aceeași literă. „Actualizează din cote” refă tabelul după ce ai schimbat cotele; diametrele scrise de mână rămân.</div></div>
+      <div class="sec"><div class="h">Așezare</div>
+      <div class="field"><span class="lbl">Etichete la găuri</span><div class="seg">
+        <button data-act="hltags" data-v="1" class="${a.tags !== false ? "on" : ""}">Afișate</button>
+        <button data-act="hltags" data-v="0" class="${a.tags === false ? "on" : ""}">Ascunse</button></div></div>
+      <div class="seg">
+        <button data-act="rthead" data-v="top" class="${a.headerBottom === false ? "on" : ""}">Antet sus</button>
+        <button data-act="rthead" data-v="bottom" class="${a.headerBottom !== false ? "on" : ""}">Antet jos</button></div>
+      <div class="sub">Pătrățelul e colțul dreapta-jos al tabelului. Mutat, tabelul își lasă etichetele pe găuri.</div></div>`;
+  }
+
   html_lead(a) {
     return `<div class="sec"><div class="h">Text</div>
       <div class="field"><label for="lTxt">Conținut (Enter = rând nou)</label><textarea id="lTxt" data-f="text" rows="3" spellcheck="false">${esc(a.text)}</textarea></div>
@@ -826,6 +850,18 @@ export class Panel {
         break;
       case "rtdel":
         upd((x) => { x.rows = (x.rows || []).filter((_r, j) => j !== Number(v)); });
+        break;
+      case "hldel":
+        upd((x) => {
+          x.rows = (x.rows || []).filter((_r, j) => j !== Number(v));
+          x.pts = (x.pts || []).filter((_q, j) => j !== Number(v));
+        });
+        break;
+      case "hlsync":
+        upd((x) => { app.holeTableSync(x); });
+        break;
+      case "hltags":
+        upd((x) => { x.tags = v === "1"; });
         break;
       case "gelbow":
         upd((a) => { delete a.elbow; });

@@ -96,6 +96,10 @@ export const TOOLS = [
       lines.push([pts[pts.length - 1], cur]);
       return { lines };
     } },
+  { id: "holes", label: "Tabel găuri", key: "", group: "Cote", icon: "M3 4h11v9H3zM3 7h11M7 4v9M10 4v9M18 15.5a2.5 2.5 0 1 0 0.01 0M18 15.5h0",
+    kind: "clicks", n: 1,
+    hint: "Click pentru colțul dreapta-jos al tabelului · X, Y și Ø se iau din cotele ordonate ale paginii (DOR) și din cercurile găurilor",
+    make: (pts, app) => app.holeTableAt(pts[0]) },
   { id: "dimAng", label: "Unghi", key: "U", group: "Cote", icon: "M4 20h16M4 20L17 6M12 20a8 8 0 0 0-2.6-5.9",
     kind: "clicks", n: 4, hint: "Vârful → un punct pe prima latură → un punct pe a doua → poziția arcului (alege sectorul)",
     make: (pts) => ({ type: "ang", v: pts[0], p1: pts[1], p2: pts[2], p3: pts[3], nominal: null, tol: { mode: "none" } }),

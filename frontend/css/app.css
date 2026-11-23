@@ -148,6 +148,7 @@ textarea { width: 100%; min-height: 120px; padding: 8px 9px; border: 1px solid v
 .rtlist { display: flex; flex-direction: column; gap: 8px; }
 .rtrow { display: grid; grid-template-columns: 52px minmax(0, 1fr) minmax(0, 1fr) 34px; gap: 4px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
 .rtrow input { height: 30px; }
+.rtrow.hlrow { grid-template-columns: 52px repeat(3, minmax(0, 1fr)) 34px; }
 .rtrow button.icon { width: 34px; height: 30px; }
 .rtrow button.icon svg { width: 16px; height: 16px; }
 .seg { display: flex; gap: 2px; padding: 3px; background: var(--bg); border-radius: 8px; }

@@ -1,6 +1,6 @@
 // The application: state, tools, events, saving, export.
 import * as api from "./api.js";
-import { build, derive, hit, setHandle, moveAnnot, annotSnapPoints, exportPrims, K, fmtNum, newId, scaleAnchor, typeName, SCALE_MIN, SCALE_MAX } from "./annots.js";
+import { build, derive, hit, holeTable, setHandle, moveAnnot, annotSnapPoints, exportPrims, K, fmtNum, newId, scaleAnchor, typeName, SCALE_MIN, SCALE_MAX } from "./annots.js";
 import { View, COLORS } from "./view.js";
 import { Snapper, MODES, DEFAULT_MODES, LABELS } from "./osnap.js";
 import { Panel } from "./panel.js";
@@ -273,7 +273,9 @@ class App {
           if (d > 0.1) dlg.calibDialog(this, d);
           return;
         }
-        this.addAnnot(finalize(t.make(pts, this)));
+        const made = t.make(pts, this);
+        if (!made) return; // nothing to make (the tool says why)
+        this.addAnnot(finalize(made));
         if (!t.chain) this.clearAcq();
         if (t.chain) {
           // like LINE in CAD: the next segment starts at the end of the one just drawn
@@ -814,6 +816,8 @@ class App {
       case "revtab":
       case "bom":
         return `${(a.rows || []).length} rânduri`;
+      case "holes":
+        return `${(a.rows || []).length} găuri`;
       default:
         return "";
     }
@@ -998,7 +1002,7 @@ class App {
     if (this.compact()) {
       // on small screens the panel opens by itself only when there is something to type or an annotation is picked
       const a = id && this.annots.find((x) => x.id === id);
-      const typing = a && ["text", "note", "lead", "strike", "revtab", "bom", "gdt", "rough", "balloon", "datum"].includes(a.type);
+      const typing = a && ["text", "note", "lead", "strike", "revtab", "bom", "holes", "gdt", "rough", "balloon", "datum"].includes(a.type);
       if (!id) this.setPanelOpen(false);
       else if (this.tool === "select" || typing) this.setPanelOpen(true);
     }
@@ -1166,6 +1170,53 @@ class App {
 
   defaultTol() {
     return { mode: "none" };
+  }
+
+  /** Circles of the page: the original drawing and the shapes drawn on it. */
+  pageArcs() {
+    const arcs = [...(this.hidden.has("orig") ? [] : this.snapper.arcs || [])];
+    for (const { built } of this.visibleBuilt()) if (built.snap && built.snap.arcs) arcs.push(...built.snap.arcs);
+    return arcs;
+  }
+
+  /** The ordinate dimensions a hole table is made from: those sharing the base of the selected
+   *  set, or else of the set with the most points. */
+  holeOrds(base = null) {
+    const ords = this.annots.filter((a) => a.page === this.page && a.type === "ord" && Array.isArray(a.base));
+    if (!ords.length) return [];
+    const same = (u, w) => Math.hypot(u[0] - w[0], u[1] - w[1]) <= 0.75;
+    const sel = this.selectedAll().find((a) => a.type === "ord" && a.page === this.page);
+    let b = base || (sel && sel.base);
+    if (!b || !ords.some((o) => same(o.base, b))) b = [...ords].sort((u, w) => (w.pts || []).length - (u.pts || []).length)[0].base;
+    return ords.filter((o) => same(o.base, b));
+  }
+
+  holeTableAt(p) {
+    const t = holeTable(this.holeOrds(), this.pageArcs(), this.S());
+    if (!t) {
+      dlg.toast("Tabelul de găuri se face din cotele ordonate ale paginii: cotează întâi găurile cu DOR, pe X și pe Y, din aceeași bază.");
+      return null;
+    }
+    return { type: "holes", p, pts: t.pts, rows: t.rows, headerBottom: false };
+  }
+
+  /** Recomputes a hole table from the ordinates (diameters typed by hand are kept). */
+  holeTableSync(a) {
+    const near = (a.pts || []).find(Array.isArray);
+    let base = null;
+    if (near) {
+      // the base of the ordinate set that measures these holes
+      const o = this.annots.find((x) => x.page === a.page && x.type === "ord" && [x.base, ...(x.pts || [])].some((q) => Array.isArray(q) && Math.hypot(q[0] - near[0], q[1] - near[1]) <= 0.75));
+      if (o) base = o.base;
+    }
+    const t = holeTable(this.holeOrds(base), this.pageArcs(), this.S(), a);
+    if (!t) {
+      dlg.toast("Nu mai există cote ordonate pe pagină: tabelul a rămas cum era.");
+      return false;
+    }
+    a.pts = t.pts;
+    a.rows = t.rows;
+    return true;
   }
 
   nextViewLetter() {
@@ -1884,7 +1935,7 @@ class App {
     if (k === "tx") return "Mută textul cotei";
     if (k === "elbow") return "Cotul liniei — frânge linia";
     if (k === "target") return "Vârful pe piesă";
-    if (k === "pos" || (k === "p" && ["text", "note", "revtab", "bom"].includes(a.type))) return "Mută";
+    if (k === "pos" || (k === "p" && ["text", "note", "revtab", "bom", "holes"].includes(a.type))) return "Mută";
     if (k === "vp") return "Partea spre care privești";
     if (k === "tp") return "Mută litera";
     if (k === "r0" || k === "r1") return "Colț — redimensionează";
@@ -1902,7 +1953,7 @@ class App {
       const an = scaleAnchor(a);
       return (h.p[0] - an[0]) * (h.p[1] - an[1]) >= 0 ? "nwse-resize" : "nesw-resize";
     }
-    if (h.k === "pos" || h.k === "tp" || (h.k === "p" && ["text", "note", "revtab", "bom"].includes(a.type))) return "move";
+    if (h.k === "pos" || h.k === "tp" || (h.k === "p" && ["text", "note", "revtab", "bom", "holes"].includes(a.type))) return "move";
     return "grab";
   }
 
