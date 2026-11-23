@@ -303,6 +303,38 @@ def main(url, out):
         page.keyboard.press("Escape")
         last = page.evaluate("window.cotare.annots.filter(a => a.type === 'shape' && a.kind === 'line').slice(-1)[0].pts.map(p => p.map(v => Math.round(v / (72/25.4) * 100) / 100))")
         assert last == [[145, 167.5], [145, 177.5]], last
+        # 18. prompts and options (direct keys: an option letter of the prompt goes to the command
+        # line): DLI forced vertical with a typed value, a line chain with Undo and Close, a circle
+        # by its diameter, then the F2 history
+        def typed(*items):
+            for txt in items:
+                page.keyboard.type(txt)
+                page.keyboard.press("Enter")
+        page.click('[data-tool="ucs"]')
+        typed("w")  # World: back to the page corner
+        page.keyboard.press("d")
+        typed("20,40", "@30,20", "v", "t", "25", "@-15,0")
+        dim = page.evaluate("(() => { const a = window.cotare.annots.filter(a => a.type === 'dim').slice(-1)[0]; return [a.orient, a.nominal, Math.round(window.cotare.builtOf(a).measured * 100) / 100]; })()")
+        assert dim == ["v", 25, 20], dim
+        page.keyboard.press("Escape")
+        page.keyboard.press("i")
+        typed("100,100", "@20,0", "@0,20", "u", "@0,30", "c")
+        chain = page.evaluate("""window.cotare.annots.filter(a => a.type === 'shape' && a.kind === 'line').slice(-3)
+            .map(a => a.pts.map(p => [Math.round(p[0] / (72/25.4) * 10) / 10, Math.round(((window.cotare.doc.pages[0].h - p[1]) / (72/25.4)) * 10) / 10]))""")
+        assert chain == [[[100, 100], [120, 100]], [[120, 100], [120, 130]], [[120, 130], [100, 100]]], chain
+        page.keyboard.press("Escape")
+        page.keyboard.press("y")
+        typed("150,100", "d", "16")
+        r = page.evaluate("(() => { const a = window.cotare.annots.filter(a => a.type === 'shape' && a.kind === 'circle').slice(-1)[0]; return Math.round(Math.hypot(a.pts[1][0] - a.pts[0][0], a.pts[1][1] - a.pts[0][1]) / (72/25.4) * 100) / 100; })()")
+        assert r == 8, r
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
+        page.keyboard.press("F2")
+        page.wait_for_selector("#hLog")
+        hist = page.inner_text("#hLog")
+        assert "@0,30" in hist and "[C]" in hist and "Diametrul" in hist, hist
+        page.screenshot(path=str(out / "istoric_f2.png"))
+        page.keyboard.press("F2")
         page.keyboard.press("Escape")
         page.keyboard.press("f")
         page.wait_for_timeout(300)
@@ -314,7 +346,7 @@ def main(url, out):
         page.screenshot(path=str(out / "editor.png"))
 
         kinds = page.evaluate("window.cotare.annots.map(a => a.type)")
-        assert len(kinds) == 26, kinds
+        assert len(kinds) == 30, kinds
 
         # export
         page.click("#btnExport")
@@ -358,15 +390,15 @@ def main(url, out):
         # reopen: dimensions come back editable
         prev_id = page.evaluate("window.cotare.doc.id")
         page.set_input_files("#fileInput", str(path))
-        # wait for the new document (loading takes time), not the old one which already had 26 annotations
-        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 26")
+        # wait for the new document (loading takes time), not the old one which already had 30 annotations
+        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 30")
         # closing without changes: straight to the start page
         page.click("#btnClose")
         page.wait_for_function("window.cotare.doc === null && !document.getElementById('emptyState').hidden")
         page.wait_for_function("document.querySelectorAll('#recentList [data-doc]').length >= 1", timeout=5000)
         # reopen from Recent, one change, then close with the prompt
         page.click("#recentList [data-doc]")
-        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 26")
+        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 30")
         page.wait_for_timeout(300)
         page.keyboard.press("t")
         click(100, 30)

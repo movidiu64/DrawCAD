@@ -748,6 +748,25 @@ export function settingsDialog(app) {
 }
 
 // ------------------------------------------------------------------ keys and commands
+/** F2: the session's commands, typed points, options and answers, newest at the bottom. */
+export function historyDialog(app) {
+  const log = app.cmdLog || [];
+  const pad = (n) => String(n).padStart(2, "0");
+  const rows = log.map((r) => `<div><span class="tm">${pad(r.t.getHours())}:${pad(r.t.getMinutes())}:${pad(r.t.getSeconds())}</span> ${esc(r.text)}</div>`).join("");
+  const dlg = showModal(`
+    <h2>Istoricul comenzilor</h2>
+    <div class="histlog" id="hLog">${rows || `<span class="muted">Nicio comandă în această sesiune.</span>`}</div>
+    <div class="foot"><span class="muted" style="flex:1">F2 închide · ↑ / ↓ în linia de comandă reiau comenzile</span><button class="primary" data-close>Închide</button></div>`);
+  const box = dlg.querySelector("#hLog");
+  box.scrollTop = box.scrollHeight;
+  dlg.addEventListener("keydown", (e) => {
+    if (e.key === "F2") {
+      e.preventDefault();
+      closeModal();
+    }
+  });
+}
+
 export function keysDialog(app) {
   let cfg = JSON.parse(JSON.stringify(keyConfig()));
   const rowsHtml = () => {

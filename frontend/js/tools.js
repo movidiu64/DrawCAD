@@ -1,5 +1,5 @@
 // Tool definitions: icon, key, steps and the annotation they produce.
-import { newId, K, dimSeries } from "./annots.js";
+import { newId, K, dimSeries, parseNum } from "./annots.js";
 import { trackSweep } from "./shapes.js";
 
 const shape = (app, kind, pts, extra = {}) => ({ type: "shape", kind, pts, ...app.drawStyle, ...extra });
@@ -271,6 +271,126 @@ export const TOOLS = [
     hint: "Click pe capetele unei cote cunoscute → introduci valoarea reală",
     preview(pts, cur) { return { line: [pts[0], cur] }; } },
 ];
+
+// ------------------------------------------------------------------ prompts and options (CMD-D5)
+// Each tool step has a prompt; options are chosen in the command line by AutoCAD's English keyword
+// letter (or the whole word, in English or Romanian) or by a click. `run(app)` acts on the app.
+
+const DIM_PROMPTS = ["Originea primei linii ajutătoare", "Originea celei de-a doua linii ajutătoare", "Poziția liniei de cotă"];
+const PROMPTS = {
+  ucs: ["Originea (0,0)"],
+  measure: ["Primul punct", "Al doilea punct"],
+  dimLin: DIM_PROMPTS,
+  dimAli: DIM_PROMPTS,
+  dimDia: DIM_PROMPTS,
+  dimDiaC: ["Centrul", "Un punct pe cerc", "Poziția textului"],
+  dimRad: ["Centrul", "Un punct pe arc", "Capătul liniei de cotă"],
+  dimAng: ["Vârful unghiului", "Un punct pe prima latură", "Un punct pe a doua latură", "Poziția arcului"],
+  dimOrd: ["Baza (cota 0)", "Punctul de cotat (Enter = gata)"],
+  dimCont: ["Primul punct", "Punctul următor (Enter = gata)"],
+  dimBase: ["Baza", "Punctul de cotat (Enter = gata)"],
+  line: ["Primul punct", "Punctul următor"],
+  poly: ["Primul vârf", "Vârful următor (Enter = gata)"],
+  rect: ["Primul colț", "Colțul opus"],
+  circle: ["Centrul", "Raza sau un punct pe cerc"],
+};
+const PLACE_PROMPTS = {
+  dimOrd: "Poziția rândului de cote",
+  dimCont: "Poziția liniei de cotă",
+  dimBase: "Poziția primei linii de cotă",
+};
+
+const optText = {
+  key: "T", label: "Text", en: ["TEXT"],
+  run: (app) => app.askValue("Textul cotei (un număr = valoarea nominală; gol = valoarea măsurată)", (v) => {
+    app.cmdState.text = v;
+    return true;
+  }),
+};
+const optUndo = { key: "U", label: "Anulează pasul", en: ["UNDO", "ANULEAZA"], when: (app) => app.clicks.length > 0 || !!(app.chain && app.chain.ids.length), run: (app) => app.undoStep() };
+const optClose = { key: "C", label: "Închide", en: ["CLOSE"], run: (app) => app.closeStep() };
+
+const OPTIONS = {
+  dimLin: [
+    optText,
+    { key: "H", label: "Orizontal", en: ["HORIZONTAL"], run: (app) => { app.cmdState.orient = "h"; } },
+    { key: "V", label: "Vertical", en: ["VERTICAL"], run: (app) => { app.cmdState.orient = "v"; } },
+  ],
+  dimAli: [optText],
+  dimDia: [optText],
+  dimDiaC: [optText],
+  dimRad: [optText],
+  dimAng: [optText],
+  dimOrd: [
+    { key: "X", label: "Pe X", en: ["XDATUM"], run: (app) => { app.cmdState.axis = "x"; } },
+    { key: "Y", label: "Pe Y", en: ["YDATUM"], run: (app) => { app.cmdState.axis = "y"; } },
+    optUndo,
+  ],
+  dimCont: [optUndo],
+  dimBase: [optUndo],
+  line: [optUndo, { ...optClose, when: (app) => !!(app.chain && app.chain.ids.length >= 2) }],
+  poly: [optUndo, { ...optClose, when: (app) => app.clicks.length >= 3 }],
+  circle: [{
+    key: "D", label: "Diametru", en: ["DIAMETER"], when: (app) => app.clicks.length === 1,
+    run: (app) => app.askValue("Diametrul (mm reali)", (v) => app.circleByDiameter(parseNum(v))),
+  }],
+  rect: [{
+    key: "D", label: "Dimensiuni", en: ["DIMENSIONS"], when: (app) => app.clicks.length === 1,
+    run: (app) => app.askValue("Lungimea pe X (mm reali)", (v) => {
+      const w = parseNum(v);
+      if (!(Math.abs(w) > 0)) return false;
+      app.askValue("Lățimea pe Y (mm reali)", (v2) => app.rectBySize(w, parseNum(v2)));
+      return true;
+    }),
+  }],
+  ucs: [{ key: "W", label: "Colțul paginii", en: ["WORLD"], run: (app) => app.ucsWorld() }],
+};
+
+/** The prompt of a tool in the current state: { text, opts } (opts only those available now). */
+export function promptFor(t, app) {
+  if (!t) return { text: "", opts: [] };
+  const list = PROMPTS[t.id];
+  const n = (app.clicks || []).length;
+  let text = app.placing && PLACE_PROMPTS[t.id] ? PLACE_PROMPTS[t.id] : list ? list[Math.min(n, list.length - 1)] : `Punctul ${n + 1}`;
+  if (app.cmdState && app.cmdState.orient) text += app.cmdState.orient === "h" ? " (orizontal)" : " (vertical)";
+  if (app.cmdState && app.cmdState.axis) text += ` (pe ${app.cmdState.axis.toUpperCase()})`;
+  const opts = (OPTIONS[t.id] || []).filter((o) => !o.when || o.when(app));
+  return { text, opts };
+}
+
+const fold = (s) => String(s || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "");
+
+/** The option a typed text means: the key letter, the English keyword or the Romanian label. */
+export function resolveOption(opts, text) {
+  const q = fold(text);
+  if (!q) return null;
+  return (opts || []).find((o) => o.key === q || (o.en || []).includes(q) || fold(o.label) === q) || null;
+}
+
+/** Options and typed text applied to what a dimension tool makes (also to its preview). */
+function applyDimState(a, st, cur) {
+  if (!a || Array.isArray(a) || !st) return a;
+  if (st.orient && a.type === "dim" && a.kind === "lin") a.orient = st.orient;
+  if (st.axis && a.type === "ord") {
+    a.axis = st.axis;
+    const at = cur || a.pts[a.pts.length - 1] || a.base;
+    a.row = st.axis === "x" ? at[1] : at[0];
+  }
+  if (st.text != null && String(st.text).trim() !== "" && ["dim", "rad", "ang"].includes(a.type)) {
+    const v = parseNum(st.text);
+    if (v != null) a.nominal = v;
+    else a.textOverride = String(st.text).trim();
+  }
+  return a;
+}
+
+for (const t of TOOLS) {
+  if (!OPTIONS[t.id] || !t.make || !["dimLin", "dimAli", "dimDia", "dimDiaC", "dimRad", "dimAng", "dimOrd"].includes(t.id)) continue;
+  const make = t.make;
+  t.make = function (pts, app, closed, cur) {
+    return applyDimState(make.call(this, pts, app, closed, cur), app && app.cmdState, cur);
+  };
+}
 
 export const TOOL_BY_ID = Object.fromEntries(TOOLS.map((t) => [t.id, t]));
 export const TOOL_BY_KEY = Object.fromEntries(TOOLS.filter((t) => t.key).map((t) => [t.key.toLowerCase(), t]));

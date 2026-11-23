@@ -4,14 +4,16 @@ import { build, derive, hit, holeTable, setHandle, moveAnnot, annotSnapPoints, e
 import { View, COLORS } from "./view.js";
 import { Snapper, MODES, DEFAULT_MODES, LABELS } from "./osnap.js";
 import { Panel } from "./panel.js";
-import { TOOLS, TOOL_BY_ID, finalize } from "./tools.js";
+import { TOOLS, TOOL_BY_ID, finalize, promptFor, resolveOption } from "./tools.js";
 import { parsePoint, resolvePoint, toUser, defaultOrigin, orthoActive, routeKey } from "./pointin.js";
 import * as dlg from "./dialogs.js";
 import { VIEW_LETTERS } from "./symbols.js";
 import { markingConfig, MM_ICONS } from "./mmenu.js";
-import { keyConfig, directKeyMap, resolveCommand, suggest, commandList } from "./commands.js";
+import { keyConfig, directKeyMap, resolveCommand, suggest, commandList, labelOf } from "./commands.js";
 import { applyPageOp } from "./pages.js";
 import { startI18n, lang as uiLang, tr } from "./i18n.js";
+
+const esc = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
 const $ = (id) => document.getElementById(id);
 /** Short hash (FNV-1a) for render keys. */
@@ -92,6 +94,12 @@ class App {
    */
   escape(confirm = false) {
     const t = TOOL_BY_ID[this.tool];
+    if (this.cmdAsk) {
+      // a value asked for by an option: dropped, the command goes on
+      this.cmdAsk = null;
+      this.updateCmdPrompt();
+      return;
+    }
     if (this.rectStart) {
       // a typed first corner of a drag tool: dropped
       this.rectStart = null;
@@ -124,6 +132,7 @@ class App {
       return;
     }
     if (this.acq.length || this.parDir) this.clearAcq();
+    this.chain = null;
     if (this.clicks.length) {
       this.clicks = [];
       this.view.overlay = null;
@@ -285,10 +294,12 @@ class App {
         }
         const made = t.make(pts, this);
         if (!made) return; // nothing to make (the tool says why)
-        this.addAnnot(finalize(made));
+        this.addMade(made);
         if (!t.chain) this.clearAcq();
         if (t.chain) {
           // like LINE in CAD: the next segment starts at the end of the one just drawn
+          if (!this.chain) this.chain = { first: pts[0], ids: [] };
+          this.chain.ids.push(this.annots[this.annots.length - 1].id);
           this.clicks = [pts[pts.length - 1]];
           this.updateOverlay(pt, null);
         }
@@ -339,6 +350,7 @@ class App {
     const q = parsePoint(text);
     if (!q) return false;
     const r = resolvePoint(q, { last: this.lastPoint(), cursor: this._dynPt || null, origin: this.originOf(), scale: this.settings.scale });
+    this.logCmd(`  ${String(text).trim()}${r.error ? ` — ${r.error}` : ""}`);
     if (r.error) {
       dlg.toast(r.error);
       return true;
@@ -372,12 +384,144 @@ class App {
     this.updateCmdPrompt();
   }
 
-  /** The command line's placeholder: the point syntax while a command runs. */
+  /** The prompt of the running command, with its options as buttons (CMD-D5). */
   updateCmdPrompt() {
     const inp = $("cmdIn");
+    const box = $("cmdPrompt");
     if (!inp || !this.keyCfg) return;
-    if (this.cmdActive()) inp.placeholder = "Punct: click, x,y · @dx,dy · @d<unghi · sau o comandă";
-    else inp.placeholder = this.keyCfg.mode === "autocad" ? "Comandă (L, C, PL, DLI…)" : "Enter → comandă (L, C, DLI…)";
+    if (this.cmdAsk) {
+      inp.placeholder = "valoare, apoi Enter (Esc renunță)";
+      if (box) {
+        box.innerHTML = `<b>${esc(this.cmdAsk.text)}:</b>`;
+        box.hidden = false;
+      }
+      return;
+    }
+    if (!this.cmdActive()) {
+      inp.placeholder = this.keyCfg.mode === "autocad" ? "Comandă (L, C, PL, DLI…)" : "Enter → comandă (L, C, DLI…)";
+      if (box) box.hidden = true;
+      return;
+    }
+    inp.placeholder = "x,y · @dx,dy · @d<unghi · opțiune";
+    const pr = promptFor(TOOL_BY_ID[this.tool], this);
+    if (!box) return;
+    const opts = pr.opts.map((o) => `<button type="button" data-opt="${o.key}" title="${esc(o.label)} (${o.key})">${esc(o.label)} <i>${o.key}</i></button>`).join("");
+    box.innerHTML = `<b>${esc(pr.text)}</b>${opts ? ` <span class="cmdopts">${opts}</span>` : ""}`;
+    box.hidden = false;
+    box.querySelectorAll("[data-opt]").forEach((b) => b.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      this.runOption(b.dataset.opt);
+    }));
+  }
+
+  /** The options of the running command, available now. */
+  currentOptions() {
+    return this.cmdActive() && !this.cmdAsk ? promptFor(TOOL_BY_ID[this.tool], this).opts : [];
+  }
+
+  /** Runs an option of the running command (typed or clicked). */
+  runOption(keyOrText) {
+    const o = resolveOption(this.currentOptions(), keyOrText);
+    if (!o) return false;
+    this.logCmd(`  [${o.key}] ${o.label}`);
+    o.run(this);
+    this.frame++;
+    if (this._dynPt) this.updateOverlay(this._dynPt, null);
+    this.updateCmdPrompt();
+    return true;
+  }
+
+  /** An option that needs a value: the next Enter in the command line answers it. */
+  askValue(text, onValue) {
+    this.cmdAsk = { text, onValue };
+    this.updateCmdPrompt();
+    this.focusCmdLine("");
+    return true;
+  }
+
+  /** U while drawing: the last point (or the last segment of a line chain) goes away. */
+  undoStep() {
+    const t = TOOL_BY_ID[this.tool];
+    if (t && t.chain && this.chain && this.chain.ids.length) {
+      const id = this.chain.ids.pop();
+      const a = this.annots.find((x) => x.id === id);
+      this.pushHistory();
+      this.annots = this.annots.filter((x) => x.id !== id);
+      this.sel.delete(id);
+      if (this.selectedId === id) this.selectedId = null;
+      this.clicks = a && a.pts ? [a.pts[0]] : [];
+      this.changed();
+      if (!this.chain.ids.length && !this.clicks.length) this.chain = null;
+    } else if (this.placing) {
+      this.placing = false;
+    } else if (this.clicks.length) {
+      this.clicks.pop();
+      if (t && t.chain && !this.clicks.length) this.chain = null;
+    } else {
+      dlg.toast("Nimic de anulat în comanda curentă");
+    }
+    if (this._dynPt && this.clicks.length) this.updateOverlay(this._dynPt, null);
+    else {
+      this.view.overlay = null;
+      this.view.redraw();
+    }
+  }
+
+  /** C: closes a line chain or a polyline. */
+  closeStep() {
+    const t = TOOL_BY_ID[this.tool];
+    if (t && t.kind === "poly") {
+      if (this.clicks.length >= 3) this.finishPoly(true);
+      return;
+    }
+    if (t && t.chain && this.chain && this.clicks.length) {
+      const first = this.chain.first;
+      this.toolClick(first);
+      this.chain = null;
+      this.clicks = [];
+      this.view.overlay = null;
+      this.view.redraw();
+    }
+  }
+
+  /** CIRCLE, option Diameter: a typed diameter in real mm. */
+  circleByDiameter(d) {
+    if (!(d > 0) || !this.clicks.length) return false;
+    const c = this.clicks[0];
+    const k = Number(this.settings.scale) || 1;
+    this.toolClick([c[0] + (d / 2 / k) * K, c[1]]);
+    return true;
+  }
+
+  /** RECTANG, option Dimensions: length and width in real mm, towards the cursor's quadrant. */
+  rectBySize(w, h) {
+    if (!(Math.abs(w) > 0) || !(Math.abs(h) > 0) || !this.clicks.length) return false;
+    const c = this.clicks[0];
+    const cur = this._dynPt || [c[0] + 1, c[1] - 1];
+    const k = Number(this.settings.scale) || 1;
+    const sx = cur[0] >= c[0] ? 1 : -1;
+    const sy = cur[1] <= c[1] ? 1 : -1; // up on the sheet = Y up
+    this.toolClick([c[0] + sx * (Math.abs(w) / k) * K, c[1] - sy * (Math.abs(h) / k) * K]);
+    return true;
+  }
+
+  /** UCS, option World: the origin goes back to the bottom-left corner of the page. */
+  ucsWorld() {
+    const had = this.annots.some((a) => a.type === "ucs" && a.page === this.page);
+    if (had) {
+      this.pushHistory();
+      this.annots = this.annots.filter((a) => !(a.type === "ucs" && a.page === this.page));
+      this.changed();
+    }
+    dlg.toast("Originea coordonatelor: colțul stânga-jos al paginii");
+    this.setTool("select");
+  }
+
+  /** Session log for the history window (F2). */
+  logCmd(text) {
+    if (!this.cmdLog) this.cmdLog = [];
+    this.cmdLog.push({ t: new Date(), text });
+    if (this.cmdLog.length > 500) this.cmdLog.shift();
   }
 
   /** Finishes the polyline or hatch in progress. */
@@ -594,6 +738,9 @@ class App {
     this.clicks = [];
     this.placing = false;
     this.rectStart = null;
+    this.cmdState = {};
+    this.cmdAsk = null;
+    this.chain = null;
     if (this.dyn) this.dynReset();
     if ($("dynBox")) $("dynBox").hidden = true;
     this.lastMeasure = null;
@@ -1143,6 +1290,8 @@ class App {
   /** Adds what a tool made: one annotation, or several at once (a series of dimensions),
    *  as one undo step. */
   addMade(made) {
+    const t = TOOL_BY_ID[this.tool];
+    if (!(t && t.chain)) this.cmdState = {};
     if (!Array.isArray(made)) {
       if (made) this.addAnnot(finalize(made));
       return;
@@ -2351,7 +2500,7 @@ class App {
     const show = () => {
       hIdx = -1;
       // a point being typed: no command suggestions
-      list = this.cmdActive() && /^[\s@#<0-9.+\-]/.test(inp.value) ? [] : suggest(inp.value, this.keyCfg);
+      list = this.cmdAsk || (this.cmdActive() && (/^[\s@#<0-9.+\-]/.test(inp.value) || resolveOption(this.currentOptions(), inp.value))) ? [] : suggest(inp.value, this.keyCfg);
       pick = 0;
       if (!list.length) {
         box.hidden = true;
@@ -2394,12 +2543,36 @@ class App {
       if (e.key === "Enter" || e.key === " " || e.key === "Tab") {
         e.preventDefault();
         const v = inp.value.trim();
+        if (!v && this.cmdAsk && e.key !== "Tab") {
+          // nothing typed: the question is dropped, the default stays
+          this.cmdAsk = null;
+          inp.blur();
+          this.updateCmdPrompt();
+          return;
+        }
         if (!v) {
           inp.blur();
           if (e.key === "Tab") return;
           // during a command: finish it (polyline, series) or stop; otherwise repeat the last one
           if (this.cmdActive() && (this.clicks.length || this.rectStart)) this.escape(true);
           else this.repeatCmd();
+          return;
+        }
+        if (this.cmdAsk && e.key !== "Tab") {
+          const ask = this.cmdAsk;
+          this.cmdAsk = null;
+          this.logCmd(`  ${ask.text}: ${v}`);
+          if (ask.onValue(v) === false) dlg.toast(`Valoare nepotrivită: ${v}`);
+          inp.value = "";
+          box.hidden = true;
+          this.updateCmdPrompt();
+          if (this.cmdAsk) inp.focus();
+          return;
+        }
+        if (this.cmdActive() && e.key !== "Tab" && this.runOption(v)) {
+          inp.value = "";
+          box.hidden = true;
+          if (!this.cmdAsk) inp.blur();
           return;
         }
         if (this.cmdActive() && e.key !== "Tab" && this.typedPoint(v)) {
@@ -2464,6 +2637,7 @@ class App {
     if (!id || id === "select" || id === "pan") return;
     const c = commandList(this.keyCfg).find((x) => x.id === id);
     const t = String(text || (c && c.aliases[0]) || "").toUpperCase();
+    this.logCmd(`${t || id} — ${tr(labelOf(id))}`);
     if (!t) return;
     const h = this.cmdHistory.filter((x) => x.text !== t);
     h.unshift({ id, text: t });
@@ -2556,6 +2730,11 @@ class App {
         dlg.toast(`Intrare dinamică: ${this.dyn.on ? "pornită" : "oprită"}`, 1500);
         return;
       }
+      if (e.key === "F2") {
+        e.preventDefault();
+        dlg.historyDialog(this);
+        return;
+      }
       const fk = { F3: "on", F8: "ortho", F10: "polar", F11: "tracking" }[e.key];
       if (fk) {
         e.preventDefault();
@@ -2624,6 +2803,12 @@ class App {
         return;
       }
       const autocad = this.keyCfg && this.keyCfg.mode === "autocad";
+      // direct keys: during a command, an option letter of its prompt goes to the command line
+      if (!autocad && e.key.length === 1 && /[a-z]/i.test(e.key) && !this.mmenu && this.currentOptions().some((o) => o.key === e.key.toUpperCase())) {
+        e.preventDefault();
+        this.focusCmdLine(e.key);
+        return;
+      }
       // AutoCAD mode: letters and digits type the command (Shift+F stays zoom to selection)
       if (autocad && e.key.length === 1 && /[a-z0-9]/i.test(e.key) && !(e.shiftKey && k === "f") && !this.mmenu) {
         e.preventDefault();
