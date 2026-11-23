@@ -25,34 +25,33 @@ The original is never modified. Annotations are stored separately and applied on
 
 The `ghcr.io/movidiu64/drawcad:latest` image is built by GitHub Actions on every push to `main`, after the tests and the browser test on the container pass. Releases are also published under their version (`:1.2.3` and `:1.2`). The running version is shown at the bottom of **Settings**. `compose.yaml` is all you need to install it.
 
-### With Dockhand (Git stack) — recommended
+### With Dockhand or Portainer (prebuilt image) — recommended
 
-Dockhand clones the repo and builds the image directly on the server. No registry and no `ghcr.io` token are needed.
+Create a new stack, paste the contents of `compose.yaml` and deploy. No account or token is needed: the image on `ghcr.io` is public.
 
-1. **Repo access** (only while the repository is private). On GitHub create a fine-grained token for `DrawCAD` only, with **Contents: Read-only**. In Dockhand add it to the Git credentials: user `movidiu64`, password = the token.
-2. **New stack from Git:**
-   - repository: `https://github.com/movidiu64/DrawCAD.git`
-   - branch: `main`
-   - compose file: **`compose.build.yaml`**
-3. **Stack variables** (optional; the full list is in `.env.example`):
+1. **Stack variables** (optional; the full list is in `.env.example`):
+   - `DRAWCAD_TAG=1.0.0` — pin a release; `latest` follows `main`
    - `DRAWCAD_PORT=8478`
    - `DRAWCAD_DATA_DIR=/mnt/user/appdata/drawcad` — an absolute path on the server, not a relative one
    - `PUID=99`, `PGID=100`
-4. **Deploy.** The first build takes 1–2 minutes. The app starts on `http://<ip>:8478`.
+2. **Deploy.** The app starts on `http://<ip>:8478`.
 
-**Moving from the old name (Cotare):** the container is now called `drawcad`. Before the first redeploy, stop and remove the old `cotare` container, otherwise port 8478 stays taken. Data now lives in `/mnt/user/appdata/drawcad` by default. Working documents from `/mnt/user/appdata/cotare` can be moved there, or you can keep the old path with `DRAWCAD_DATA_DIR`. The `COTARE_*` variables still work.
+**Update:** change `DRAWCAD_TAG` to the new version (or pull `latest` again) and redeploy. Documents and settings stay in the data folder.
+
+### With Dockhand (Git stack, built from source)
+
+Dockhand clones the repo and builds the image on the server, without the registry.
+
+1. **New stack from Git:**
+   - repository: `https://github.com/movidiu64/DrawCAD.git`
+   - branch: `main` (or a release tag such as `v1.0.0`)
+   - compose file: **`compose.build.yaml`**
+2. **Stack variables:** as above, without `DRAWCAD_TAG`.
+3. **Deploy.** The first build takes 1–2 minutes.
 
 On every redeploy after a git sync the image is rebuilt (`pull_policy: build`). For automatic sync on push, set up the stack webhook in Dockhand and add it in GitHub under the repo's **Settings → Webhooks**.
 
-### With Dockhand and the prebuilt GHCR image
-
-The compose file is `compose.yaml`. While the package is private, the Docker daemon needs credentials to pull it: a classic token with `read:packages` (GitHub Packages does not accept fine-grained tokens).
-
-If the pull returns `unauthorized` even with the `ghcr.io` registry added in Dockhand, Dockhand is not passing the credentials to the stack deploy. Use the build variant above instead.
-
-### With Dockhand (stack pasted manually)
-
-Create a new stack and paste the contents of `compose.yaml`. Steps 3 and 4 above still apply.
+**Moving from the old name (Cotare):** the container is now called `drawcad`. Stop and remove the old `cotare` container first, otherwise port 8478 stays taken. Data now lives in `/mnt/user/appdata/drawcad` by default; move the documents from `/mnt/user/appdata/cotare` there, or keep the old path with `DRAWCAD_DATA_DIR`. The `COTARE_*` variables still work.
 
 ### With docker compose from the command line
 
