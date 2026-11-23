@@ -7,9 +7,10 @@
    Duplicate keys in i18n_en.js are errors too.
 3. Overlays: modals, dialogs, toasts and other overlays are created only in dialogs.js
    (showModal / closeModal / toast). In app.css only `.modal` and `.toast` are position: fixed.
-
 4. Agent skills: every .claude/skills/<name>/SKILL.md has front matter with `name: <name>` and a
    description that says "Use when…"; CLAUDE.md lists every skill.
+5. Deploy: unraid/drawcad.xml and compose.yaml only set variables the backend reads; the Unraid
+   template maps port 8080 and /data.
 
 Anything that must break a rule goes in EXCEPTIONS below, with the reason on the same line.
 
@@ -232,8 +233,46 @@ def check_skills():
     return out
 
 
+def check_deploy():
+    """The Unraid template and compose.yaml must only use variables the backend reads."""
+    import xml.etree.ElementTree as ET
+
+    out = []
+    read = set()
+    for f in (ROOT / "backend" / "app").glob("*.py"):
+        read |= {"DRAWCAD_" + m for m in re.findall(r'_env\("([A-Z_]+)"', f.read_text("utf-8"))}
+    read |= {"PUID", "PGID"}  # used by docker/entrypoint.sh
+    tpl = ROOT / "unraid" / "drawcad.xml"
+    try:
+        root = ET.parse(tpl).getroot()
+    except (OSError, ET.ParseError) as e:
+        return [f"unraid/drawcad.xml: {e}"]
+    targets = {}
+    for c in root.iter("Config"):
+        targets.setdefault(c.get("Type"), []).append(c.get("Target"))
+    for v in targets.get("Variable", []):
+        if v not in read:
+            out.append(f"unraid/drawcad.xml: variable {v} is not read by the backend")
+    if targets.get("Port") != ["8080"]:
+        out.append("unraid/drawcad.xml: the container port must be 8080")
+    if "/data" not in targets.get("Path", []):
+        out.append("unraid/drawcad.xml: /data must be mapped")
+    compose = (ROOT / "compose.yaml").read_text("utf-8")
+    env = re.search(r"\n    environment:\n((?:      .*\n)+)", compose)
+    for v in re.findall(r"^      ([A-Z_]+):", env.group(1) if env else "", re.M):
+        if v not in read:
+            out.append(f"compose.yaml: variable {v} is not read by the backend")
+    return out
+
+
 def main():
-    checks = [("colors", check_colors), ("i18n", check_i18n), ("overlays", check_overlays), ("skills", check_skills)]
+    checks = [
+        ("colors", check_colors),
+        ("i18n", check_i18n),
+        ("overlays", check_overlays),
+        ("skills", check_skills),
+        ("deploy", check_deploy),
+    ]
     bad = 0
     for name, fn in checks:
         errs = fn()

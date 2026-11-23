@@ -25,7 +25,23 @@ The original is never modified. Annotations are stored separately and applied on
 
 The `ghcr.io/movidiu64/drawcad:latest` image is built by GitHub Actions on every push to `main`, after the tests and the browser test on the container pass. Releases are also published under their version (`:1.2.3` and `:1.2`). The running version is shown at the bottom of **Settings**. `compose.yaml` is all you need to install it.
 
-### With Dockhand or Portainer (prebuilt image) — recommended
+### On Unraid, from the template — recommended on Unraid
+
+1. **Docker** tab → **Template repositories** (at the bottom): add `https://github.com/movidiu64/DrawCAD` and **Save**.
+2. **Add Container** → **Template** → **DrawCAD**.
+3. Adjust what you need and **Apply**:
+   - **WebUI port** (8478) and **Data** (`/mnt/user/appdata/drawcad`);
+   - **Password**: empty on the home network, set one if the app is reachable from outside;
+   - **Mode**: `private`, `personal` or `session` (see [Modes](#modes-personal-or-for-work));
+   - **Show more settings** for the limits, OCR languages and `PUID` / `PGID`.
+
+Without the template repository, the same template can be added by hand: save [`unraid/drawcad.xml`](../unraid/drawcad.xml) as `/boot/config/plugins/dockerMan/templates-user/my-DrawCAD.xml` and it appears under **Add Container** → **Template**.
+
+The template is `unraid/drawcad.xml`. It runs the container with the same hardening as `compose.yaml` (read-only filesystem, dropped capabilities, no new privileges, a process limit), passed in **Extra Parameters**; leave them there. It follows `:latest`; to pin a release, change **Repository** to `ghcr.io/movidiu64/drawcad:1.0.0`.
+
+**Update:** the Docker tab shows "update ready" when a new image is out; **apply update** keeps the documents in the data folder.
+
+### With Dockhand or Portainer (prebuilt image)
 
 Create a new stack, paste the contents of `compose.yaml` and deploy. No account or token is needed: the image on `ghcr.io` is public.
 
@@ -71,6 +87,8 @@ The same app, without a server and without Docker. It runs on the computer, in i
 2. Optionally, the installer adds a desktop icon and "Open with → DrawCAD" for PDFs and images, without becoming the default app.
 3. The `…-portabil.zip` version is not installed: unzip it and start `DrawCAD.exe`.
 
+**"Windows protected your PC":** the installer is not code-signed (a certificate costs a yearly fee), so SmartScreen warns on the first run. Click **More info → Run anyway**. The files are built by GitHub Actions from the public source, and the run that produced each release can be checked in the Actions tab.
+
 **What it contains:** everything, OCR included (Tesseract, Romanian and English).
 
 **Where working documents live:** in `%LOCALAPPDATA%\DrawCAD`. They stay until you delete them from Recent; there is no automatic cleanup.
@@ -89,7 +107,7 @@ The same app, without a server and without Docker. It runs on the computer, in i
 - the full browser test against the server inside the executable;
 - the installer, with Inno Setup.
 
-The result can be downloaded from the run page (Artifacts). A `v1.2.3` tag, or a release created on GitHub, publishes the installer in Releases.
+The result can be downloaded from the run page (Artifacts). A `v1.2.3` tag, or a release created on GitHub (which pushes that tag), attaches the installer and the ZIP to the release. To attach them again to an existing release: **Actions → Desktop Windows → Run workflow**, with the tag (`v1.2.3`).
 
 **Update:** run the new version's installer over the old one. Documents and settings are kept.
 

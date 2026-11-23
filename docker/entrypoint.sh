@@ -11,7 +11,7 @@ if [ "$(id -u)" = "0" ]; then
   mkdir -p "$DATA"
   # recursive chown only when the owner is not the expected one (new or moved folder)
   if [ "$(stat -c %u:%g "$DATA")" != "$PUID:$PGID" ]; then
-    echo "drawcad: ajustez proprietarul $DATA la $PUID:$PGID"
+    echo "drawcad: setting the owner of $DATA to $PUID:$PGID"
     chown -R "$PUID:$PGID" "$DATA"
   fi
   # root's HOME is not accessible to the app user; libraries look for their config there
@@ -20,9 +20,9 @@ if [ "$(id -u)" = "0" ]; then
 fi
 
 # already running as a non-root user (e.g. "user:" in compose): the folder must be writable
-if ! touch "$DATA/.scriere-test" 2>/dev/null; then
-  echo "drawcad: $DATA nu poate fi scris de utilizatorul $(id -u):$(id -g)" >&2
+if ! touch "$DATA/.write-test" 2>/dev/null; then
+  echo "drawcad: $DATA is not writable by user $(id -u):$(id -g)" >&2
   exit 1
 fi
-rm -f "$DATA/.scriere-test"
+rm -f "$DATA/.write-test"
 exec "$@"

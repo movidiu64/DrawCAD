@@ -161,6 +161,6 @@ jobs:
             gh release upload $tag $files --clobber --repo "${{ github.repository }}"
           } else {
             gh release create $tag $files --repo "${{ github.repository }}" `
-              --title "DrawCAD ${{ steps.ver.outputs.version }}" --notes "Installer for Windows 10/11 (64-bit) and the portable version (ZIP)."
+              --title "DrawCAD ${{ steps.ver.outputs.version }}" --notes "Installer for Windows 10/11 (64-bit) and the portable version (ZIP). The installer is not code-signed: if SmartScreen shows 'Windows protected your PC', click More info, then Run anyway."
           }
           if ($LASTEXITCODE -ne 0) { Write-Host "::error::Could not attach the files to release $tag"; exit 1 }

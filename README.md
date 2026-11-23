@@ -66,11 +66,20 @@ docker run -d --name drawcad -p 8478:8080 -v drawcad-data:/data ghcr.io/movidiu6
 
 ### Unraid
 
-Use the [`compose.yaml`](compose.yaml) stack (Compose Manager or Dockhand). The defaults already match Unraid: data in `/mnt/user/appdata/drawcad`, `PUID=99`, `PGID=100`, and a WebUI button on the Docker page.
+Install it from the template: on the **Docker** tab, under **Template repositories**, add
+
+```
+https://github.com/movidiu64/DrawCAD
+```
+
+then **Add Container** and choose **DrawCAD**. The template ([`unraid/drawcad.xml`](unraid/drawcad.xml)) keeps the data in `/mnt/user/appdata/drawcad`, runs as `99:100` with the same hardening as `compose.yaml`, and adds a WebUI button. The [`compose.yaml`](compose.yaml) stack works too (Compose Manager or Dockhand).
 
 ### Windows desktop app
 
 Download `DrawCAD-<version>-setup.exe` from [Releases](https://github.com/movidiu64/DrawCAD/releases). It needs no admin rights, no Docker and no internet connection, and OCR is included. A portable `.zip` is also available.
+
+> [!NOTE]
+> The installer is not code-signed, so Windows SmartScreen may show "Windows protected your PC". Click **More info → Run anyway**. The files are built by GitHub Actions from this repository; the run that built each release is linked from the Actions tab.
 
 ## Configuration
 
