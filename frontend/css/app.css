@@ -63,11 +63,37 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 #app { height: 100%; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
 
 /* ---------- header */
-.top { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 14px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 16px; }
+.top { position: relative; z-index: 9; display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 10px 0 14px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: nowrap; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; flex: none; margin-right: 4px; }
 .sep { width: 1px; height: 28px; background: var(--line); }
-.docname { display: flex; flex-direction: column; min-width: 0; }
-.docname #docName { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* the document as a chip: name, save state, close */
+.docchip { display: flex; align-items: center; gap: 4px; min-width: 0; height: 34px; padding: 0 2px 0 10px; border: 1px solid var(--line2); border-radius: 6px; background: var(--raised); }
+#app.nodoc .docchip { border-color: transparent; background: transparent; }
+.docchip button.icon { width: 26px; height: 26px; }
+.docchip button.icon svg { width: 14px; height: 14px; }
+.docname { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.docname #docName { font-weight: 500; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32vw; }
+/* the text search looks like a search field (UI-D4) */
+.search { display: flex; align-items: center; gap: 8px; flex: 0 1 300px; min-width: 34px; height: 30px; padding: 0 8px 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--muted); font-size: 12px; cursor: text; overflow: hidden; }
+.search:hover:not(:disabled) { border-color: var(--line3); color: var(--text2); }
+.search:disabled { opacity: 0.45; cursor: default; }
+.search svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.search span { flex: 1; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.search kbd { font-size: 10px; padding: 1px 5px; border: 1px solid var(--line2); border-radius: 4px; flex: none; }
+/* Export ▾ */
+.split { position: relative; display: flex; flex: none; }
+.split #btnExport { border-radius: 6px 0 0 6px; }
+.split .chev { width: 28px; padding: 0; border-radius: 0 6px 6px 0; border-left: 1px solid var(--accent-line); display: grid; place-items: center; }
+.split .chev svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.xmenu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: 240px; padding: 4px; background: var(--panel2); border: 1px solid var(--line2); border-radius: 8px; box-shadow: 0 12px 28px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 2px; }
+.xmenu button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 7px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--text); text-align: left; font-size: 12px; }
+.xmenu button span { color: var(--muted); }
+.xmenu button:hover, .xmenu button:focus-visible { background: var(--raised); outline: none; }
+/* Minimize UI (UI-D17) and the start screen without a document */
+#app.minui .tools, #app.minui .panel, #app.minui .ctxbar, #app.minui #railFly { display: none !important; }
+#app.minui #btnMin { background: var(--accent-tint); color: var(--accent); }
+#app.nodoc .tools, #app.nodoc .panel, #app.nodoc .ctxbar, #app.nodoc #railFly { display: none !important; }
 .docname .muted { font-size: 12px; }
 .docsub { display: flex; gap: 8px; align-items: center; font-size: 12px; white-space: nowrap; }
 .savestate { color: var(--muted); }
@@ -84,17 +110,17 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .annlist .it button.icon:hover { opacity: 1; color: var(--bad); }
 .annlist .it button.icon svg { width: 15px; height: 15px; }
 .grow { flex: 1; }
-button.icon { width: 38px; height: 38px; border: 0; border-radius: 6px; background: transparent; display: grid; place-items: center; color: var(--text2); }
+button.icon { width: 34px; height: 34px; border: 0; border-radius: 6px; background: transparent; display: grid; place-items: center; color: var(--text2); }
 button.icon:hover { background: var(--raised); }
 button.icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.zoom { display: flex; align-items: center; gap: 2px; background: var(--raised); border-radius: 8px; padding: 2px; }
-.zoom button { height: 34px; min-width: 34px; border: 0; border-radius: 6px; background: transparent; font-size: 17px; }
-.zoom button.txt { font-size: 13px; padding: 0 10px; color: var(--text2); }
+.zoom { display: flex; align-items: center; gap: 1px; background: var(--raised); border-radius: 6px; padding: 2px; flex: none; }
+.zoom button { height: 28px; min-width: 28px; border: 0; border-radius: 4px; background: transparent; font-size: 16px; }
+.zoom button.txt { font-size: 12px; padding: 0 8px; color: var(--text2); }
 .zoom button:hover { background: var(--line2); }
-.zoom span { min-width: 54px; text-align: center; font-family: var(--mono); font-size: 13px; }
-button.ghost { height: 38px; padding: 0 14px; border: 1px solid var(--line2); border-radius: 8px; background: transparent; font-weight: 500; }
+.zoom span { min-width: 46px; text-align: center; font-size: 12px; }
+button.ghost { height: 34px; padding: 0 14px; border: 1px solid var(--line2); border-radius: 6px; background: transparent; font-weight: 500; }
 button.ghost:hover { background: var(--raised); }
-button.primary { height: 38px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+button.primary { height: 34px; padding: 0 14px; border: 0; border-radius: 6px; background: var(--accent); color: var(--accent-ink); font-weight: 600; }
 button.primary:disabled, button.ghost:disabled { opacity: 0.45; cursor: default; }
 button.danger { height: 34px; padding: 0 12px; border: 1px solid var(--bad-line); border-radius: 6px; background: transparent; color: var(--bad); font-weight: 500; }
 
@@ -149,14 +175,31 @@ button.danger { height: 34px; padding: 0 12px; border: 1px solid var(--bad-line)
 .viewport { flex: 1; position: relative; overflow: hidden; touch-action: none; }
 .viewport canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .viewport.drag { outline: 3px dashed var(--accent); outline-offset: -8px; }
-.empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: safe center; gap: 18px; padding: 32px 24px; overflow-y: auto; }
-.drop { width: min(460px, 100%); padding: 32px; border: 1.5px dashed var(--line3); border-radius: 14px; background: var(--panel2); display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
-.recent { width: min(460px, 100%); display: flex; flex-direction: column; gap: 4px; }
-.recent .ttl { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 4px 4px; }
-.recent .item { display: flex; align-items: center; gap: 4px; border-radius: 8px; }
-.recent .item:hover { background: var(--raised); }
-.recent button.open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 6px 10px; border: 0; border-radius: 8px; background: transparent; text-align: left; }
-.recent button.del { flex: 0 0 38px; color: var(--muted); }
+.empty { position: absolute; inset: 0; z-index: 3; overflow-y: auto; background: var(--bg); }
+.start { max-width: 1160px; margin: 0 auto; padding: 40px 28px 32px; display: flex; flex-direction: column; gap: 32px; }
+.starttop { display: flex; gap: 20px; flex-wrap: wrap; }
+.drop { flex: 1 1 480px; min-height: 280px; box-sizing: border-box; padding: 32px 24px; border: 1.5px dashed var(--line3); border-radius: 12px; background: var(--panel2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; }
+.drop strong { font-size: 20px; font-weight: 600; }
+.droptile { width: 56px; height: 56px; border-radius: 14px; background: var(--accent-tint); color: var(--accent); display: grid; place-items: center; }
+.dropsub { max-width: 460px; color: var(--text2); line-height: 1.5; font-size: 13px; }
+.drop .primary { height: 36px; padding: 0 18px; margin-top: 4px; }
+.fmts { font-size: 11px; color: var(--muted); }
+.howcard { flex: 0 1 320px; box-sizing: border-box; padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); display: flex; flex-direction: column; gap: 12px; font-size: 13px; }
+.howcard .lbl { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+.how { display: flex; gap: 10px; align-items: flex-start; color: var(--text2); line-height: 1.45; }
+.how i { width: 8px; height: 8px; margin-top: 5px; border-radius: 2px; flex: none; }
+.how .lo { background: var(--layer-orig); }
+.how .la { background: var(--layer-add); }
+.how .lr { background: var(--layer-rev); }
+.howcard .ghost { align-self: flex-start; }
+.howcard .langsw { justify-content: flex-start; margin-top: 4px; }
+.recent { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.recent .ttl { grid-column: 1 / -1; font-size: 15px; font-weight: 600; color: var(--text); margin: 0; }
+.recent > .sub { grid-column: 1 / -1; }
+.recent .item { display: flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.recent .item:hover { border-color: var(--line3); background: var(--panel2); }
+.recent button.open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 58px; padding: 8px 10px; border: 0; border-radius: 10px; background: transparent; text-align: left; }
+.recent button.del { flex: 0 0 34px; color: var(--muted); }
 .recent button.del:hover { color: var(--bad); background: transparent; }
 .badge { display: inline-grid; place-items: center; width: 34px; height: 30px; border-radius: 6px; font-size: 11px; font-weight: 700; }
 .badge.pdf { background: var(--bad-bg); color: var(--bad); }
@@ -180,7 +223,7 @@ button.danger { height: 34px; padding: 0 12px; border: 1px solid var(--bad-line)
 .chips button { height: 24px; padding: 0 9px; border: 1px solid var(--line2); border-radius: 12px; background: transparent; color: var(--text2); font-size: 11px; }
 .chips button.on { border-color: var(--accent); background: var(--accent-tint); color: var(--accent); }
 .annlist.full { max-height: none; }
-.panel-toggle, .top .sm, .vphint { display: none; }
+.top .panel-toggle, .top .sm, .vphint { display: none; }
 .sec { display: flex; flex-direction: column; gap: 8px; }
 .sec > .h { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .title { font-size: 16px; font-weight: 600; }
@@ -306,7 +349,7 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
   .panel { position: absolute; right: 0; top: 0; bottom: 0; z-index: 8; width: min(340px, 92vw); transform: translateX(105%); transition: transform 0.18s ease; box-shadow: -12px 0 30px rgba(0,0,0,0.45); }
   #app.panel-open .panel { transform: none; }
   .panel-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px 0 14px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-  .panel-toggle { display: grid; }
+  .top .panel-toggle { display: grid; }
   #app.panel-open .panel-toggle { background: var(--raised); color: var(--accent); }
 }
 
@@ -317,23 +360,34 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
   .top .lg { display: none; }
   .top .sm { display: inline; }
   .top svg.sm { display: block; }
-  #btnSettings, #btnOpen { width: 38px; padding: 0; display: grid; place-items: center; }
+  .search { flex: none; width: 34px; padding: 0; justify-content: center; }
+  .docname #docName { max-width: 24vw; }
   .status select.mini { min-width: 58px; }
 }
 
 /* phone: compact header, the panel as a bottom sheet, hints over the drawing */
 @media (max-width: 640px) {
   .top { gap: 6px; padding: 6px 8px; min-height: 48px; flex-wrap: nowrap; }
-  .brand span, .sep, #docMeta, .zoom span, .savestate:not(.error) { display: none; }
+  .brand span, .sep, #docMeta, .zoom span, .savestate:not(.error), #btnMin, #btnRedo, .docsub { display: none; }
+  .docchip { flex: 1 1 auto; min-width: 60px; }
   .docname #docName { max-width: 26vw; font-size: 13px; }
   .zoom { display: none; }
   button.ghost { height: 34px; padding: 0 9px; font-size: 13px; }
   button.primary { height: 34px; padding: 0 10px; }
   .brand { flex: 0 0 auto; }
   button.icon { width: 34px; height: 34px; }
-  .tools { width: 52px; flex-basis: 52px; }
-  .slot { height: 44px; }
-  .slot span { display: none; }
+  /* the rail becomes a bar at the bottom (UI-D16); flyouts open upwards */
+  .body { flex-direction: column; }
+  .center { order: 1; min-height: 0; }
+  .tools, .tools.compact { order: 2; width: auto; flex: 0 0 58px; flex-direction: row; padding: 0; gap: 0; overflow-x: auto; overflow-y: hidden; border-right: 0; border-top: 1px solid var(--line); }
+  .tools .rsep { width: 1px; height: 30px; margin: auto 2px; }
+  .slot, .tools.compact .slot { flex: 0 0 62px; height: 58px; }
+  .tools.compact .slot span { display: block; }
+  .slot.on { box-shadow: inset 0 2px 0 var(--accent); }
+  .flyout { left: 8px !important; right: 8px; width: auto; top: auto !important; bottom: 64px; max-height: 60vh; overflow-y: auto; }
+  .frow { height: 40px; }
+  .search { display: none; }
+  .xmenu { width: 200px; }
   .panel { left: 0; right: 0; top: auto; bottom: 0; width: auto; height: min(58vh, 520px); border-left: 0; border-top: 1px solid var(--line2); border-radius: 14px 14px 0 0; transform: translateY(105%); box-shadow: 0 -12px 30px rgba(0,0,0,0.45); }
   .status { flex-wrap: nowrap; overflow-x: auto; gap: 12px; padding: 3px 8px; }
   .status .hint, #stCoords, #stScale, .cmdline { display: none; }

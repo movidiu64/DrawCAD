@@ -11,15 +11,18 @@
 <div id="app">
   <header class="top">
     <div class="brand">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f2a93b" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 5v14M21 5v14M3 12h18M3 12l4-2.5M3 12l4 2.5M21 12l-4-2.5M21 12l-4 2.5"/></svg>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f2a93b" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 5v14M21 5v14M3 12h18M3 12l4-2.5M3 12l4 2.5M21 12l-4-2.5M21 12l-4 2.5"/></svg>
       <span>DrawCAD</span>
     </div>
-    <div class="sep"></div>
-    <div class="docname">
-      <span id="docName">Niciun document</span>
-      <span class="docsub"><span id="docMeta" class="muted"></span> <span id="saveState" class="savestate" aria-live="polite"></span></span>
+    <div class="docchip">
+      <div class="docname">
+        <span id="docName">Niciun document</span>
+        <span class="docsub"><span id="docMeta" class="muted"></span> <span id="saveState" class="savestate" aria-live="polite"></span></span>
+      </div>
+      <button class="icon" id="btnClose" title="Închide documentul" aria-label="Închide documentul"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
-    <button class="icon" id="btnClose" title="Închide documentul" aria-label="Închide documentul"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <div class="grow"></div>
+    <button class="search" id="btnText" aria-label="Caută text / OCR" title="Caută text, recunoaștere OCR (Ctrl+F)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l6 6"/></svg><span class="lg">Caută text în desen, OCR…</span><kbd class="lg mono">Ctrl F</kbd></button>
     <div class="grow"></div>
     <button class="icon" id="btnUndo" title="Anulează (Ctrl+Z)" aria-label="Anulează"><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
     <button class="icon" id="btnRedo" title="Refă (Ctrl+Y)" aria-label="Refă"><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
@@ -29,11 +32,14 @@
       <button id="btnZoomIn" aria-label="Mărește">+</button>
       <button id="btnFit" class="txt">Potrivește</button>
     </div>
+    <button class="icon" id="btnMin" title="Ascunde panourile (Ctrl+0)" aria-label="Ascunde panourile" aria-pressed="false"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 4v16"/></svg></button>
     <button class="icon panel-toggle" id="btnPanel" title="Proprietăți" aria-label="Arată panoul de proprietăți" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></button>
-    <button class="ghost" id="btnText" aria-label="Caută text / OCR" title="Caută text, recunoaștere OCR (Ctrl+F)"><svg class="sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l6 6"/></svg><span class="lg">Text</span></button>
-    <button class="ghost" id="btnSettings" aria-label="Setări"><svg class="sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span class="lg">Setări</span></button>
-    <button class="ghost" id="btnOpen" aria-label="Deschide"><svg class="sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h6l2 2h10v10H3z"/></svg><span class="lg">Deschide</span></button>
-    <button class="primary" id="btnExport"><span class="lg">Exportă</span><span class="sm">Export</span></button>
+    <button class="icon" id="btnOpen" title="Deschide" aria-label="Deschide"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h6l2 2h10v10H3z"/></svg><span class="vh">Deschide</span></button>
+    <button class="icon" id="btnSettings" title="Setări" aria-label="Setări"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span class="vh">Setări</span></button>
+    <div class="split">
+      <button class="primary" id="btnExport"><span class="lg">Exportă</span><span class="sm">Export</span></button><button class="primary chev" id="btnExportMenu" aria-label="Alege formatul exportului" aria-haspopup="menu" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="xmenu" id="exportMenu" role="menu" hidden><button role="menuitem" data-xfmt="pdf"><b>PDF</b><span>pentru tipărit și trimis</span></button><button role="menuitem" data-xfmt="dxf"><b>DXF</b><span>pentru AutoCAD, Allplan…</span></button></div>
+    </div>
   </header>
 
   <div class="body">
@@ -47,14 +53,26 @@
         <div class="legendchip" id="legend" hidden aria-label="Legenda culorilor"><span><i class="lo"></i>Original</span><span><i class="la"></i>Adăugat</span><span><i class="lr"></i>Revizie</span></div>
         <div class="dynbox" id="dynBox" hidden translate="no"></div>
         <div class="empty" id="emptyState">
-          <div class="drop">
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#a3acb7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5M4 15v4h16v-4"/></svg>
-            <strong>Trage aici un PDF sau o imagine</strong>
-            <span class="muted">PDF · PNG · JPG · TIFF — originalul nu se modifică</span>
-            <button class="ghost" id="btnOpen2">Alege fișier</button>
+          <div class="start">
+            <div class="starttop">
+              <div class="drop">
+                <div class="droptile"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5M5 20h14"/></svg></div>
+                <strong>Trage aici un PDF sau o imagine</strong>
+                <span class="dropsub">PDF exportat din CAD, scanare sau fotografie a desenului. Originalul nu se modifică: cotele, toleranțele și reviziile se aplică doar la export.</span>
+                <button class="primary" id="btnOpen2">Alege fișier</button>
+                <span class="fmts mono">PDF · PNG · JPG · TIFF</span>
+              </div>
+              <div class="howcard">
+                <div class="lbl">Cum lucrează</div>
+                <div class="how"><i class="lo"></i><span>Originalul rămâne neatins, ca strat separat.</span></div>
+                <div class="how"><i class="la"></i><span>Cotele, toleranțele și GD&amp;T adăugate apar cu albastru.</span></div>
+                <div class="how"><i class="lr"></i><span>Reviziile apar cu roșu și completează tabelul de revizii.</span></div>
+                <button class="ghost" id="btnKeys2">Taste și comenzi…</button>
+                <div class="langsw" translate="no" aria-label="Limba / Language"><button data-uilang="ro">Română</button><button data-uilang="en">English</button></div>
+              </div>
+            </div>
+            <div class="recent" id="recentList"></div>
           </div>
-          <div class="recent" id="recentList"></div>
-          <div class="langsw" translate="no" aria-label="Limba / Language"><button data-uilang="ro">Română</button><button data-uilang="en">English</button></div>
         </div>
       </div>
     </main>

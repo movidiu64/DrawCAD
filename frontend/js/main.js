@@ -1290,6 +1290,33 @@ class App {
       this.pendingDpi = null;
     });
     $("btnExport").addEventListener("click", () => this.doc && dlg.exportDialog(this));
+    // Export ▾: PDF or DXF chosen before the dialog opens (UI-D4)
+    const xmenu = $("exportMenu");
+    const xopen = (open) => {
+      xmenu.hidden = !open;
+      $("btnExportMenu").setAttribute("aria-expanded", String(open));
+      if (open) xmenu.querySelector("button").focus();
+    };
+    $("btnExportMenu").addEventListener("click", () => this.doc && xopen(xmenu.hidden));
+    xmenu.querySelectorAll("[data-xfmt]").forEach((b) => b.addEventListener("click", () => {
+      xopen(false);
+      if (!this.doc) return;
+      dlg.exportDialog(this);
+      const f = document.querySelector(`#dialog [data-fmt="${b.dataset.xfmt}"]`);
+      if (f && !f.classList.contains("on")) f.click();
+    }));
+    xmenu.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        xopen(false);
+        $("btnExportMenu").focus();
+      }
+    });
+    document.addEventListener("pointerdown", (e) => {
+      if (!xmenu.hidden && !e.target.closest(".split")) xopen(false);
+    });
+    $("btnMin").addEventListener("click", () => this.toggleMinUI());
+    $("btnKeys2").addEventListener("click", () => dlg.keysDialog(this));
     $("btnClose").addEventListener("click", () => this.closeDoc());
     $("btnPanel").addEventListener("click", () => this.setPanelOpen(!$("app").classList.contains("panel-open")));
     $("btnPanelClose").addEventListener("click", () => this.setPanelOpen(false));
@@ -1335,8 +1362,20 @@ class App {
     } catch (_) { /* no list */ }
   }
 
+  /** Minimize UI (UI-D17): the rail, the context bar and the panel go; the command line and status stay. */
+  toggleMinUI(on) {
+    const app = $("app");
+    const v = on ?? !app.classList.contains("minui");
+    app.classList.toggle("minui", v);
+    $("btnMin").setAttribute("aria-pressed", String(v));
+    this.hideFlyout();
+    requestAnimationFrame(() => this.view.resize && this.view.resize());
+  }
+
   updateButtons() {
     const has = !!this.doc;
+    $("app").classList.toggle("nodoc", !has);
+    $("btnExportMenu").disabled = !has;
     $("btnExport").disabled = !has;
     $("btnClose").hidden = !has;
     $("btnSettings").disabled = !has;
@@ -3960,6 +3999,12 @@ class App {
       if (dlg.isModalOpen()) return;
       // the rail's flyout handles its own keys (arrows, Enter on a row, Esc)
       if (e.target && e.target.closest && e.target.closest("#railFly")) return;
+      if ((e.ctrlKey || e.metaKey) && e.key === "0") {
+        // as AutoCAD's Clean Screen: hide the rail, the context bar and the panel
+        e.preventDefault();
+        this.toggleMinUI();
+        return;
+      }
       if (e.key === "F12") {
         // as in AutoCAD: dynamic input on / off
         e.preventDefault();
