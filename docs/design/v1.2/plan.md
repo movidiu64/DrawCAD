@@ -1,6 +1,10 @@
 # DrawCAD 1.2 — plan
 
-Status: **proposed**, waiting for confirmation before implementation. Branch `v1.2`.
+Status: **confirmed** (phases in order below). Branch `v1.2`.
+
+Decisions: title blocks in the browser only (for now); revision format `rev1`; DXF leaves images out;
+comments are exported as native PDF notes by default; the QR code holds drawing number, revision and date
+by default, plus an optional free field (a link).
 
 Scope agreed with the user: images, a custom title block, revision number in the document, and from the
 PDF-editor features: revision compare, review comments, revision cloud, stamps, QR code and a highlighter.
@@ -10,7 +14,7 @@ keys, colors as tokens, overlays only through `dialogs.js`, tests before each co
 
 ---
 
-## V12-1 — Revision number in the document
+## V12-1 — Revision number in the document · built
 
 The state embedded in an export (`drawcad.json`) already reopens as editable. The revision joins it.
 
@@ -69,8 +73,8 @@ The state embedded in an export (`drawcad.json`) already reopens as editable. Th
   stay readable; in DXF as a polyline with transparency.
 - **Comments (review):** a note pin with text, author, date and status (open / resolved). A new layer
   **Review**: visible on screen, listed in the Annotations tab with a filter; by default **not printed**.
-  Export option: leave out, or add them as native PDF notes (`/Text` annotations) that Acrobat and other
-  readers show as comments.
+  Export: as native PDF notes (`/Text` annotations) that Acrobat and other readers show as comments
+  (default), or left out.
 
 ## V12-5 — Stamps and QR code
 

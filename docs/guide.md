@@ -307,6 +307,8 @@ The diameter dimension between generatrices remains the **Diameter** tool (`DDL`
 
 **Notes (N):** click the top-left corner of the block and type the notes in the panel, one per line. Numbering is automatic and empty lines are skipped. Common notes can be added with one click: chamfers, radii, ISO 2768, heat treatment.
 
+**Revision number:** every document has a current revision (Settings → Sheet and revisions), rev 1 at the start. The export writes it into the file name (`_rev1`; a name that already ends in `_rev2`, `-Rev 2`, `_rev.2` keeps its style and gets the new number), into the PDF metadata (Keywords `rev 1`, `/DrawCADRevision`, XMP) and into the editable layer. When you open an exported revision again (the PDF itself, or the document from Recent after an export), the **first change** starts the next revision: rev 2, with a short message; further changes and exports in the same session keep rev 2. Struck values, new revision table rows and the title block use the same number. The number can be set by hand, and the automatic step turned off, in Settings.
+
 **Revision table (E):** click the top-right corner of the title block (it snaps). The table sits above it, right-aligned, with the header at the bottom and the newest revision on top. On creation it is filled in from the struck dimensions: one row for each revision number. The "From struck dimensions" button adds new revisions later. The default name is set in Settings.
 
 **Parts list:** click the top-right corner of the title block. The list sits above it, with the header at the bottom and item 1 next to the header (ISO 7573), one row for each balloon on the drawing. Columns: Item, Description, Qty, Material, Remarks. "From balloons" adds balloons placed later.

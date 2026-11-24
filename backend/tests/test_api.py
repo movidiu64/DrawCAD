@@ -116,6 +116,26 @@ class ApiTest(unittest.TestCase):
         self.assertNotIn("Ø30", txt)
         self.assertIn("Ø25 k6", txt)
 
+    def test_export_writes_the_revision(self):
+        meta = self.open_sample()
+        doc = meta["id"]
+        for embed in (True, False):
+            pdf, _h = self.req(
+                "POST",
+                f"/api/doc/{doc}/export",
+                {"filename": "arbore_rev3.pdf", "pages": {}, "removals": {}, "rev": "3<x>",
+                 "state": {"v": 1, "annots": [], "settings": {"revNo": "3"}}, "embed": embed, "colorMode": "black"},
+                raw=True,
+            )
+            import pikepdf
+
+            with pikepdf.open(io.BytesIO(pdf)) as pk:
+                self.assertEqual(str(pk.docinfo["/DrawCADRevision"]), "3x")
+                self.assertIn("rev 3x", str(pk.docinfo["/Keywords"]))
+                self.assertEqual(str(pk.docinfo["/Title"]), "arbore_rev3")
+                with pk.open_metadata() as m:
+                    self.assertIn("rev 3x", m.get("pdf:Keywords", ""))
+
     def test_zone_cuts_lines_at_border(self):
         import ctypes
 

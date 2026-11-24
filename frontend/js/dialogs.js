@@ -5,6 +5,7 @@ import { MM_POSITIONS, MM_DEFAULT, MM_SPECIAL, markingConfig } from "./mmenu.js"
 import { TOOLS, FAMILIES } from "./tools.js";
 import { lang as uiLang, setLang, LANGS } from "./i18n.js";
 import { SHEETS } from "./pages.js";
+import { revName } from "./revision.js";
 import { COLORS, drawPrims } from "./view.js";
 import { commandList, conflicts, defaultKeyConfig, keyConfig, saveKeyConfig, labelOf, RESERVED_KEYS, DEFAULT_ALIASES, ACTIONS, parsePgp, importPgp } from "./commands.js";
 
@@ -180,7 +181,7 @@ export async function openDialog(app) {
 export function exportDialog(app, opts = {}) {
   const base = app.doc.name.replace(/\.[^.]+$/, "");
   const rev = app.settings.revNo || "1";
-  const suggested = /_rev\d+$/i.test(base) ? base.replace(/_rev\d+$/i, `_rev${rev}`) : `${base}_rev${rev}`;
+  const suggested = revName(base, rev);
   const nAnn = app.annots.length;
   const nDel = app.annots.filter((a) => a.type === "redact").length;
   const nPages = app.doc.pages.length;
@@ -730,6 +731,8 @@ export function settingsDialog(app) {
             <div class="h">Revizii</div>
             <div class="row"><div class="field"><label for="sRev">Nr. revizie curent</label><input type="text" id="sRev" class="mono" value="${esc(S.revNo)}"></div>
             <div class="field"><label for="sAuth">Nume / inițiale (tabel revizii)</label><input type="text" id="sAuth" value="${esc(S.author || "")}"></div></div>
+            <label class="chk"><input type="checkbox" id="sAutoRev" ${S.autoRev === false ? "" : "checked"}> Revizie nouă automat la prima modificare după un export</label>
+            <div class="sub"><span>${S.exportedRev ? `Ultimul export: rev ${esc(S.exportedRev)}.` : "Documentul nu a fost încă exportat."}</span> <span>Numărul intră în numele fișierului (_rev${esc(S.revNo || "1")}), în metadatele PDF, la cotele tăiate și în tabelul de revizii.</span></div>
           </div>
           <div class="sec">
             <div class="h">Limba textelor din desen</div>
@@ -783,7 +786,7 @@ export function settingsDialog(app) {
   const pending = {};
   const $d = (sel) => dlg.querySelector(sel);
   const textsChanged = () => $d("#sRev").value.trim() !== String(S.revNo) || $d("#sAuth").value.trim() !== (S.author || "") || $d("#sScale").value.trim() !== fmtNum(S.scale, ",", 4);
-  const dirty = () => Object.keys(pending).some((k) => String(pending[k]) !== String(S[k] ?? (k === "dlang" ? "ro" : ""))) || textsChanged();
+  const dirty = () => Object.keys(pending).some((k) => String(pending[k]) !== String(S[k] ?? ({ dlang: "ro", autoRev: true }[k] ?? ""))) || textsChanged();
   const updFoot = () => {
     const doc = PANES.find((p) => p.id === cur).doc;
     $d(".sdef").hidden = !doc;
@@ -835,6 +838,10 @@ export function settingsDialog(app) {
     updFoot();
   }));
   for (const id of ["#sRev", "#sAuth", "#sScale"]) $d(id).addEventListener("input", updFoot);
+  $d("#sAutoRev").addEventListener("change", () => {
+    pending.autoRev = $d("#sAutoRev").checked;
+    updFoot();
+  });
   $d("#sDef").addEventListener("change", updFoot);
   if ($d("#wsCode")) {
     api.workspace().then((w) => { $d("#wsCode").value = w.code || ""; }).catch(() => {});
@@ -896,9 +903,11 @@ export function settingsDialog(app) {
     if (sc && sc > 0) pending.scale = sc;
     app.setSettings(pending);
     if ($d("#sDef").checked) {
-      const { scale, revNo, ...style } = { ...app.settings };
+      // the style only: not this document's scale or revision
+      const { scale, revNo, exportedRev, ...style } = { ...app.settings };
       void scale;
       void revNo;
+      void exportedRev;
       try {
         localStorage.setItem("cotare.defaults", JSON.stringify(style));
       } catch (_) { /* storage unavailable */ }

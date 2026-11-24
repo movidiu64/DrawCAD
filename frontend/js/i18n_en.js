@@ -1148,4 +1148,10 @@ export const EN = {
   "Zonă cilindrică (axă)": "Cylindrical zone (axis)",
   "Punct pe element, pe linia de cotă sau pe marginea unui cadru GD&T → poziția casetei": "Point on the feature, on the dimension line or on the edge of a GD&T frame → box position",
   "Valoarea nouă — mut-o": "New value — move it",
+  // revision number of the document
+  "Documentul nu a fost încă exportat.": "The document has not been exported yet.",
+  "Revizie nouă automat la prima modificare după un export": "New revision automatically at the first change after an export",
+  "Revizie nouă: rev {} (rev {} era deja exportată). O schimbi în Setări → Foaie și revizii.": "New revision: rev {} (rev {} was already exported). Change it in Settings → Sheet and revisions.",
+  "Ultimul export: rev {}.": "Last export: rev {}.",
+  "Numărul intră în numele fișierului (_rev{}), în metadatele PDF, la cotele tăiate și în tabelul de revizii.": "The number goes into the file name (_rev{}), the PDF metadata, struck values and the revision table.",
 };

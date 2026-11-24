@@ -1566,22 +1566,48 @@ def _remap_state(state: dict | None, idxs: list[int]) -> dict | None:
     return {**state, "annots": annots}
 
 
-def _attach(pdf_bytes: bytes, state: dict | None, original: bytes | None) -> bytes:
+def _attach(pdf_bytes: bytes, state: dict | None, original: bytes | None, rev: str | None = None, title: str | None = None) -> bytes:
+    """Adds the editable layer (state + original) and the revision metadata to an exported PDF."""
     import json as _json
 
-    if state is None:
+    if state is None and not rev:
         return pdf_bytes
     pk = pikepdf.open(io.BytesIO(pdf_bytes))
-    pk.attachments[ATTACH_JSON] = pikepdf.AttachedFileSpec(pk, _json.dumps(state, ensure_ascii=False).encode("utf-8"), mime_type="application/json")
-    if original is not None:
-        pk.attachments[ATTACH_ORIGINAL] = pikepdf.AttachedFileSpec(pk, original, mime_type="application/pdf")
+    if state is not None:
+        pk.attachments[ATTACH_JSON] = pikepdf.AttachedFileSpec(pk, _json.dumps(state, ensure_ascii=False).encode("utf-8"), mime_type="application/json")
+        if original is not None:
+            pk.attachments[ATTACH_ORIGINAL] = pikepdf.AttachedFileSpec(pk, original, mime_type="application/pdf")
+    if rev:
+        set_revision_meta(pk, rev, title)
     out = io.BytesIO()
     pk.save(out, compress_streams=True)
     pk.close()
     return out.getvalue()
 
 
-def export_pages(original, primitives, removals, color_mode, state, embed, ink, sel, split, basename="export"):
+def set_revision_meta(pk, rev: str, title: str | None = None) -> None:
+    """Revision in the document information (/DrawCADRevision, Keywords) and in XMP, where other
+    programs (Acrobat → Properties, file managers) show it."""
+    rev = re.sub(r"[^\w .-]", "", str(rev))[:20] or "1"
+    info = pk.docinfo
+    info[pikepdf.Name("/DrawCADRevision")] = rev
+    old = str(info.get("/Keywords", "") or "")
+    kw = re.sub(r"(^|;\s*)rev [^;]*", "", old).strip("; ")
+    info[pikepdf.Name("/Keywords")] = f"{kw}; rev {rev}" if kw else f"rev {rev}"
+    if title:
+        info[pikepdf.Name("/Title")] = title[:200]
+    info[pikepdf.Name("/Producer")] = "DrawCAD"
+    try:
+        with pk.open_metadata(set_pikepdf_as_editor=False) as m:
+            m["pdf:Keywords"] = str(info["/Keywords"])
+            m["pdf:Producer"] = "DrawCAD"
+            if title:
+                m["dc:title"] = title[:200]
+    except Exception:  # noqa: BLE001 - damaged XMP of the original: the Info dictionary still has it
+        pass
+
+
+def export_pages(original, primitives, removals, color_mode, state, embed, ink, sel, split, basename="export", rev=None):
     """Export for pages `sel` (None = all): one PDF, or one PDF per page in a ZIP.
     Each file carries the editable layer for its pages, so it can be reopened."""
     import zipfile
@@ -1598,13 +1624,14 @@ def export_pages(original, primitives, removals, color_mode, state, embed, ink, 
         pdf = full if whole else subset_pdf(full, idxs)
         if state is not None:
             orig = original if whole else subset_pdf(original, idxs)
-            pdf = _attach(pdf, state if whole else _remap_state(state, idxs), orig if embed else None)
+            pdf = _attach(pdf, state if whole else _remap_state(state, idxs), orig if embed else None, rev, basename)
+        elif rev:
+            pdf = _attach(pdf, None, None, rev, basename)
         return pdf, reports, "pdf"
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for i in idxs:
             one = subset_pdf(full, [i])
-            if state is not None:
-                one = _attach(one, _remap_state(state, [i]), subset_pdf(original, [i]) if embed else None)
+            one = _attach(one, _remap_state(state, [i]) if state is not None else None, subset_pdf(original, [i]) if embed and state is not None else None, rev, f"{basename}_p{i + 1}")
             z.writestr(f"{basename}_p{i + 1}.pdf", one)
     return buf.getvalue(), reports, "zip"

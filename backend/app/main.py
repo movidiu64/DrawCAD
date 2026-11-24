@@ -1009,6 +1009,7 @@ async def api_export(request: Request):
             return _err("Pagini invalide")
         sel = sel[:5000]
     split = bool(body.get("split"))
+    rev = re.sub(r"[^\w .-]", "", str(body.get("rev") or ""))[:20] or None
     base = re.sub(r"\.(pdf|dxf)$", "", filename, flags=re.I)
     stats = None
     if fmt == "pdf" and body.get("ocrLayer"):
@@ -1022,7 +1023,7 @@ async def api_export(request: Request):
                                                 **{k: ln[k] for k in ("cap", "base", "org", "ang", "len") if k in ln}})
 
     def work():
-        return pdfcore.export_pages(_original(doc_id), prims, rem, color, state if embed else None, embed, ink, sel, split, base)
+        return pdfcore.export_pages(_original(doc_id), prims, rem, color, state if embed else None, embed, ink, sel, split, base, rev)
 
     try:
         if fmt == "dxf":

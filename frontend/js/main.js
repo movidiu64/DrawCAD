@@ -1,6 +1,7 @@
 // The application: state, tools, events, saving, export.
 import * as api from "./api.js";
 import { diaAllowed } from "./gdt.js";
+import { nextRev } from "./revision.js";
 import { build, derive, hit, holeTable, setHandle, moveAnnot, annotSnapPoints, exportPrims, K, fmtNum, newId, scaleAnchor, typeName, SCALE_MIN, SCALE_MAX, scaledS, strikeLabelBox, onBoxEdge, annotSnapSegs, primsBBox } from "./annots.js";
 import { View, COLORS } from "./view.js";
 import { Snapper, MODES, DEFAULT_MODES, parseOverride, overrideModes, LABELS } from "./osnap.js";
@@ -1688,6 +1689,8 @@ class App {
     this.selectedId = null;
     this.sel = new Set();
     this.unexported = false;
+    // the first real change of this session starts a new revision if the current one was exported
+    this.revPending = true;
     this.setSaveState(state ? "saved" : "");
     $("docName").textContent = meta.name;
     $("docMeta").textContent = `${meta.kind === "image" ? "imagine" : "PDF"} · ${meta.pages.length} ${meta.pages.length === 1 ? "pagină" : "pagini"}`;
@@ -1881,6 +1884,10 @@ class App {
 
   markExported() {
     this.unexported = false;
+    // this revision is out: the first change of a later session starts the next one
+    this.settings = { ...this.settings, exportedRev: String(this.settings.revNo || "1") };
+    this.revPending = false;
+    this.scheduleSave();
   }
 
   async closeDoc() {
@@ -2035,11 +2042,27 @@ class App {
   changed() {
     this.frame = (this.frame || 0) + 1; // annotations may change: the per-frame cache is no longer valid
     this.followFrames();
+    this.bumpRevision();
     this.unexported = true;
     this.view.redraw();
     this.view.loadImage(false); // reload only if the original's blackening changed
     this.scheduleSave();
     this.updateButtons();
+  }
+
+  /** First change after opening a document whose revision was already exported (from the exported
+   * PDF, or from Recent after an export): the revision goes up by one, once per session. Repeated
+   * exports within a session keep their number. */
+  bumpRevision() {
+    if (!this.revPending || !this.doc) return;
+    this.revPending = false;
+    const S = this.settings;
+    if (S.autoRev === false || S.exportedRev == null || String(S.exportedRev) !== String(S.revNo || "1")) return;
+    const old = S.revNo || "1";
+    this.settings = { ...S, revNo: nextRev(old) };
+    this.cache.clear();
+    this.panel.render();
+    dlg.toast(`Revizie nouă: rev ${this.settings.revNo} (rev ${old} era deja exportată). O schimbi în Setări → Foaie și revizii.`, 6000);
   }
 
   /** Datum triangles placed on the border of a GD&T frame stay on it when the frame moves or grows;
@@ -2115,6 +2138,7 @@ class App {
 
   setSettings(patch) {
     this.frame = (this.frame || 0) + 1; // annotations may change: the per-frame cache is no longer valid
+    if ("revNo" in patch && String(patch.revNo) !== String(this.settings.revNo || "1")) this.revPending = false;
     const inkBefore = JSON.stringify(this.settings.ink || null);
     this.settings = { ...this.settings, ...patch };
     this.cache.clear();
@@ -2758,7 +2782,9 @@ class App {
       }
     }
     const ink = this.settings.ink && this.settings.ink.all ? this.settings.ink : null;
-    return api.exportPdf(this.doc.id, { filename, colorMode, embed, pages, removals, ink, pageSel, split, state: this.stateJson(), ...extra });
+    const rev = String(this.settings.revNo || "1");
+    const state = { ...this.stateJson(), settings: { ...this.settings, exportedRev: rev } };
+    return api.exportPdf(this.doc.id, { filename, colorMode, embed, pages, removals, ink, pageSel, split, rev, state, ...extra });
   }
 
   // ------------------------------------------------------------ mouse

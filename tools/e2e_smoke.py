@@ -660,6 +660,9 @@ def main(url, out):
         page.set_input_files("#fileInput", str(path))
         # wait for the new document (loading takes time), not the old one which already had 36 annotations
         page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 36")
+        # the export knows its revision; opening it does not change the number yet
+        rev0 = page.evaluate("[window.cotare.settings.revNo, window.cotare.settings.exportedRev]")
+        assert rev0[0] == rev0[1], rev0
         # closing without changes: straight to the start page
         page.click("#btnClose")
         page.wait_for_function("window.cotare.doc === null && !document.getElementById('emptyState').hidden")
@@ -671,6 +674,9 @@ def main(url, out):
         page.keyboard.press("t")
         click(100, 30)
         page.press("#tTxt", "Escape")
+        # the first change after an exported revision starts the next one
+        rev1 = page.evaluate("window.cotare.settings.revNo")
+        assert int(rev1) == int(rev0[0]) + 1, (rev0, rev1)
         page.click("#btnClose")
         page.wait_for_selector("#cClose")
         page.click("#cClose")
@@ -684,6 +690,9 @@ def main(url, out):
         page.evaluate("localStorage.setItem('drawcad.lang', 'ro')")
         b.close()
 
+    import pikepdf
+    with pikepdf.open(str(path)) as pk:
+        assert str(pk.docinfo.get("/DrawCADRevision", "")) == "1", dict(pk.docinfo)
     import pypdfium2 as pdfium
     doc = pdfium.PdfDocument(str(path))
     img = doc[0].render(scale=3).to_pil()
