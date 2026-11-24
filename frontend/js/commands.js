@@ -49,6 +49,8 @@ export const DEFAULT_ALIASES = {
   cloud: ["REVCLOUD", "RVC"],
   mark: ["HL", "HIGHLIGHT"],
   comment: ["CMT", "COMMENT"],
+  stamp: ["STAMP", "STP"],
+  qr: ["QR", "QRCODE"],
   strike: ["STR", "TAIE"],
   white: ["WO", "WIPEOUT"],
   ink: ["INK"],

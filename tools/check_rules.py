@@ -55,6 +55,11 @@ EXCEPTIONS = [
     ("i18n", "js/tblock.js", "Title", "title block label for drawings in English (dlang = en)"),
     ("i18n", "js/tblock.js", "Proprietar", "title block label on drawings in Romanian (dlang = ro): drawing text, not interface"),
     ("i18n", "*", "ISO 7200", "name of the standard, the same in every language"),
+    ("i18n", "js/dialogs.js", "PENTRU EXECUȚIE", "stamp word on drawings in Romanian (dlang = ro): drawing text, not interface"),
+    ("i18n", "js/dialogs.js", "COPIE NECONTROLATĂ", "stamp word on drawings in Romanian (dlang = ro): drawing text, not interface"),
+    ("i18n", "js/dialogs.js", "FOR PRODUCTION", "stamp word on drawings in English (dlang = en)"),
+    ("i18n", "js/dialogs.js", "UNCONTROLLED COPY", "stamp word on drawings in English (dlang = en)"),
+    ("i18n", "js/annots.js", "Nr. desen: {nr_desen}", "QR code content on drawings in Romanian (dlang = ro): drawing text, not interface"),
     ("i18n", "js/tools.js", "Break all sharp edges", "default note for drawings in English (dlang = en)"),
     ("i18n", "js/tools.js", "Muchiile nespecificate se teșesc", "default note for drawings in Romanian (dlang = ro): drawing text, not interface"),
     # i18n: shown in both languages on purpose (translate="no")

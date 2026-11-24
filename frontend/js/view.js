@@ -23,6 +23,11 @@ export const COLORS = {
   cmt: "#ffcf3f",
   cmtDone: "#c3c9d1",
   cmtInk: "#5c4400",
+  // stamps keep their color in every export; the watermark is a faint gray
+  stRed: "#c62828",
+  stGreen: "#2e7d32",
+  stBlue: "#1f4fbf",
+  wm: "#7a7f87",
   // editor
   canvasBg: "#2b3038",
   inkDefault: "#111111",

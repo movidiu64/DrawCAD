@@ -43,6 +43,9 @@
   --layer-rev: #ff6b6b;
   --layer-del: #a3acb7;
   --layer-review: #ffcf3f;
+  --stamp-red: #ff6b6b;
+  --stamp-green: #4cc76a;
+  --stamp-blue: #6f9bff;
   --accent-tint: rgba(242, 169, 59, 0.14);
   --accent-line: #c9842a;
   --chip-bg: rgba(17, 20, 24, 0.82);
@@ -370,6 +373,13 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
 .spane .row .field { max-width: 300px; }
 .stylepv { min-height: 0; height: 180px; flex: none; }
 .stylepv canvas { width: 100%; height: 180px; display: block; }
+/* stamps */
+.stamps { display: flex; flex-wrap: wrap; gap: 8px; }
+.stampopt { display: inline-flex; align-items: center; gap: 2px; }
+.stampbtn { font-weight: 700; letter-spacing: 0.06em; border-width: 2px; }
+.qrtext { margin: 0; padding: 8px 10px; background: var(--bg); border-radius: 6px; font: 12px var(--mono); white-space: pre-wrap; word-break: break-all; color: var(--text2); }
+.swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; }
+
 /* title block library */
 .tblist { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow: auto; }
 .tbrow { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); flex-wrap: wrap; }

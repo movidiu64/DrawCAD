@@ -920,6 +920,65 @@ export function settingsDialog(app) {
   setTimeout(() => $d(`[data-stab="${cur}"]`).focus(), 0);
 }
 
+// ------------------------------------------------------------------ stamps (V12-5)
+// the words are drawing text: they follow the document's drawing language (settings.dlang)
+export const STAMP_PRESETS = {
+  ro: [["APROBAT", "stGreen"], ["VERIFICAT", "stBlue"], ["PENTRU EXECUȚIE", "stGreen"], ["PRELIMINAR", "stBlue"], ["ANULAT", "stRed"], ["COPIE NECONTROLATĂ", "stRed"]],
+  en: [["APPROVED", "stGreen"], ["CHECKED", "stBlue"], ["FOR PRODUCTION", "stGreen"], ["PRELIMINARY", "stBlue"], ["VOID", "stRed"], ["UNCONTROLLED COPY", "stRed"]],
+};
+const STAMP_SW = { stRed: "var(--stamp-red)", stGreen: "var(--stamp-green)", stBlue: "var(--stamp-blue)" };
+
+/** Which stamp the tool places: the usual ones, plus the user's own (kept in the browser). */
+export function stampDialog(app) {
+  let chosen = false;
+  const render = () => {
+    const mine = app.stampLib();
+    const btn = (t, c, i = null) => `<span class="stampopt"><button class="ghost stampbtn" data-st="${esc(t)}" data-sc="${c}" style="color:${STAMP_SW[c]};border-color:${STAMP_SW[c]}">${esc(t)}</button>${i != null ? `<button class="icon" data-stdel="${i}" aria-label="Șterge ${esc(t)}" title="Șterge">×</button>` : ""}</span>`;
+    const dlg = showModal(`
+      <h2>Ștampilă</h2>
+      <div class="lbl">Uzuale</div>
+      <div class="stamps" translate="no">${STAMP_PRESETS[app.settings.dlang === "en" ? "en" : "ro"].map(([t, c]) => btn(t, c)).join("")}</div>
+      <div class="lbl">Ale tale</div>
+      <div class="stamps">${mine.map((x, i) => btn(x.text, x.color, i)).join("") || `<span class="sub">Nicio ștampilă proprie încă.</span>`}</div>
+      <div class="row"><div class="field"><label for="stNew">Ștampilă nouă</label><input type="text" id="stNew" maxlength="40" placeholder="ex.: CONFORM CU ORIGINALUL"></div>
+        <div class="seg" id="stCol">${["stRed", "stGreen", "stBlue"].map((c, i) => `<button data-c="${c}" class="${i === 0 ? "on" : ""}" aria-label="${["Roșu", "Verde", "Albastru"][i]}"><span class="swatch" style="background:${STAMP_SW[c]}"></span></button>`).join("")}</div>
+        <button class="ghost" id="stAdd" style="align-self:flex-end">Adaugă</button></div>
+      <div class="sub">Data și numele tău (Setări → Foaie și revizii) apar sub text; le schimbi din panou după ce ai pus-o.</div>
+      <div class="foot"><button class="ghost" data-close>Închide</button></div>`);
+    let col = "stRed";
+    dlg.querySelectorAll("#stCol [data-c]").forEach((b) => b.addEventListener("click", () => {
+      col = b.dataset.c;
+      dlg.querySelectorAll("#stCol [data-c]").forEach((x) => x.classList.toggle("on", x === b));
+    }));
+    dlg.querySelectorAll("[data-st]").forEach((b) => b.addEventListener("click", () => {
+      app.stampChoice = { text: b.dataset.st, color: b.dataset.sc };
+      chosen = true;
+      closeModal();
+      app.setHint(TOOLS.find((t) => t.id === "stamp").hint);
+    }));
+    dlg.querySelectorAll("[data-stdel]").forEach((b) => b.addEventListener("click", () => {
+      const list = app.stampLib();
+      list.splice(Number(b.dataset.stdel), 1);
+      app.saveStampLib(list);
+      render();
+    }));
+    dlg.querySelector("#stAdd").addEventListener("click", () => {
+      const t = dlg.querySelector("#stNew").value.trim().toUpperCase();
+      if (!t) return;
+      app.saveStampLib([...app.stampLib(), { text: t.slice(0, 40), color: col }]);
+      render();
+    });
+  };
+  render();
+  const obs = new MutationObserver(() => {
+    if (modal().hidden) {
+      obs.disconnect();
+      if (!chosen && app.tool === "stamp") app.setTool("select");
+    }
+  });
+  obs.observe(modal(), { attributes: true, attributeFilter: ["hidden"] });
+}
+
 // ------------------------------------------------------------------ title blocks (V12-3)
 const readDataUrl = (file) => new Promise((ok, bad) => {
   const fr = new FileReader();

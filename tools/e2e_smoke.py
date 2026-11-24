@@ -665,6 +665,19 @@ def main(url, out):
         page.wait_for_function("window.cotare.annots.length === 40")
         page.evaluate("window.cotare.setTool('select')")
 
+        # a stamp from the list and a QR code with the drawing number from the title block
+        page.evaluate("window.cotare.setTool('stamp')")
+        page.wait_for_selector("[data-st]")
+        page.click("[data-st='VERIFICAT']")
+        click(150, 60)
+        page.wait_for_function("window.cotare.annots.length === 41 && window.cotare.tool === 'select'")
+        page.evaluate("window.cotare.setTool('qr')")
+        click(240, 150)
+        page.wait_for_function("window.cotare.annots.length === 42 && window.cotare.selected().type === 'qr'")
+        page.fill("#qNr", "ARB-01")
+        page.press("#qNr", "Enter")
+        assert "ARB-01" in page.inner_text(".qrtext"), page.inner_text(".qrtext")
+
         # export
         page.click("#btnExport")
         page.wait_for_selector("#eGo")
@@ -708,7 +721,7 @@ def main(url, out):
         prev_id = page.evaluate("window.cotare.doc.id")
         page.set_input_files("#fileInput", str(path))
         # wait for the new document (loading takes time), not the old one which already had 36 annotations
-        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 40")
+        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 42")
         # the export knows its revision; opening it does not change the number yet
         rev0 = page.evaluate("[window.cotare.settings.revNo, window.cotare.settings.exportedRev]")
         assert rev0[0] == rev0[1], rev0
@@ -718,7 +731,7 @@ def main(url, out):
         page.wait_for_function("document.querySelectorAll('#recentList [data-doc]').length >= 1", timeout=5000)
         # reopen from Recent, one change, then close with the prompt
         page.click("#recentList [data-doc]")
-        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 40")
+        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 42")
         page.wait_for_timeout(300)
         page.keyboard.press("t")
         click(100, 30)

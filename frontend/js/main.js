@@ -448,6 +448,48 @@ class App {
     }
   }
 
+  // ------------------------------------------------------------ stamps, QR, watermark (V12-5)
+  /** The stamp chosen for the tool, at pt (centre): today's date and the user's name under the word. */
+  stampAt(pt) {
+    const c = this.stampChoice;
+    if (!c || !pt) return null;
+    return { type: "stamp", p: [...pt], text: c.text, color: c.color, sub: true, date: today(), name: this.settings.author || "", angle: 0 };
+  }
+
+  /** A QR code at pt (top-left): drawing number taken from a title block of the document, if any. */
+  qrAt(pt, preview = false) {
+    if (!pt) return null;
+    // the code holds the date of the current revision: today, if the document has none yet
+    if (!preview && !this.settings.revDate) this.settings = { ...this.settings, revDate: today() };
+    const tb = this.annots.find((x) => x.type === "tblock" && x.vals && x.vals.nr_desen);
+    return { type: "qr", p: [...pt], size: 20, vals: { nr_desen: tb ? tb.vals.nr_desen : "", extra: "" } };
+  }
+
+  /** The custom stamps kept in the browser. */
+  stampLib() {
+    try {
+      const v = JSON.parse(localStorage.getItem("cotare.stamps") || "[]");
+      return Array.isArray(v) ? v.filter((x) => x && typeof x.text === "string").slice(0, 50) : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  saveStampLib(list) {
+    try {
+      localStorage.setItem("cotare.stamps", JSON.stringify(list.slice(0, 50)));
+    } catch (_) { /* storage unavailable */ }
+  }
+
+  /** A faint diagonal text on every page (one watermark annotation per page, replacing older ones). */
+  addWatermark(text) {
+    this.pushHistory();
+    this.annots = this.annots.filter((a) => a.type !== "watermark");
+    if (text) for (let i = 0; i < this.doc.pages.length; i++) this.annots.push(finalize({ type: "watermark", text, page: i, op: 0.14 }));
+    this.changed();
+    this.panel.render();
+  }
+
   // ------------------------------------------------------------ markup (V12-4)
   /** Color and width of the next highlighter strokes (remembered in the browser). */
   setMarkStyle(patch) {
@@ -1884,6 +1926,7 @@ class App {
     if (id === "image" && this.doc) this.startImageTool();
     else if (id !== "image") this.pendingImage = null;
     if (id === "tblock" && this.doc && !this.tblockTpl) this.openTblockLibrary(true);
+    if (id === "stamp" && this.doc) dlg.stampDialog(this);
   }
 
   // ------------------------------------------------------------ documents
@@ -2784,6 +2827,13 @@ class App {
     this.select(a.id);
     this.changed();
     if (a.type === "tblock") this.afterTblock(a);
+    if (a.type === "stamp" || a.type === "qr") {
+      // one at a time: back to Select, with the new one in the panel
+      setTimeout(() => {
+        this.setTool("select");
+        this.select(a.id);
+      }, 0);
+    }
     const focus = { text: "#tTxt", lead: "#lTxt", strike: "#sNew", note: "#nTxt", comment: "#cTxt" }[a.type];
     if (focus) {
       const el = $("panel").querySelector(focus);

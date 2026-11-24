@@ -5,6 +5,7 @@ import { symbolPrims, GDT_BY_ID, MODIFIERS } from "./gdt.js";
 import { buildShape, SHAPE_NAMES } from "./shapes.js";
 import { buildSection, buildDetail, buildBalloon } from "./symbols.js";
 import { buildTblock } from "./tblock.js";
+import { qrMatrix } from "./qr.js";
 
 export const K = 72 / 25.4; // pt per mm
 export const CAP = 1515 / 2048; // cap height in osifont, relative to the em
@@ -52,6 +53,9 @@ export const TYPE_NAMES = {
   cloud: "Nor de revizie",
   mark: "Marcaj",
   comment: "Comentariu",
+  stamp: "Ștampilă",
+  qr: "Cod QR",
+  watermark: "Filigran",
 };
 
 export function typeName(a) {
@@ -1344,7 +1348,108 @@ function buildComment(a, S, measure) {
   return { prims, handles: [{ k: "p", p: a.p, move: true }] };
 }
 
-const BUILDERS = { cloud: buildCloud, mark: buildMark, comment: buildComment, tblock: buildTb, image: buildImage, ord: buildOrd, dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, ink: buildInk, shape: buildShape, section: buildSection, detail: buildDetail, balloon: buildBalloon, bom: buildBom, holes: buildHoles, ucs: buildUcs };
+// ------------------------------------------------------------------ stamps, QR, watermark (V12-5)
+export const STAMP_COLORS = ["stRed", "stGreen", "stBlue"];
+
+/** Rubber stamp: a word in a double frame, with the date and name under it; turned by a.angle (°). */
+function buildStamp(a, S, measure) {
+  const c = STAMP_COLORS.includes(a.color) ? a.color : "stRed";
+  const [cx, cy] = a.p;
+  const big = S.F * 1.45;
+  const small = S.F * 0.7;
+  const txt = String(a.text || "").toUpperCase() || "—";
+  const sub = a.sub === false ? "" : [a.date, a.name].filter(Boolean).join(" · ");
+  const tw = measure(txt, big);
+  const sw = sub ? measure(sub, small) : 0;
+  const pad = S.h * 0.8;
+  const hb = S.h * 1.45;
+  const hs = sub ? S.h * 0.7 : 0;
+  const gap = sub ? S.h * 0.55 : 0;
+  const W = Math.max(tw, sw) + 2 * pad + S.h * 0.6;
+  const H = hb + gap + hs + 2 * pad;
+  const ang = Number(a.angle) || 0;
+  const th = (-ang * Math.PI) / 180;
+  const R = (x, y) => [cx + x * Math.cos(th) - y * Math.sin(th), cy + x * Math.sin(th) + y * Math.cos(th)];
+  const rect = (dx) => {
+    const q = [R(-W / 2 + dx, -H / 2 + dx), R(W / 2 - dx, -H / 2 + dx), R(W / 2 - dx, H / 2 - dx), R(-W / 2 + dx, H / 2 - dx)];
+    return q.flat();
+  };
+  const prims = [
+    { t: "P", p: rect(0), close: true, w: S.lw * 2.4, c },
+    { t: "P", p: rect(S.h * 0.35), close: true, w: S.lw, c },
+  ];
+  const y0 = -H / 2 + pad + hb;
+  prims.push({ t: "T", p: R(-tw / 2, y0), s: big, a: ang, txt, tw, c });
+  if (sub) prims.push({ t: "T", p: R(-sw / 2, y0 + gap + hs), s: small, a: ang, txt: sub, tw: sw, c });
+  return { prims, handles: [{ k: "p", p: a.p, move: true }] };
+}
+
+/** Text a QR code holds: its template with the fields filled, empty lines left out. */
+export function qrText(a, S) {
+  const vals = { ...(a.vals || {}), rev: S.revNo || "1", data: S.revDate || "" };
+  // drawing text: in the document's drawing language
+  const tpl = a.content || (S.dlang === "en" ? "Drawing no.: {nr_desen}\nRev: {rev}\nDate: {data}\n{extra}" : "Nr. desen: {nr_desen}\nRev: {rev}\nData: {data}\n{extra}");
+  return tpl
+    .replace(/\{([a-z0-9_]{1,24})\}/gi, (_m, k) => String(vals[k.toLowerCase()] ?? ""))
+    .split("\n")
+    .filter((l) => l.trim() && !/:\s*$/.test(l.trim()))
+    .join("\n");
+}
+
+/** QR code, vector squares (one rectangle per run of dark modules), top-left corner at a.p. */
+function buildQr(a, S) {
+  const c = a.layer || "add";
+  const text = qrText(a, S) || " ";
+  let m;
+  try {
+    m = qrMatrix(text);
+  } catch (_) {
+    m = null;
+  }
+  const size = (a.size || 20) * K * (a.scale || 1);
+  const [x0, y0] = a.p;
+  if (!m) {
+    return { prims: [{ t: "P", p: [x0, y0, x0 + size, y0, x0 + size, y0 + size, x0, y0 + size], close: true, w: S.lw, c }], handles: [{ k: "p", p: a.p, move: true }], qr: { tooLong: true } };
+  }
+  const n = m.length;
+  const u = size / n;
+  const prims = [];
+  for (let y = 0; y < n; y++) {
+    let x = 0;
+    while (x < n) {
+      if (!m[y][x]) {
+        x++;
+        continue;
+      }
+      const start = x;
+      while (x < n && m[y][x]) x++;
+      prims.push({ t: "R", p: [x0 + start * u, y0 + y * u, x0 + x * u, y0 + (y + 1) * u], c });
+    }
+  }
+  return { prims, handles: [{ k: "p", p: a.p, move: true }], qr: { modules: n, moduleMm: (u / K) } };
+}
+
+/** Watermark: a large, faint diagonal text across its page. */
+function buildWatermark(a, S, measure) {
+  const wh = (S.pagesWH && S.pagesWH[a.page || 0]) || [842, 595];
+  const [W, H] = wh;
+  const txt = String(a.text || "").toUpperCase() || "COPIE";
+  const ang = (Math.atan2(H, W) * 180) / Math.PI;
+  const diag = Math.hypot(W, H);
+  // width per unit of font size, measured at a normal size (the measure rounds at tiny sizes)
+  const per = Math.max(0.01, measure(txt, 100) / 100);
+  const s = Math.min((0.62 * diag) / per, H * 0.3);
+  const tw = measure(txt, s);
+  const th = (ang * Math.PI) / 180;
+  const tu = [Math.cos(th), -Math.sin(th)];
+  const up = [-Math.sin(th), -Math.cos(th)];
+  const cx = W / 2;
+  const cy = H / 2;
+  const p = [cx - (tu[0] * tw) / 2 - up[0] * s * CAP * 0.5, cy - (tu[1] * tw) / 2 - up[1] * s * CAP * 0.5];
+  return { prims: [{ t: "T", p, s, a: ang, txt, tw, c: "wm", op: a.op ?? 0.14 }], handles: [] };
+}
+
+const BUILDERS = { stamp: buildStamp, qr: buildQr, watermark: buildWatermark, cloud: buildCloud, mark: buildMark, comment: buildComment, tblock: buildTb, image: buildImage, ord: buildOrd, dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, ink: buildInk, shape: buildShape, section: buildSection, detail: buildDetail, balloon: buildBalloon, bom: buildBom, holes: buildHoles, ucs: buildUcs };
 
 // characters without a glyph in osifont → existing equivalents (same on screen and in the PDF)
 const GLYPH_SUBST = { "…": "...", "„": '"', "”": '"', "“": '"', "«": '"', "»": '"', "‚": ",", "‘": "'", "\u00a0": " ", "−": "-" };
@@ -1353,7 +1458,7 @@ export function fontSafe(txt) {
   return String(txt ?? "").replace(GLYPH_RE, (ch) => GLYPH_SUBST[ch]);
 }
 
-export const SCALABLE = new Set(["ord", "dim", "rad", "ang", "rough", "lead", "text", "note", "gdt", "datum", "strike", "revtab", "section", "detail", "balloon", "bom", "holes"]);
+export const SCALABLE = new Set(["stamp", "ord", "dim", "rad", "ang", "rough", "lead", "text", "note", "gdt", "datum", "strike", "revtab", "section", "detail", "balloon", "bom", "holes"]);
 export const SCALE_MIN = 0.3;
 export const SCALE_MAX = 5;
 

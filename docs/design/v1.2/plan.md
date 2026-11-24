@@ -79,14 +79,15 @@ The state embedded in an export (`drawcad.json`) already reopens as editable. Th
   Export: as native PDF notes (`/Text` annotations) that Acrobat and other readers show as comments
   (default), or left out.
 
-## V12-5 — Stamps and QR code
+## V12-5 — Stamps and QR code · built
 
 - **Stamps:** APROBAT, VERIFICAT, PENTRU EXECUȚIE, ANULAT, COPIE NECONTROLATĂ, PRELIMINAR, with date and
   name filled in automatically; custom stamps (text, color, frame) in the same browser library as title
   blocks. Option: a diagonal watermark on every page.
 - **QR code:** content built from chosen fields (drawing number, revision, date, name, free text or a
-  URL), shown next to the code as text. Generated in the browser by a vendored MIT-licensed encoder
-  (no build step), drawn as vector squares, so it stays sharp in PDF and DXF. Error correction level M;
+  URL). Generated in the browser by our own encoder (`qr.js`: byte mode, level M, versions 1–15,
+  checked against OpenCV's decoder; the package registries were not reachable to vendor one), drawn as
+  vector squares, so it stays sharp in PDF and DXF. Error correction level M;
   minimum module size checked against print (warning under 0.4 mm).
 
 ## V12-6 — Revision compare

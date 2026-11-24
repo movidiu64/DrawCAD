@@ -1390,7 +1390,9 @@ def apply_removals(pdf_bytes: bytes, removals: dict[int, list[dict]]) -> tuple[b
 
 COLOR_LAYERS = {"add": (0.184, 0.435, 0.839), "rev": (0.776, 0.157, 0.157)}
 # highlighter colors: a marking is meant to be seen, so it keeps its color in every mode
-COLOR_MARK = {"hlGreen": (0.373, 0.827, 0.373), "hlYellow": (1.0, 0.882, 0.29), "hlPink": (1.0, 0.494, 0.725)}
+COLOR_MARK = {"hlGreen": (0.373, 0.827, 0.373), "hlYellow": (1.0, 0.882, 0.29), "hlPink": (1.0, 0.494, 0.725),
+              # stamps and the watermark: their color is part of what they say
+              "stRed": (0.776, 0.157, 0.157), "stGreen": (0.18, 0.49, 0.196), "stBlue": (0.122, 0.31, 0.749), "wm": (0.478, 0.498, 0.529)}
 
 
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -1533,6 +1535,8 @@ def _overlay_pdf(page_specs, color_mode) -> bytes:
                     continue
                 x, y = g.from_vis(*p["p"])
                 c.saveState()
+                if p.get("op") is not None:
+                    c.setFillAlpha(max(0.05, min(1.0, float(p["op"]))))
                 c.translate(x, y)
                 c.rotate(float(p.get("a", 0)) + g.rotation)
                 c.setFont(FONT_NAME, float(p.get("s", 10)))

@@ -1,5 +1,5 @@
 // The properties panel on the right.
-import { typeName, newId, fmtNum, parseNum, build, derive, K, SCALABLE, SCALE_MIN, SCALE_MAX } from "./annots.js";
+import { typeName, newId, fmtNum, parseNum, build, derive, K, SCALABLE, SCALE_MIN, SCALE_MAX, qrText } from "./annots.js";
 import { LTYPES, LTYPE_BY_ID, WIDTHS, PRESETS, resizeShape } from "./shapes.js";
 import { fmtDev } from "./iso286.js";
 import { GDT_SYMBOLS, GDT_BY_ID, MODIFIERS, symbolPrims, diaAllowed } from "./gdt.js";
@@ -8,7 +8,7 @@ import { drawPrims, COLORS } from "./view.js";
 import { TOOL_BY_ID, DRAW_TOOLS } from "./tools.js";
 import { commandList, keyConfig } from "./commands.js";
 import { tr } from "./i18n.js";
-import { pagesDialog as dlgPages } from "./dialogs.js";
+import { pagesDialog as dlgPages, toast } from "./dialogs.js";
 
 const ORIG_EDIT = new Set(["white", "redact", "ink"]); // changes to the original, no layer
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -648,6 +648,51 @@ export class Panel {
       <div class="sec"><div class="btns"><button class="ghost" data-act="tblib">Bibliotecă de indicatoare…</button></div></div>`;
   }
 
+  html_stamp(a) {
+    const app = this.app;
+    const col = a.color || "stRed";
+    const sw = { stRed: "var(--stamp-red)", stGreen: "var(--stamp-green)", stBlue: "var(--stamp-blue)" };
+    return `<div class="sec"><div class="h">Ștampilă</div>
+      <div class="field"><label for="stTxt">Text</label><input type="text" id="stTxt" data-f="text" value="${esc(a.text || "")}" maxlength="40"></div>
+      <div class="field"><span class="lbl">Culoare</span><div class="seg">
+        ${[["stRed", "Roșu"], ["stGreen", "Verde"], ["stBlue", "Albastru"]].map(([v, l]) => `<button data-act="stcolor" data-v="${v}" class="${col === v ? "on" : ""}"><span class="swatch" style="background:${sw[v]}"></span> ${l}</button>`).join("")}</div></div>
+      <div class="field"><span class="lbl">Înclinare</span><div class="seg">
+        ${[[0, "Dreaptă"], [15, "15°"], [-15, "−15°"]].map(([v, l]) => `<button data-act="stangle" data-v="${v}" class="${(Number(a.angle) || 0) === v ? "on" : ""}">${l}</button>`).join("")}</div></div>
+      <label class="chk"><input type="checkbox" data-act-chk="stampsub" ${a.sub === false ? "" : "checked"}> Data și numele sub text</label>
+      <div class="row"><div class="field"><label for="stDate">Data</label><input type="text" id="stDate" class="mono" data-f="date" value="${esc(a.date || "")}"></div>
+        <div class="field"><label for="stName">Nume</label><input type="text" id="stName" data-f="name" value="${esc(a.name || "")}"></div></div>
+      <div class="btns"><button class="ghost" data-act="stsave">Păstrează ca ștampilă proprie</button></div>
+      <div class="sub">Își păstrează culoarea și la exportul „Toate negre”. Mărimea: pătrățelul din colț sau secțiunea Mărime.</div></div>
+      <div class="sec"><div class="h">Filigran</div>
+        <div class="sub">Textul ștampilei, mare și palid, pe diagonala fiecărei pagini (ex.: COPIE NECONTROLATĂ).</div>
+        <div class="btns"><button class="ghost" data-act="wmadd">Filigran pe toate paginile</button>${app.annots.some((x) => x.type === "watermark") ? `<button class="ghost" data-act="wmdel">Scoate filigranul</button>` : ""}</div></div>`;
+  }
+
+  html_watermark(a) {
+    return `<div class="sec"><div class="h">Filigran</div>
+      <div class="field"><label for="wmTxt">Text</label><input type="text" id="wmTxt" data-f="text" value="${esc(a.text || "")}" maxlength="40"></div>
+      <div class="sub">Câte unul pe fiecare pagină; textul se schimbă doar pe pagina aceasta.</div>
+      <div class="btns"><button class="ghost" data-act="wmdel">Scoate filigranul de pe toate paginile</button></div></div>`;
+  }
+
+  html_qr(a) {
+    const app = this.app;
+    const S = app.S();
+    const b = app.builtOf(a);
+    const info = b.qr || {};
+    const text = qrText(a, S);
+    const v = a.vals || {};
+    return `<div class="sec"><div class="h">Cod QR</div>
+      <div class="field"><label for="qNr">Nr. desen</label><input type="text" id="qNr" data-qv="nr_desen" value="${esc(v.nr_desen || "")}"></div>
+      <div class="field"><label for="qExtra">Rând liber (text sau link)</label><input type="text" id="qExtra" data-qv="extra" value="${esc(v.extra || "")}" placeholder="https://…"></div>
+      <div class="field"><span class="lbl">Mărime</span><div class="seg">
+        ${[15, 20, 30].map((mm) => `<button data-act="qrsize" data-v="${mm}" class="${(a.size || 20) === mm ? "on" : ""}">${mm} mm</button>`).join("")}</div></div>
+      <div class="lbl">Conține</div><pre class="qrtext">${esc(text)}</pre>
+      ${info.tooLong ? `<div class="note warn">Textul e prea lung pentru un cod QR (peste ~400 de caractere).</div>` : ""}
+      ${info.moduleMm && info.moduleMm < 0.4 ? `<div class="note warn">Un pătrățel are ${fmtNum(info.moduleMm, ",", 2)} mm: la tipar poate să nu se citească. Mărește codul sau scurtează textul.</div>` : ""}
+      <div class="sub">Revizia și data reviziei se actualizează singure. Se exportă vectorial, în PDF și în DXF.</div></div>`;
+  }
+
   html_cloud(a) {
     const arc = a.arc || 6;
     return `<div class="sec"><div class="h">Nor de revizie</div>
@@ -859,6 +904,16 @@ export class Panel {
         }, 0);
       });
     });
+    el.querySelectorAll("[data-qv]").forEach((inp) => {
+      inp.addEventListener("change", () => {
+        app.updateSel((a) => { a.vals = { ...(a.vals || {}), [inp.dataset.qv]: inp.value }; });
+        this.render();
+      });
+      inp.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === "Escape") inp.blur();
+        e.stopPropagation();
+      });
+    });
     el.querySelectorAll("[data-tbf]").forEach((inp) => {
       inp.addEventListener("input", () => {
         const k = inp.dataset.tbf;
@@ -902,6 +957,7 @@ export class Panel {
     el.querySelectorAll("[data-act-chk]").forEach((cb) => cb.addEventListener("change", () => {
       const k = cb.dataset.actChk;
       if (k === "cloudtri") app.updateSel((a) => { a.tri = cb.checked; });
+      if (k === "stampsub") app.updateSel((a) => { a.sub = cb.checked; });
       this.render();
     }));
     const ss = el.querySelector("#scaleSel");
@@ -1189,6 +1245,31 @@ export class Panel {
           const hh = Math.abs(r[2] - r[0]) / 2;
           a.r = [cx - hw, cy - hh, cx + hw, cy + hh];
         });
+        break;
+      case "stcolor":
+        upd((a) => { a.color = v; });
+        break;
+      case "stangle":
+        upd((a) => { a.angle = Number(v); });
+        break;
+      case "stsave": {
+        const a = app.selected();
+        if (a) {
+          app.saveStampLib([...app.stampLib().filter((x) => x.text !== String(a.text).toUpperCase()), { text: String(a.text || "").toUpperCase().slice(0, 40), color: a.color || "stRed" }]);
+          toast("Ștampila e în lista ta");
+        }
+        break;
+      }
+      case "wmadd": {
+        const a = app.selected();
+        app.addWatermark(String((a && a.text) || "COPIE").toUpperCase());
+        break;
+      }
+      case "wmdel":
+        app.addWatermark("");
+        break;
+      case "qrsize":
+        upd((a) => { a.size = Number(v); });
         break;
       case "cloudarc":
         app.cloudArc = Number(v);
