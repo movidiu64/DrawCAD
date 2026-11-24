@@ -335,11 +335,33 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
 .chk input { accent-color: var(--accent); }
 
 /* ---------- dialog */
-.modal { position: fixed; inset: 0; background: rgba(8, 10, 12, 0.6); display: grid; place-items: center; z-index: 10; padding: 16px; }
+.modal { position: fixed; inset: 0; background: rgba(8, 10, 12, 0.6); display: grid; place-items: center; z-index: 70; padding: 16px; }
 .dialog { width: min(920px, 100%); max-height: calc(100vh - 32px); overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 22px; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
 .dialog h2 { margin: 0; font-size: 19px; font-weight: 600; }
 .dialog .foot { display: flex; justify-content: flex-end; gap: 10px; align-items: center; }
 .dialog .foot .muted { flex: 1; font-size: 13px; }
+/* settings: navigation by scope on the left, one pane at a time; fixed height so panes do not jump */
+.dialog:has(.setlay) { height: min(740px, calc(100vh - 32px)); }
+.setlay { display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: 22px; flex: 1 1 auto; min-height: 0; }
+.snav { display: flex; flex-direction: column; gap: 2px; padding-right: 14px; border-right: 1px solid var(--line); min-height: 0; }
+.snav .sgrp { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: 12px 10px 6px; }
+.snav .sgrp:first-child { padding-top: 2px; }
+.snav button { height: 36px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--text2); font-size: 14px; text-align: left; }
+.snav button:hover { background: var(--raised); color: var(--text); }
+.snav button:focus-visible { outline: none; box-shadow: inset 2px 0 0 var(--accent); background: var(--raised); }
+.snav button.on { background: var(--accent-tint); color: var(--accent); }
+.snav .sver { margin-top: auto; padding: 0 10px; font-size: 11px; color: var(--muted); }
+.spanes { min-height: 0; overflow: auto; padding-right: 4px; }
+.spane { display: flex; flex-direction: column; gap: 18px; }
+.spane .scope { display: flex; flex-direction: column; gap: 3px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.spane .scope h3 { margin: 0; font-size: 16px; font-weight: 600; }
+.spane .scope span { font-size: 12px; color: var(--muted); }
+.spane .scope span.doc { color: var(--accent); }
+.spane .sec > .h { font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--text); }
+.spane .seg { flex-wrap: wrap; }
+.spane .row .field { max-width: 300px; }
+.stylepv { min-height: 0; height: 180px; flex: none; }
+.stylepv canvas { width: 100%; height: 180px; display: block; }
 .cols { display: flex; gap: 20px; flex-wrap: wrap; }
 .cols > * { flex: 1 1 300px; min-width: 0; }
 .cards { display: flex; flex-direction: column; gap: 8px; }
@@ -353,7 +375,7 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
 .objlist .st { margin-left: auto; font-size: 12px; }
 .prevbox { background: var(--paper); border-radius: 8px; min-height: 160px; display: grid; place-items: center; overflow: hidden; }
 .prevbox img { max-width: 100%; display: block; }
-.toast { position: fixed; left: 50%; top: 104px; transform: translateX(-50%); pointer-events: none; background: var(--deep); border: 1px solid var(--line2); color: var(--text); padding: 10px 16px; border-radius: 8px; font-size: 13px; z-index: 20; max-width: 90vw; }
+.toast { position: fixed; left: 50%; top: 104px; transform: translateX(-50%); pointer-events: none; background: var(--deep); border: 1px solid var(--line2); color: var(--text); padding: 10px 16px; border-radius: 8px; font-size: 13px; z-index: 80; max-width: 90vw; }
 
 /* ---------- smaller screens: the panel becomes a drawer over the drawing */
 @media (max-width: 1100px) {
@@ -407,6 +429,18 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
   .vphint:not(:empty) { display: block; position: absolute; left: 8px; right: 8px; top: 8px; z-index: 3; padding: 6px 10px; border-radius: 8px; background: rgba(21,24,28,0.88); color: var(--text); font-size: 12px; line-height: 1.4; pointer-events: none; }
   .snapmenu { position: fixed; left: 8px; right: 8px; bottom: 40px; width: auto; }
   .dialog { padding: 14px; gap: 12px; max-height: calc(100vh - 16px); }
+  .dialog:has(.setlay) { height: calc(100vh - 16px); }
+  .setlay { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 12px; }
+  .snav { flex-direction: row; overflow-x: auto; padding: 0 0 8px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .snav .sgrp, .snav .sver { display: none; }
+  .snav button { flex: none; white-space: nowrap; }
+  .spane .scope h3 { display: none; }
+  .dialog .foot { flex-wrap: wrap; }
+  .dialog .foot .sdef, .dialog .foot .snote { flex: 1 1 100% !important; }
+  .mmgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mmgrid .mmc { grid-column: auto !important; grid-row: auto !important; }
+  .mmgrid .mmc:first-child { display: none; }
+  .toast { top: auto; bottom: 72px; }
   .modal { padding: 8px; }
   .ctxbar { min-height: 36px; gap: 8px; }
   .ctxtool .ch, .ctxtool .ca, .ctxtool .vs, .legendchip { display: none; }

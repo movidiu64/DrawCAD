@@ -142,7 +142,9 @@ The app was originally called "Cotare": the old `COTARE_*` variables are still a
 
 ## Usage
 
-**The screen:** the header holds the document (name, save state, close), the text search, undo / redo, zoom, *Hide the panels*, Open, Settings and **Export ▾** (the arrow picks PDF or DXF first). On the left, the tool rail has one slot per family (Select, Pan, Measure, Dimensions, Tolerances, Annotations, Drawing, Views, Revision): a click runs the tool the slot shows (the one used last in that family) and opens the family's list next to it, with every tool, its alias and its key; pick another tool from the list, or move on to the drawing and the list closes by itself (a second click on the slot or Esc closes it too). Resting the mouse on a slot for a moment opens its list without changing the tool, and with a list open, moving along the rail switches to the next family's list; Settings → *Tool rail* turns this off. Above the drawing, the context bar shows the active tool, its hint and the options of the current step, or, with a selection, what is selected and its actions (Move, Copy, Zoom to selection, Erase; for a linear dimension also *Chain from here* and *Baseline from here*); the pages are on its right. The panel on the right has three tabs: **Properties** (the selection), **Layers** (document, drawing scale and Calibrate, layers, printing) and **Annotations** (the page's list with a filter and chips by kind). Panel sections open and close from their title, remembered; Size and Layer start closed. At the bottom: coordinates, the command line, the Snap / Tracking / Polar / Ortho toggles and the scale. **Ctrl+0** (or the header button) hides the rail, the context bar and the panel. In Settings → *Tool rail* you turn the labels off (icons only) or hide families you don't use; their tools stay reachable from the command line and their keys.
+**The screen:** the header holds the document (name, save state, close), the text search, undo / redo, zoom, *Hide the panels*, Open, Settings and **Export ▾** (the arrow picks PDF or DXF first). On the left, the tool rail has one slot per family (Select, Pan, Measure, Dimensions, Tolerances, Annotations, Drawing, Views, Revision): a click runs the tool the slot shows (the one used last in that family) and opens the family's list next to it, with every tool, its alias and its key; pick another tool from the list, or move on to the drawing and the list closes by itself (a second click on the slot or Esc closes it too). Resting the mouse on a slot for a moment opens its list without changing the tool, and with a list open, moving along the rail switches to the next family's list; Settings → Interface → *Tool rail* turns this off. Above the drawing, the context bar shows the active tool, its hint and the options of the current step, or, with a selection, what is selected and its actions (Move, Copy, Zoom to selection, Erase; for a linear dimension also *Chain from here* and *Baseline from here*); the pages are on its right. The panel on the right has three tabs: **Properties** (the selection), **Layers** (document, drawing scale and Calibrate, layers, printing) and **Annotations** (the page's list with a filter and chips by kind). Panel sections open and close from their title, remembered; Size and Layer start closed. At the bottom: coordinates, the command line, the Snap / Tracking / Polar / Ortho toggles and the scale. **Ctrl+0** (or the header button) hides the rail, the context bar and the panel. In Settings → Interface → *Tool rail* you turn the labels off (icons only) or hide families you don't use; their tools stay reachable from the command line and their keys.
+
+**Settings** has two groups of sections on the left. *Current document*: **Dimension style** (text height, dimension line ends, arrow length, thin line width, decimal separator, ISO 286 display and notation, with a preview of a Ø25k6 dimension that follows your choices) and **Sheet and revisions** (scale, revision number and name, language of drawing texts); these take effect on **Apply**, and *Use this style as the default for new documents* keeps them for the next documents. *All documents*: **Interface** (language, tool rail), **Commands and menu** (keys mode, radial menu) and **Workspace** (the workspace code, in the private modes); these are saved at once.
 
 **Workflow:**
 1. Open a PDF or an image (or drag the file onto the page).
@@ -217,7 +219,7 @@ Dimensions do not change on calibration: they measure the drawing.
 
 **Transparent commands:** `'Z` (or `Z`), `'ZS`, `'OS`, `'OR`, `'POLAR` work in the middle of a command without ending it. Other commands wait until the current one ends (Esc).
 
-**Keys and commands:** there are two modes, chosen in **Settings → Keys and commands** or by typing the `ALIASEDIT` command.
+**Keys and commands:** there are two modes, chosen in **Settings → Commands and menu → Keys and commands** or by typing the `ALIASEDIT` command.
 - **Direct keys** (default): one key starts a tool (table below). **Enter** opens the command line in the bottom bar: type `DLI`, `C`, `PL`… and press Space or Enter.
 - **AutoCAD commands:** type the command anywhere on the drawing. It appears in the command line, with suggestions, and **Space** or **Enter** starts it. Space or Enter with nothing typed repeats the last command, and ends a polyline. Space held + drag pans the sheet. In this mode you can also turn on **selection as in AutoCAD**: a click or a window adds to the selection, Shift removes.
 
@@ -247,7 +249,7 @@ Default direct keys:
 
 **Mouse:**
 - **right click** = Esc: finishes the polyline, stops the line chain, drops the picked points or deselects
-- **right click held** = radial menu with your favorite commands (chosen in **Settings**, in the 8 positions). At the top is the last command used, then Diameter, Radius, Text, Line (or Delete selection), Leader, Undo, Measure. Pick by dragging towards the command and releasing, or release in place and click the command.
+- **right click held** = radial menu with your favorite commands (chosen in **Settings → Commands and menu**, in the 8 positions). At the top is the last command used, then Diameter, Radius, Text, Line (or Delete selection), Leader, Undo, Measure. Pick by dragging towards the command and releasing, or release in place and click the command.
 - **right click dragged** or the pressed wheel = pan the sheet
 
 **Tablet and phone:** the properties panel becomes a drawer (on a phone, a sheet sliding up from the bottom). It opens by itself when you pick an annotation or have text to type, and the panel button in the header opens it at any time. On a phone the tool rail is a bar at the bottom and a family's list opens upwards; Redo, Open, Settings and Keys are in the header's ⋯ menu. On touch screens:
@@ -421,7 +423,7 @@ Zoom goes up to 3000%. Above the resolution of the whole-page render (~12 MP), t
 
 ### Language
 
-The interface is in Romanian or English: pick it in **Settings** or on the start page; by default it follows the browser language. Separately, for each document, **Settings → Language of drawing texts** picks the language of the table headers (Rev. / Modificare / Data / Nume or Rev. / Description / Date / Name, Poz. / Denumire / Buc. or Item / Description / Qty) and of the default notes. New documents start with the interface language (in English, with a decimal point too).
+The interface is in Romanian or English: pick it in **Settings** or on the start page; by default it follows the browser language. Separately, for each document, **Settings → Sheet and revisions → Language of drawing texts** picks the language of the table headers (Rev. / Modificare / Data / Nume or Rev. / Description / Date / Name, Poz. / Denumire / Buc. or Item / Description / Qty) and of the default notes. New documents start with the interface language (in English, with a decimal point too).
 
 ### Text, search and OCR
 
@@ -477,7 +479,7 @@ Check the important dimensions.
 | `personal` | anyone opening the app, from any browser | a single user: at home, on Unraid; continue on another computer with nothing extra |
 | `session` | only the browser that uploaded them, until it closes | shared computers; nothing stays visible after closing |
 
-In `private` and `session`, a document of another browser does not appear in Recent and cannot be opened, rendered or deleted, even if someone knows its address: the server answers as if it did not exist. To continue on another computer, copy the code in **Settings → Your workspace** and paste it in the other browser ("Use"). The code works like a key, so do not give it to anyone. Documents uploaded in `personal` mode (or before the modes existed) do not appear in the private spaces; for home-only use set `DRAWCAD_MODE=personal`.
+In `private` and `session`, a document of another browser does not appear in Recent and cannot be opened, rendered or deleted, even if someone knows its address: the server answers as if it did not exist. To continue on another computer, copy the code in **Settings → Workspace** and paste it in the other browser ("Use"). The code works like a key, so do not give it to anyone. Documents uploaded in `personal` mode (or before the modes existed) do not appear in the private spaces; for home-only use set `DRAWCAD_MODE=personal`.
 
 ## Security
 

@@ -66,6 +66,7 @@ commit that built it.
 | UI-D7 | Start screen: drop zone, a card on layers with the Keys link, recent documents as cards | built (5f27a88) | start |
 | UI-D7a | Thumbnails of recent documents (needs a backend endpoint) | planned | start |
 | UI-D8 | Export dialog: PDF / DXF kept, one line per format, OCR stays a PDF option; toast with the file size | built (v1.1) | states |
+| UI-D19 | Settings by scope: a section list on the left (Current document: Dimension style, Sheet and revisions; All documents: Interface, Commands and menu, Workspace), one pane at a time, a live preview of the dimension style; document panes take effect on Apply, app panes are saved at once | built (v1.1) | — |
 
 ## Layout
 
@@ -192,6 +193,23 @@ commit that built it.
 - Keep the PDF / DXF segmented control (`#eFmt`, `[data-fmt]`) and all current options; OCR stays an
   option of PDF. Add one line under the control that says what the chosen format is for.
 - The success toast names the file and its size.
+
+### UI-D19 — Settings by scope
+
+- The old dialog mixed per-document style, per-browser preferences and the workspace code in one long
+  page, with the scope written in each label. Now the scope is the structure: the left list has two
+  groups, *Current document* and *All documents*, and each pane repeats its scope under its title.
+- Document panes (Dimension style, Sheet and revisions) collect changes and apply them on **Apply**
+  (disabled until something changes; it reads *Apply changes* then). *Use this style as the default
+  for new documents* is shown only there.
+- App panes (Interface, Commands and menu, Workspace) save at once, like the rail options already did;
+  the radial menu no longer waits for Apply. The footer says so instead of showing the checkbox.
+- Dimension style shows a Ø25k6 shaft dimension drawn with the pending choices, on paper, at a fixed
+  zoom, so text height, ends, line width and the ISO 286 display can be compared before applying.
+- The last pane is remembered (`cotare.stab`); the list is a `tablist` with arrow keys, Home and End.
+  On a phone it becomes a scrolling row of tabs and the radial menu a two-column list in reading order.
+- The modal sits above the header now (the header's z-index had put it over the backdrop) and on a
+  phone toasts appear at the bottom, clear of the ⋯ menu.
 
 ## Phases
 

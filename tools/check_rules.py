@@ -55,6 +55,8 @@ EXCEPTIONS = [
     ("i18n", "js/main.js", "Backspace", "KeyboardEvent.key value"),
     ("i18n", "js/main.js", "Delete", "KeyboardEvent.key value"),
     ("i18n", "js/main.js", "Tab", "KeyboardEvent.key value"),
+    ("i18n", "js/dialogs.js", "Home", "KeyboardEvent.key value (settings tab list)"),
+    ("i18n", "js/dialogs.js", "End", "KeyboardEvent.key value (settings tab list)"),
     ("i18n", "js/view.js", "no ImageBitmap", "internal error message, caught right away, never shown"),
     # overlays
     ("overlay", "js/main.js", 'createElement("div")', "radial marking menu: absolute inside the viewport, follows the cursor, closes on release; not a modal"),

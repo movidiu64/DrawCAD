@@ -1,11 +1,11 @@
 // Dialogs: open, export, settings, removal from the original, calibration.
 import * as api from "./api.js";
-import { K, fmtNum, parseNum, DEFAULT_SETTINGS } from "./annots.js";
+import { K, fmtNum, parseNum, DEFAULT_SETTINGS, derive, build, primsBBox } from "./annots.js";
 import { MM_POSITIONS, MM_DEFAULT, MM_SPECIAL, markingConfig } from "./mmenu.js";
 import { TOOLS, FAMILIES } from "./tools.js";
 import { lang as uiLang, setLang, LANGS } from "./i18n.js";
 import { SHEETS } from "./pages.js";
-import { COLORS } from "./view.js";
+import { COLORS, drawPrims } from "./view.js";
 import { commandList, conflicts, defaultKeyConfig, keyConfig, saveKeyConfig, labelOf, RESERVED_KEYS, DEFAULT_ALIASES, ACTIONS, parsePgp, importPgp } from "./commands.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -632,71 +632,198 @@ function mmGridHtml(cfg) {
   let html = `<div class="mmc" style="grid-column:2;grid-row:2"><span>●</span><span class="sub">cursor</span></div>`;
   for (let i = 0; i < 8; i++) {
     const [c, r] = cell[i];
-    html += `<label class="mmc" style="grid-column:${c + 1};grid-row:${r + 1}"><span class="sub">${MM_POSITIONS[i]}</span>
+    html += `<label class="mmc" style="grid-column:${c + 1};grid-row:${r + 1};order:${r * 3 + c}"><span class="sub">${MM_POSITIONS[i]}</span>
       <select data-i="${i}" aria-label="Comanda din poziția ${MM_POSITIONS[i]}">${options(cfg[i])}</select></label>`;
   }
   return html;
 }
 
+/** Settings preview: a Ø25k6 shaft dimension drawn with the chosen style, on white paper, at a fixed
+ * zoom so that text height, arrows and line width can be compared between choices. */
+function drawStylePreview(cv, settings, measure) {
+  const dpr = window.devicePixelRatio || 1;
+  const cw = cv.clientWidth || 360;
+  const ch = cv.clientHeight || 150;
+  cv.width = Math.round(cw * dpr);
+  cv.height = Math.round(ch * dpr);
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  const S = derive(settings);
+  const d = 25 * K; // shaft Ø25, standing, cut 9 mm below the dimension
+  const dim = {
+    type: "dim", kind: "lin", orient: "h", p1: [0, 0], p2: [d, 0], p3: [0, -9 * K], textShift: 0,
+    prefix: "Ø", nominal: null, tol: { mode: "iso", fit: "k6" },
+  };
+  const prims = [...build(dim, S, measure).prims];
+  const thick = 0.5 * K;
+  const deep = 9 * K;
+  prims.push({ t: "L", p: [0, 0, 0, deep], w: thick }, { t: "L", p: [d, 0, d, deep], w: thick }, { t: "L", p: [0, 0, d, 0], w: thick });
+  prims.push({ t: "L", p: [d / 2, -3 * K, d / 2, deep + 2 * K], w: S.lw, dp: [8 * K, 1.5 * K, 1 * K, 1.5 * K] });
+  const bb = primsBBox(prims);
+  if (!bb) return;
+  const [x0, y0, x1, y1] = bb;
+  const pad = 12 * dpr;
+  const z = Math.min(2.4 * dpr, (cv.width - 2 * pad) / (x1 - x0 || 1), (cv.height - 2 * pad) / (y1 - y0 || 1));
+  ctx.setTransform(z, 0, 0, z, (cv.width - (x1 - x0) * z) / 2 - x0 * z, (cv.height - (y1 - y0) * z) / 2 - y0 * z);
+  drawPrims(ctx, prims, z, () => COLORS.inkDefault, 0.6 * dpr);
+}
+
 export function settingsDialog(app) {
   const S = app.settings;
+  const rail = app.railCfg();
+  const ws = app.mode && app.mode !== "personal";
   const opt = (name, cur, list) => list.map(([v, l]) => `<button class="${String(cur) === String(v) ? "on" : ""}" data-set="${name}" data-v="${v}">${l}</button>`).join("");
+  // the panes: two scopes, said once in the navigation and once at the top of each pane
+  const PANES = [
+    { id: "style", doc: true, label: "Stil cote" },
+    { id: "sheet", doc: true, label: "Foaie și revizii" },
+    { id: "ui", doc: false, label: "Interfață" },
+    { id: "cmds", doc: false, label: "Comenzi și meniu" },
+    ...(ws ? [{ id: "ws", doc: false, label: "Spațiu de lucru" }] : []),
+  ];
+  let cur = "style";
+  try {
+    const last = localStorage.getItem("cotare.stab");
+    if (PANES.some((p) => p.id === last)) cur = last;
+  } catch (_) { /* storage unavailable */ }
+  const navItem = (p) => `<button role="tab" id="stab-${p.id}" data-stab="${p.id}" aria-controls="spane-${p.id}">${p.label}</button>`;
+  const pane = (id, body) => {
+    const p = PANES.find((x) => x.id === id);
+    const scope = p.doc ? "Documentul curent · se aplică la „Aplică”" : "Toate documentele · se salvează imediat, în acest browser";
+    return `<section class="spane" role="tabpanel" id="spane-${id}" aria-labelledby="stab-${id}" hidden>
+      <div class="scope"><h3>${p.label}</h3><span class="${p.doc ? "doc" : ""}">${scope}</span></div>${body}</section>`;
+  };
   const dlg = showModal(`
     <h2>Setări</h2>
-    <div class="lbl" style="margin-bottom:-6px">Stil cote · documentul curent</div>
-    <div class="cols">
-      <div class="sec">
-        <div class="lbl">Înălțime text (ISO 3098)</div><div class="seg">${opt("textH", S.textH, [[2.5, "2,5 mm"], [3.5, "3,5 mm"], [5, "5 mm"], [7, "7 mm"]])}</div>
-        <div class="lbl">Capete linie de cotă</div><div class="seg">${opt("arrow", S.arrow, [["closed", "Închise"], ["open", "Deschise"], ["tick", "Oblic"], ["dot", "Punct"]])}</div>
-        <div class="lbl">Lungime săgeată</div><div class="seg">${opt("arrowLen", S.arrowLen, [[2.5, "2,5"], [3, "3"], [3.5, "3,5"], [4, "4"]])}</div>
-        <div class="lbl">Grosime linii</div><div class="seg">${opt("lineW", S.lineW, [[0.18, "0,18"], [0.25, "0,25"], [0.35, "0,35"]])}</div>
+    <div class="setlay">
+      <nav class="snav" role="tablist" aria-orientation="vertical" aria-label="Secțiuni setări">
+        <div class="sgrp">Documentul curent</div>
+        ${PANES.filter((p) => p.doc).map(navItem).join("")}
+        <div class="sgrp">Toate documentele</div>
+        ${PANES.filter((p) => !p.doc).map(navItem).join("")}
+        <div class="sver" translate="no">DrawCAD ${esc(app.version || "dev")}</div>
+      </nav>
+      <div class="spanes">
+        ${pane("style", `
+          <div class="prevbox stylepv"><canvas id="sPrev" aria-label="Previzualizare stil cote"></canvas></div>
+          <div class="cols">
+            <div class="sec">
+              <div class="lbl">Înălțime text (ISO 3098)</div><div class="seg">${opt("textH", S.textH, [[2.5, "2,5 mm"], [3.5, "3,5 mm"], [5, "5 mm"], [7, "7 mm"]])}</div>
+              <div class="lbl">Capete linie de cotă</div><div class="seg">${opt("arrow", S.arrow, [["closed", "Închise"], ["open", "Deschise"], ["tick", "Oblic"], ["dot", "Punct"]])}</div>
+              <div class="lbl">Lungime săgeată (mm)</div><div class="seg">${opt("arrowLen", S.arrowLen, [[2.5, "2,5"], [3, "3"], [3.5, "3,5"], [4, "4"]])}</div>
+              <div class="lbl">Grosime linii subțiri (mm)</div><div class="seg">${opt("lineW", S.lineW, [[0.18, "0,18"], [0.25, "0,25"], [0.35, "0,35"]])}</div>
+            </div>
+            <div class="sec">
+              <div class="lbl">Separator zecimal</div><div class="seg">${opt("sep", S.sep, [[",", "Virgulă 0,015"], [".", "Punct 0.015"]])}</div>
+              <div class="lbl">Câmp ISO 286 — afișare implicită</div><div class="seg">${opt("isoDisplay", S.isoDisplay, [["code", "Simbol"], ["codeDev", "+ abateri"], ["codeLim", "+ limite"], ["dev", "Abateri"]])}</div>
+              <div class="lbl">Scriere câmp</div><div class="seg">${opt("codeSpace", S.codeSpace, [[false, "Ø25k6 (ISO)"], [true, "Ø25 k6"]])}</div>
+            </div>
+          </div>`)}
+        ${pane("sheet", `
+          <div class="sec">
+            <div class="h">Scară</div>
+            <div class="row"><div class="field"><label for="sScale">mm reali / mm hârtie</label><input type="text" id="sScale" class="mono" value="${fmtNum(S.scale, ",", 4)}"></div></div>
+            <div class="sub">Cotele măsurate pe desen se înmulțesc cu scara. Pentru o scară citită de pe o cotă existentă folosește Calibrare.</div>
+          </div>
+          <div class="sec">
+            <div class="h">Revizii</div>
+            <div class="row"><div class="field"><label for="sRev">Nr. revizie curent</label><input type="text" id="sRev" class="mono" value="${esc(S.revNo)}"></div>
+            <div class="field"><label for="sAuth">Nume / inițiale (tabel revizii)</label><input type="text" id="sAuth" value="${esc(S.author || "")}"></div></div>
+          </div>
+          <div class="sec">
+            <div class="h">Limba textelor din desen</div>
+            <div class="seg">${opt("dlang", S.dlang || "ro", [["ro", "Română"], ["en", "English"]])}</div>
+            <div class="sub">Antete de tabel, note implicite, tabelul de revizii. Nu schimbă limba interfeței.</div>
+          </div>`)}
+        ${pane("ui", `
+          <div class="sec">
+            <div class="h">Limba interfeței · Language</div>
+            <div class="seg">${LANGS.map(([v, l]) => `<button data-uilang="${v}" class="${uiLang() === v ? "on" : ""}" translate="no">${l}</button>`).join("")}</div>
+            <div class="sub">Pagina se reîncarcă; lucrul rămâne salvat.</div>
+          </div>
+          <div class="sec">
+            <div class="h">Bara de unelte</div>
+            <label class="chk"><input type="checkbox" id="sRailLbl" ${rail.labels ? "checked" : ""}> Etichete sub iconițe</label>
+            <label class="chk"><input type="checkbox" id="sRailHover" ${rail.hover ? "checked" : ""}> Lista familiei se deschide când ții mouse-ul pe buton</label>
+          </div>
+          <div class="sec">
+            <div class="h">Familii afișate în bară</div>
+            <div class="railfams" id="sRailFams">${FAMILIES.map((f) => `<label class="chk"><input type="checkbox" data-fam="${f.id}" ${rail.hidden.includes(f.id) ? "" : "checked"}> ${f.label}</label>`).join("")}</div>
+            <div class="sub">O familie ascunsă rămâne la îndemână din linia de comandă și cu tastele ei.</div>
+          </div>`)}
+        ${pane("cmds", `
+          <div class="sec">
+            <div class="h">Taste și linia de comandă</div>
+            <div class="row"><button class="ghost" id="sKeys">Taste și comenzi…</button><span class="sub">Acum: ${keyConfig().mode === "autocad" ? "comenzi AutoCAD (L, C, DLI… + Spațiu)" : "taste directe (o tastă = o unealtă); Enter deschide linia de comandă"}.</span></div>
+          </div>
+          <div class="sec">
+            <div class="h">Meniul radial · click dreapta ținut</div>
+            <div class="sub">Alegi trăgând spre comandă și eliberând butonul; pe ecran tactil, apăsare lungă.</div>
+            <div class="mmgrid" id="sMm">${mmGridHtml(markingConfig())}</div>
+            <div class="row"><button class="ghost" id="sMmReset">Revino la implicit</button></div>
+          </div>`)}
+        ${ws ? pane("ws", `
+          <div class="sec">
+            <div class="h">Codul spațiului tău de lucru · ${app.mode === "session" ? "până la închiderea browserului" : "legat de acest browser"}</div>
+            <div class="row"><input type="text" class="mono" id="wsCode" readonly value="…" aria-label="Codul spațiului de lucru"><button class="ghost" id="wsCopy">Copiază</button></div>
+            <div class="sub">Codul e ca o cheie: cine îl are vede documentele tale.</div>
+          </div>
+          <div class="sec">
+            <div class="h">Continuă dintr-un alt browser</div>
+            <div class="row"><input type="text" class="mono" id="wsNew" placeholder="Lipește codul din alt browser" aria-label="Cod din alt browser"><button class="ghost" id="wsUse">Folosește</button></div>
+            <div class="sub">Documentele deschise cu codul vechi rămân la codul vechi.</div>
+          </div>`) : ""}
       </div>
-      <div class="sec">
-        <div class="lbl">Separator zecimal</div><div class="seg">${opt("sep", S.sep, [[",", "Virgulă 0,015"], [".", "Punct 0.015"]])}</div>
-        <div class="lbl">Câmp ISO 286 — afișare implicită</div><div class="seg" style="flex-wrap:wrap">${opt("isoDisplay", S.isoDisplay, [["code", "Simbol"], ["codeDev", "+ (abateri)"], ["codeLim", "+ (limite)"], ["dev", "Abateri"]])}</div>
-        <div class="lbl">Scriere câmp</div><div class="seg">${opt("codeSpace", S.codeSpace, [[false, "Ø25k6 (ISO)"], [true, "Ø25 k6"]])}</div>
-        <div class="row"><div class="field"><label for="sRev">Nr. revizie curent</label><input type="text" id="sRev" class="mono" value="${esc(S.revNo)}"></div>
-        <div class="field"><label for="sAuth">Nume / inițiale (tabel revizii)</label><input type="text" id="sAuth" value="${esc(S.author || "")}"></div></div>
-        <div class="row">
-        <div class="field"><label for="sScale">Scară (mm reali / mm hârtie)</label><input type="text" id="sScale" class="mono" value="${fmtNum(S.scale, ",", 4)}"></div></div>
-      </div>
     </div>
-    ${app.mode && app.mode !== "personal" ? `<div class="sec">
-      <div class="lbl">Spațiul tău de lucru · ${app.mode === "session" ? "până la închiderea browserului" : "legat de acest browser"}</div>
-      <div class="row"><input type="text" class="mono" id="wsCode" readonly value="…" aria-label="Codul spațiului de lucru"><button class="ghost" id="wsCopy">Copiază</button></div>
-      <div class="row"><input type="text" class="mono" id="wsNew" placeholder="Lipește codul din alt browser" aria-label="Cod din alt browser"><button class="ghost" id="wsUse">Folosește</button></div>
-      <div class="sub">Codul e ca o cheie: cine îl are vede documentele tale. Îl folosești ca să continui pe alt calculator sau browser; documentele deschise cu codul vechi rămân la codul vechi.</div>
-    </div>` : ""}
-    <div class="sec">
-      <div class="lbl">Meniul de la click dreapta ținut · comenzile tale favorite (pentru toate documentele)</div>
-      <div class="mmgrid" id="sMm">${mmGridHtml(markingConfig())}</div>
-      <div class="row"><button class="ghost" id="sMmReset">Revino la implicit</button><span class="sub">Alegi trăgând spre comandă și eliberând butonul; pe ecran tactil, apăsare lungă.</span></div>
-    </div>
-    <div class="sec">
-      <div class="lbl">Bara de unelte · pentru toate documentele</div>
-      <label class="chk"><input type="checkbox" id="sRailLbl" ${app.railCfg().labels ? "checked" : ""}> Etichete sub iconițe</label>
-      <label class="chk"><input type="checkbox" id="sRailHover" ${app.railCfg().hover ? "checked" : ""}> Lista familiei se deschide când ții mouse-ul pe buton</label>
-      <div class="railfams" id="sRailFams">${FAMILIES.map((f) => `<label class="chk"><input type="checkbox" data-fam="${f.id}" ${app.railCfg().hidden.includes(f.id) ? "" : "checked"}> ${f.label}</label>`).join("")}</div>
-      <div class="sub">O familie ascunsă rămâne la îndemână din linia de comandă și cu tastele ei.</div>
-    </div>
-    <div class="cols">
-      <div class="sec">
-        <div class="lbl">Limba interfeței · Language</div>
-        <div class="seg">${LANGS.map(([v, l]) => `<button data-uilang="${v}" class="${uiLang() === v ? "on" : ""}" translate="no">${l}</button>`).join("")}</div>
-      </div>
-      <div class="sec">
-        <div class="lbl">Limba textelor din desen (antete de tabel, note) · documentul curent</div>
-        <div class="seg">${opt("dlang", S.dlang || "ro", [["ro", "Română"], ["en", "English"]])}</div>
-      </div>
-    </div>
-    <div class="sec">
-      <div class="lbl">Taste și comenzi · pentru toate documentele</div>
-      <div class="row"><button class="ghost" id="sKeys">Taste și comenzi…</button><span class="sub">Acum: ${keyConfig().mode === "autocad" ? "comenzi AutoCAD (L, C, DLI… + Spațiu)" : "taste directe (o tastă = o unealtă); Enter deschide linia de comandă"}.</span></div>
-    </div>
-    <div class="sub" translate="no" style="text-align:right;margin-top:-4px">DrawCAD ${esc(app.version || "dev")}</div>
-    <div class="foot"><label class="chk" style="flex:1"><input type="checkbox" id="sDef"> Folosește ca implicit pentru documente noi</label>
-      <button class="ghost" data-close>Închide</button><button class="primary" id="sSave">Aplică</button></div>`);
+    <div class="foot">
+      <label class="chk sdef" style="flex:1"><input type="checkbox" id="sDef"> Folosește stilul ca implicit pentru documente noi</label>
+      <span class="sub snote" style="flex:1" hidden>Modificările din această secțiune sunt deja salvate.</span>
+      <button class="ghost" data-close>Închide</button><button class="primary" id="sSave" disabled>Aplică</button></div>`);
   const pending = {};
+  const $d = (sel) => dlg.querySelector(sel);
+  const textsChanged = () => $d("#sRev").value.trim() !== String(S.revNo) || $d("#sAuth").value.trim() !== (S.author || "") || $d("#sScale").value.trim() !== fmtNum(S.scale, ",", 4);
+  const dirty = () => Object.keys(pending).some((k) => String(pending[k]) !== String(S[k] ?? (k === "dlang" ? "ro" : ""))) || textsChanged();
+  const updFoot = () => {
+    const doc = PANES.find((p) => p.id === cur).doc;
+    $d(".sdef").hidden = !doc;
+    $d(".snote").hidden = doc;
+    $d("#sSave").disabled = !(dirty() || $d("#sDef").checked);
+    $d("#sSave").textContent = dirty() ? "Aplică modificările" : "Aplică";
+  };
+  const preview = () => drawStylePreview($d("#sPrev"), { ...S, ...pending }, app.measure);
+  const show = (id, focus = false) => {
+    cur = id;
+    try {
+      localStorage.setItem("cotare.stab", id);
+    } catch (_) { /* storage unavailable */ }
+    dlg.querySelectorAll("[data-stab]").forEach((t) => {
+      const on = t.dataset.stab === id;
+      t.classList.toggle("on", on);
+      t.setAttribute("aria-selected", on ? "true" : "false");
+      t.tabIndex = on ? 0 : -1;
+      if (on && focus) t.focus();
+      if (on) t.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
+    dlg.querySelectorAll(".spane").forEach((p) => { p.hidden = p.id !== `spane-${id}`; });
+    if (id === "style") preview();
+    updFoot();
+  };
+  dlg.querySelectorAll("[data-stab]").forEach((t) => {
+    t.addEventListener("click", () => show(t.dataset.stab));
+    t.addEventListener("keydown", (e) => {
+      const ids = PANES.map((p) => p.id);
+      const i = ids.indexOf(cur);
+      let j = -1;
+      if (e.key === "ArrowDown" || e.key === "ArrowRight") j = (i + 1) % ids.length;
+      else if (e.key === "ArrowUp" || e.key === "ArrowLeft") j = (i - 1 + ids.length) % ids.length;
+      else if (e.key === "Home") j = 0;
+      else if (e.key === "End") j = ids.length - 1;
+      if (j < 0) return;
+      e.preventDefault();
+      show(ids[j], true);
+    });
+  });
   dlg.querySelectorAll("[data-set]").forEach((b) => b.addEventListener("click", () => {
     const k = b.dataset.set;
     let v = b.dataset.v;
@@ -704,11 +831,15 @@ export function settingsDialog(app) {
     if (k === "codeSpace") v = v === "true";
     pending[k] = v;
     dlg.querySelectorAll(`[data-set="${k}"]`).forEach((x) => x.classList.toggle("on", x === b));
+    if (cur === "style") preview();
+    updFoot();
   }));
-  if (dlg.querySelector("#wsCode")) {
-    api.workspace().then((w) => { dlg.querySelector("#wsCode").value = w.code || ""; }).catch(() => {});
-    dlg.querySelector("#wsCopy").addEventListener("click", async () => {
-      const inp = dlg.querySelector("#wsCode");
+  for (const id of ["#sRev", "#sAuth", "#sScale"]) $d(id).addEventListener("input", updFoot);
+  $d("#sDef").addEventListener("change", updFoot);
+  if ($d("#wsCode")) {
+    api.workspace().then((w) => { $d("#wsCode").value = w.code || ""; }).catch(() => {});
+    $d("#wsCopy").addEventListener("click", async () => {
+      const inp = $d("#wsCode");
       try {
         await navigator.clipboard.writeText(inp.value);
         toast("Cod copiat");
@@ -717,8 +848,8 @@ export function settingsDialog(app) {
         toast("Selectat: apasă Ctrl+C");
       }
     });
-    dlg.querySelector("#wsUse").addEventListener("click", async () => {
-      const code = dlg.querySelector("#wsNew").value.trim();
+    $d("#wsUse").addEventListener("click", async () => {
+      const code = $d("#wsNew").value.trim();
       try {
         await api.useWorkspace(code);
         localStorage.removeItem("cotare.lastDoc");
@@ -728,38 +859,43 @@ export function settingsDialog(app) {
       }
     });
   }
-  dlg.querySelector("#sKeys").addEventListener("click", () => keysDialog(app));
+  $d("#sKeys").addEventListener("click", () => keysDialog(app));
   dlg.querySelectorAll("[data-uilang]").forEach((b) => b.addEventListener("click", () => {
     if (b.dataset.uilang === uiLang()) return;
     setLang(b.dataset.uilang);
     location.reload();
   }));
-  // the rail: applied at once, for all documents
+  // the rail and the radial menu: saved at once, for all documents
   const railSave = () => {
     const c = app.railCfg();
-    c.labels = dlg.querySelector("#sRailLbl").checked;
-    c.hover = dlg.querySelector("#sRailHover").checked;
+    c.labels = $d("#sRailLbl").checked;
+    c.hover = $d("#sRailHover").checked;
     c.hidden = [...dlg.querySelectorAll("#sRailFams [data-fam]")].filter((x) => !x.checked).map((x) => x.dataset.fam);
     app.saveRailCfg(c);
     app.buildToolbar();
   };
-  dlg.querySelector("#sRailLbl").addEventListener("change", railSave);
-  dlg.querySelector("#sRailHover").addEventListener("change", railSave);
+  $d("#sRailLbl").addEventListener("change", railSave);
+  $d("#sRailHover").addEventListener("change", railSave);
   dlg.querySelectorAll("#sRailFams [data-fam]").forEach((x) => x.addEventListener("change", railSave));
-  dlg.querySelector("#sMmReset").addEventListener("click", () => {
-    dlg.querySelector("#sMm").innerHTML = mmGridHtml(MM_DEFAULT);
-  });
-  dlg.querySelector("#sSave").addEventListener("click", () => {
+  const mmSave = () => {
     const mm = [...dlg.querySelectorAll("#sMm select")].sort((p, q) => p.dataset.i - q.dataset.i).map((x) => x.value);
     try {
       if (mm.length === 8) localStorage.setItem("cotare.mmenu", JSON.stringify(mm));
     } catch (_) { /* storage unavailable */ }
-    pending.revNo = dlg.querySelector("#sRev").value.trim() || "1";
-    pending.author = dlg.querySelector("#sAuth").value.trim();
-    const sc = parseNum(dlg.querySelector("#sScale").value);
+  };
+  $d("#sMm").addEventListener("change", mmSave);
+  $d("#sMmReset").addEventListener("click", () => {
+    $d("#sMm").innerHTML = mmGridHtml(MM_DEFAULT);
+    mmSave();
+    toast("Meniul radial a revenit la implicit");
+  });
+  $d("#sSave").addEventListener("click", () => {
+    pending.revNo = $d("#sRev").value.trim() || "1";
+    pending.author = $d("#sAuth").value.trim();
+    const sc = parseNum($d("#sScale").value);
     if (sc && sc > 0) pending.scale = sc;
     app.setSettings(pending);
-    if (dlg.querySelector("#sDef").checked) {
+    if ($d("#sDef").checked) {
       const { scale, revNo, ...style } = { ...app.settings };
       void scale;
       void revNo;
@@ -769,6 +905,8 @@ export function settingsDialog(app) {
     }
     closeModal();
   });
+  show(cur);
+  setTimeout(() => $d(`[data-stab="${cur}"]`).focus(), 0);
 }
 
 // ------------------------------------------------------------------ keys and commands
