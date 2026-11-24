@@ -3,7 +3,7 @@
 > **Measured:** 2026-11-24 · **Commit:** `d1b6ed75b8ae747abdd39a99f33fe607b30d3e50` (main, "Chain and
 > baseline dimension series") · **Target:** AutoCAD for Windows as described in Autodesk's current
 > online help (AutoCAD / AutoCAD LT 2026–2027); every AutoCAD row below can be checked in a local
-> AutoCAD install. · **Status:** decisions confirmed 2026-11-24; implemented on branch `v1.1`.
+> AutoCAD install. · **Status:** phases 1–5 built on branch `v1.1` (see "After v1.1").
 
 This page measures how close DrawCAD's interaction is to AutoCAD's for the parts a drafter uses on
 every pick: typing points, object snaps, tracking, dynamic input, the command line, grips, selection,
@@ -16,11 +16,32 @@ DrawCAD is not a CAD system: it annotates a fixed sheet (a PDF page or a scan). 
 behaviour only makes sense for model geometry (3D, UCS rotation, isometric snap, blocks), it is left
 out of the measure and listed as *not applicable*.
 
-**Headline (estimate): ≈ 42 %.** Snaps (11 running modes, tracking, extension, parallel, apparent
+**Headline (estimate): ≈ 42 % at the measured commit, ≈ 64 % on branch `v1.1`.** Snaps (11 running modes, tracking, extension, parallel, apparent
 intersection), polar and ortho, the alias table with AutoCAD names and the command line with
 autocomplete and history are real. Typed coordinates are missing entirely (no `x,y`, `@`, `<`, `#`),
 the command line knows only command names (no prompts, no options, no typed points), there are no
 typed snap overrides, no hot-grip modes and no MOVE / COPY with a base point.
+
+## After v1.1 (branch `v1.1`) — estimate
+
+Re-measured on branch `v1.1` after phases 1–5, the same way and with the same weights.
+
+| Area | Weight | Before | v1.1 | What changed |
+|---|---:|---:|---:|---|
+| Point entry | 15 % | 15 % | 65 % | the whole typed syntax, typed first point, origin and UCS, typed box corners |
+| Object snaps | 20 % | 60 % | 72 % | typed overrides, Tab cycling, Node as a mode, CEN from the edge |
+| Tracking, polar, ortho | 10 % | 60 % | 63 % | Shift toggles ortho |
+| Dynamic input | 10 % | 35 % | 45 % | `@ # <` from anywhere, absolute points through the command line |
+| Command line | 15 % | 40 % | 72 % | prompts, options by letter or click, typed points, transparent commands, F2 |
+| Grips and editing | 10 % | 30 % | 45 % | MOVE and COPY with base point and displacement |
+| Selection | 10 % | 40 % | 60 % | Select objects prompt (ALL, L), AutoCAD selection option |
+| Keys and aliases | 10 % | 55 % | 75 % | acad.pgp import, F2, E = ERASE |
+| **Total (estimate)** | 100 % | ≈ 42 % | **≈ 64 %** | |
+
+Still missing, in the order they matter: `FROM` / `M2P` and point filters; Geometric center and
+Insertion snaps; snaps on scans; the prompt next to the cursor (DYNPROMPT); hot-grip modes and grips on
+several objects; W / C / F keywords at Select objects, lasso, selection cycling; additional and relative
+polar angles, PolarSnap; DCO / DBA `Select`, TEXT `Height` / `Rotation`, DIST `Multiple`.
 
 ## How this was measured
 
@@ -280,21 +301,21 @@ Ovidiu's confirmation (behaviour in his AutoCAD, or a product choice) before it 
 
 | # | Decision | Status | Phase |
 |---|---|---|---|
-| CMD-D1 | Point syntax parser: `x,y`, `@dx,dy`, `@d<a`, `d<a`, `#…`, `@`, plain distance | decided | 1 |
-| CMD-D2 | Drawing origin and units: bottom-left of the page, Y up, real mm; `UCS` / `ORIGIN` command | decided | 1 |
-| CMD-D3 | Where typed text goes during a command; the comma | decided | 1 |
-| CMD-D4 | Typed first point through the command line | decided | 1 |
-| CMD-D5 | Prompts with options in the command line | decided | 2 |
-| CMD-D6 | Typed snap overrides (`END`, `MID` … `NON`), then `FROM`, `M2P` | decided (FROM, M2P planned) | 3 |
-| CMD-D7 | Tab cycles snap candidates when nothing is being typed | decided | 3 |
-| CMD-D8 | Shift toggles ortho while held | decided | 1 |
-| CMD-D9 | Node as a mode; Geometric center and Insertion; snaps on scans | decided (Node) · planned (rest, scans) | 3 / 6 |
-| CMD-D10 | Import `acad.pgp` in the Keys dialog | decided | 4 |
-| CMD-D11 | Transparent commands with `'` | decided | 4 |
-| CMD-D12 | `E` without a selection asks "Select objects:"; PICKADD option | decided | 5 |
-| CMD-D13 | MOVE / COPY with base point and typed displacement | planned | 5 |
+| CMD-D1 | Point syntax parser: `x,y`, `@dx,dy`, `@d<a`, `d<a`, `#…`, `@`, plain distance | done (v1.1) | 1 |
+| CMD-D2 | Drawing origin and units: bottom-left of the page, Y up, real mm; `UCS` / `ORIGIN` command | done (v1.1) | 1 |
+| CMD-D3 | Where typed text goes during a command; the comma | done (v1.1) | 1 |
+| CMD-D4 | Typed first point through the command line | done (v1.1) | 1 |
+| CMD-D5 | Prompts with options in the command line | done (v1.1); DCO / DBA Select, TEXT H / R, DIST M planned | 2 |
+| CMD-D6 | Typed snap overrides (`END`, `MID` … `NON`), then `FROM`, `M2P` | done (v1.1); FROM, M2P planned | 3 |
+| CMD-D7 | Tab cycles snap candidates when nothing is being typed | done (v1.1) | 3 |
+| CMD-D8 | Shift toggles ortho while held | done (v1.1) | 1 |
+| CMD-D9 | Node as a mode; Geometric center and Insertion; snaps on scans | Node done (v1.1) · rest planned | 3 / 6 |
+| CMD-D10 | Import `acad.pgp` in the Keys dialog | done (v1.1) | 4 |
+| CMD-D11 | Transparent commands with `'` | done (v1.1) | 4 |
+| CMD-D12 | `E` without a selection asks "Select objects:"; PICKADD option | done (v1.1) | 5 |
+| CMD-D13 | MOVE / COPY with base point and typed displacement | done (v1.1) | 5 |
 | CMD-D14 | Hot-grip modes, grips on several objects, grip input | planned | 6 |
-| CMD-D15 | F2 history window with prompts and messages | planned | 2 |
+| CMD-D15 | F2 history window with prompts and messages | done (v1.1) | 2 |
 | CMD-D16 | Additional and relative polar angles, PolarSnap | planned | 6 |
 
 ### CMD-D1 — Point syntax parser
@@ -494,5 +515,6 @@ After phases 1–5 the same weights give about **≈ 65 %** (estimate).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-24 | minor | Phases 1–5 built on branch `v1.1`; re-measured ≈ 64 % (estimate); D1–D8, D9 Node, D10–D13, D15 done |
 | 2026-11-24 | minor | Decisions confirmed by Ovidiu as proposed (D2, D3, D7, D12 decided; scans planned); work on branch `v1.1` |
 | 2026-11-24 | major | First audit of the command line, point entry, snaps, tracking, dynamic input, grips, selection, keys and aliases; decisions CMD-D1 … D16 and phases |

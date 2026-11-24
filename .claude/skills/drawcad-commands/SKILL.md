@@ -26,18 +26,31 @@ Two keyboard modes (Settings → Keys and commands): **direct keys** (one key = 
    `TOOLS` with an alias appears there and becomes configurable without extra code. Open the dialog
    (`ALIASEDIT`) and check the new row.
 5. The annotation it makes: skill `drawcad-annotations`.
+6. **Prompt and options:** add the step prompts to `PROMPTS` (and `PLACE_PROMPTS` for a placement
+   step) and any options to `OPTIONS` in `tools.js`. An option is `{ key, label, en, when, run }`:
+   `key` is AutoCAD's English keyword letter, `en` the English keywords, `when(app)` says if it can act
+   now, `run(app)` acts (use `app.cmdState` for what `make` should read, `app.askValue()` for a
+   typed value). Keys must be unique per tool (`tests/prompts.test.js` checks it).
+7. A command that is not a toolbar button (MOVE, COPY) gets `hidden: true`.
 
 ## A new action (not a tool)
 
 - Add `{ id, label, aliases }` to `ACTIONS` in `commands.js` and its handler in the `act` map of
   `runCommand()` in `frontend/js/main.js`. Actions that need an open document call `needDoc()` first.
+- `transparent: true` only for actions that can run in the middle of a command without breaking it
+  (zoom, snap toggles); the others are refused while a command runs.
 
 ## Behavior to keep
 
 - Space / Enter with nothing typed repeats the last command; the command history (arrow up/down) stores
   what the user typed when it is a real alias.
-- `E` with a selection deletes the selection (AutoCAD ERASE), otherwise starts removal.
-- During a command, digits go to the dynamic input (L / ∠ next to the cursor), not to the command line.
+- `E` / ERASE deletes the selection, or asks to select objects; the removal tool is `X` / `STERGE`.
+- During a command, digits go to the dynamic input (L / ∠ next to the cursor) when it is usable (comma
+  = decimal mark there); `@ # <`, a first-point digit and anything typed in the command line follow
+  AutoCAD's point syntax (`pointin.js`: comma separates X and Y). Keep the two rules apart.
+- In the command line, during a command, the order is: asked value → option → snap override
+  (END, MID…) → typed point → command.
+- Design and decisions: `docs/design/commands-v2.md` (CMD-D1…D16).
 
 ## Check it
 

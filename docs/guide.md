@@ -156,8 +156,13 @@ The app was originally called "Cotare": the old `COTARE_*` variables are still a
 - **Perpendicular** ⊥ and **Tangent** relative to the command's previous point
 - **Parallel** // — during a command rest on a line, then move nearly parallel to it
 - **Polar** — on the 5°…90° rays from the previous point (15° by default), with distance and angle in the tooltip; excludes Ortho
+- **Node** — the points of the annotations already drawn (dimension origins, symbol anchors)
 
-Modes are chosen from the arrow next to "Snap" in the bottom bar. Keys: **F3** snap, **F8** ortho, **F10** polar, **F11** tracking, **Alt** held = no snap, **Shift** = temporary ortho, **Esc** clears the acquired points.
+Modes are chosen from the arrow next to "Snap" in the bottom bar. Keys: **F3** snap, **F8** ortho, **F10** polar, **F11** tracking, **Alt** held = no snap, **Shift** held = ortho the other way round (on when it is off, off when it is on), **Esc** clears the acquired points.
+
+**One snap for the next pick:** type `END`, `MID`, `CEN`, `QUA`, `INT`, `APP`, `EXT`, `PER`, `TAN`, `NEA`, `PAR` or `NOD` in the command line (the whole names work too) and only that snap is used for the next point, even with snap off; `NON` = no snap. With `CEN`, hovering the edge of a hole is enough to take its center. In direct-keys mode, click the command line first (letters there are tools).
+
+**Several snaps under the cursor:** **Tab** steps through them (Shift+Tab back); the label shows which one, e.g. "Endpoint (2/3, Tab)", and a click takes it.
 
 **Scans:** after opening, use **Calibrate (K)**. Click the ends of a known dimension and enter its real value.
 
@@ -174,15 +179,38 @@ Dimensions do not change on calibration: they measure the drawing.
 - **Enter** or **Space** places the point. **Backspace** corrects, and **Esc** drops the values (a second Esc stops the command).
 - **F12** turns the box on / off.
 
+**Typed points (as in AutoCAD):** while a command asks for a point, type it in the command line and press Enter.
+- `x,y` absolute, from the **origin**: by default the bottom-left corner of the page, X to the right, Y up, in real mm (at drawing scale). `#x,y` is the same.
+- `@dx,dy` relative to the last point; `@d<a` distance and angle from it (0° to the right, 90° up); `d<a` polar from the origin; `@` the last point itself; a number alone = that distance along the cursor direction.
+- In the command line the **comma separates X and Y** and the decimal mark is a point (`@12.5,0`). In the L / ∠ box next to the cursor the comma stays the decimal mark.
+- `@`, `#` and `<` open the command line from anywhere; so does the first digit of a first point. The line stays open for the next point; Enter on an empty line ends the command.
+- The bottom bar shows X and Y from the same origin, in the same units.
+- The boxes (struck dimension, cover, removal, blackening) take two typed corners: `x,y`, then `@width,height`.
+
+**Origin (`UCS`):** the **Origin** tool (Navigation group, command `UCS`) makes the clicked point 0,0 for typed coordinates on this page, typically the corner or the datum of the part. A small X / Y symbol marks it on screen only (never exported); drag its square to move it, delete it or use `UCS` → `W` to go back to the page corner. It follows page rotation and sheet size like the annotations.
+
+**Prompts and options:** while a command runs, the command line shows what it asks for and the options it has now, as buttons. Choose one by its letter + Enter (AutoCAD's letters, in both languages) or with a click. In direct-keys mode, an option letter typed on the drawing goes to the command line by itself.
+- `DLI`: `T` text (a number sets the nominal value, other text replaces it), `H` horizontal, `V` vertical. `DAL`, `DDL`, `DDI`, `DRA`, `DAN`: `T`.
+- `DOR`: `X` / `Y` force the axis. `DOR`, `DCO`, `DBA`: `U` drops the last point.
+- `L`: `U` undoes the last segment, `C` closes the chain. `PL`: `U`, `C`.
+- `C` (circle): `D` diameter. `REC`: `D` length and width. `UCS`: `W` page corner.
+- An option that needs a value asks for it in the command line; Esc or an empty Enter keeps the default.
+
+**F2** opens the session history: commands, typed points, options and answers.
+
+**Erase, move, copy:** `E` deletes the selection; with nothing selected it asks to select objects (click, window, `ALL`, `L` = the last one), and Enter deletes them. `M` (MOVE) and `CO` (COPY) work on the selection (or ask for one): a base point, then a second point or `@dx,dy`; COPY goes on placing copies from the same base point until Enter or Esc. The removal tool on the original is `X` / `STERGE`.
+
+**Transparent commands:** `'Z` (or `Z`), `'ZS`, `'OS`, `'OR`, `'POLAR` work in the middle of a command without ending it. Other commands wait until the current one ends (Esc).
+
 **Keys and commands:** there are two modes, chosen in **Settings → Keys and commands** or by typing the `ALIASEDIT` command.
 - **Direct keys** (default): one key starts a tool (table below). **Enter** opens the command line in the bottom bar: type `DLI`, `C`, `PL`… and press Space or Enter.
-- **AutoCAD commands:** type the command anywhere on the drawing. It appears in the command line, with suggestions, and **Space** or **Enter** starts it. Space or Enter with nothing typed repeats the last command, and ends a polyline. Space held + drag pans the sheet.
+- **AutoCAD commands:** type the command anywhere on the drawing. It appears in the command line, with suggestions, and **Space** or **Enter** starts it. Space or Enter with nothing typed repeats the last command, and ends a polyline. Space held + drag pans the sheet. In this mode you can also turn on **selection as in AutoCAD**: a click or a window adds to the selection, Shift removes.
 
 **Command history:** in the command line, arrow up / down browses previously used commands, most recent first, as in AutoCAD. The list appears above the command line and Enter starts the chosen one. In AutoCAD commands mode, arrow up works directly on the drawing when nothing is selected (with a selection, the arrows move it). Once you start typing, the arrows pick from the suggestions. The history keeps the last 50 commands, including those started from the toolbar or with keys, and is stored in the browser.
 
-The default aliases follow AutoCAD: `L` line, `PL` polyline, `REC` rectangle, `C` circle, `A` arc, `H` hatch, `CM` center mark, `DLI` / `DAL` / `DDI` / `DRA` / `DAN` / `DOR` / `DCO` / `DBA` dimensions, `LE` leader, `T` / `MT` text, `TOL` GD&T, `E` erase (with a selection: deletes the selection), `DI` measure, `P` pan, `U` undo, `Z` fit page, `OS` / `OR` snap / ortho, `OP` settings. Commands without an AutoCAD equivalent have short names: `RUG` roughness, `NOTE`, `REV` revision table, `BOM`, `HT` hole table, `SEC` section, `DET` detail, `BAL` balloon, `STR` strike dimension, `WO` cover, `CALIB` calibration. The tool name works too ("circle", "radius", in Romanian or English).
+The default aliases follow AutoCAD: `L` line, `PL` polyline, `REC` rectangle, `C` circle, `A` arc, `H` hatch, `CM` center mark, `DLI` / `DAL` / `DDI` / `DRA` / `DAN` / `DOR` / `DCO` / `DBA` dimensions, `LE` leader, `T` / `MT` text, `TOL` GD&T, `E` erase, `M` move, `CO` copy, `UCS` origin, `DI` measure, `P` pan, `U` undo, `Z` fit page, `OS` / `OR` snap / ortho, `OP` settings. Commands without an AutoCAD equivalent have short names: `RUG` roughness, `NOTE`, `REV` revision table, `BOM`, `HT` hole table, `SEC` section, `DET` detail, `BAL` balloon, `STR` strike dimension, `WO` cover, `CALIB` calibration. The tool name works too ("circle", "radius", in Romanian or English).
 
-In the same dialog every tool can get another key and other aliases. Duplicates are flagged and block saving. The configuration is kept in the browser (in the desktop app, on the computer), for all documents.
+In the same dialog every tool can get another key and other aliases. Duplicates are flagged and block saving. **Import acad.pgp…** reads your AutoCAD alias file (in AutoCAD: Manage → Edit Aliases, or the `acad.pgp` in the Support folder): aliases of commands DrawCAD has are added, an alias that belonged to another command moves to the one in the file, and the summary lists what has no equivalent. The file is read in the browser, nothing is uploaded, and nothing is saved before Apply. The configuration is kept in the browser (in the desktop app, on the computer), for all documents.
 
 Default direct keys:
 

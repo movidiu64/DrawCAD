@@ -30,7 +30,7 @@ Open a PDF exported from CAD, or a scan or photo of a drawing, add dimensions, t
 - 🧽 **Edit the original**: white-out or truly remove PDF objects, turn faint colored drawings black for printing, rotate, reorder and resize pages.
 - 🔎 **Search and OCR**: Ctrl+F finds any text; scans are recognized with Tesseract (English and Romanian included) and can be exported as searchable PDFs.
 - 📐 **DXF export** for AutoCAD / Allplan: real lines, arcs, circles and texts, at paper size or true scale. Scans can be vectorized (experimental).
-- ⌨️ **AutoCAD habits**: command line (`L`, `C`, `PL`, `DLI`…), command history, typed length and angle while drawing, configurable shortcuts.
+- ⌨️ **AutoCAD habits**: command line (`L`, `C`, `PL`, `DLI`…) with prompts and options, typed points (`x,y`, `@dx,dy`, `@d<a`) from a page origin or a UCS, snap overrides (`END`, `CEN`…) and Tab cycling, MOVE / COPY / ERASE, `acad.pgp` import, command history (F2), typed length and angle while drawing.
 - 🔒 **Self-hosted and private**: hardened container (read-only, no extra privileges), active content removed from uploaded PDFs, optional password, per-browser workspaces.
 
 ## Quick start
