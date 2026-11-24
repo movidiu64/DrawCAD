@@ -1067,4 +1067,5 @@ export const EN = {
   "punctul nou": "the new point",
   "  Doar multipli de 90°": "  Only multiples of 90°",
   "  Factorul trebuie să fie pozitiv": "  The factor must be positive",
+  "** GRIP ** ({})": "** GRIP ** ({})",
 };

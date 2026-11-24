@@ -13,6 +13,7 @@ export const COLORS = {
   edred: "#d32f2f",
   edgreen: "#2e9d5b",
   sel: "#f2a93b",
+  gripHot: "#e53935", // hot grips, red as in AutoCAD
   preview: "#2f6fd6",
   // editor
   canvasBg: "#2b3038",
@@ -387,6 +388,7 @@ export class View {
     }
     const app = this.app;
     const single = app.sel.size === 1;
+    const grips = app.sel.size > 0 && app.sel.size <= (app.gripLimit || 100);
     const hv = app.hover;
     // only what is on screen is drawn: zoomed in on a large drawing, most annotations are skipped
     const m = 4 / z;
@@ -417,6 +419,10 @@ export class View {
         ctx.globalAlpha = 1;
       }
       drawPrims(ctx, built.prims, z);
+      if (on && grips && !single) {
+        // several selected: the grips of each one (no resize corners)
+        this.drawHandles(app.gripsOf(a, true), hv && hv.kind === "handle" && hv.a.id === a.id ? hv.h : null, (k) => app.isHotGrip(a.id, k));
+      }
       if (on && single) {
         // annotation box, to show where it is resized from
         if (built.bbox && (built.handles || []).some((h) => h.k === "sc")) {
@@ -429,7 +435,7 @@ export class View {
           ctx.setLineDash([]);
           ctx.globalAlpha = 1;
         }
-        this.drawHandles(built, hv && hv.kind === "handle" ? hv.h : null);
+        this.drawHandles(built.handles || [], hv && hv.kind === "handle" ? hv.h : null, (k) => app.isHotGrip(a.id, k));
       }
     }
     if (app.showOcr && app.ocr) {
@@ -495,7 +501,7 @@ export class View {
     ctx.restore();
   }
 
-  drawHandles(built, hot) {
+  drawHandles(handles, hot, isHot = () => false) {
     const ctx = this.ctx;
     const s = 7 / this.zoom;
     if (hot && hot.p) {
@@ -508,9 +514,9 @@ export class View {
       ctx.lineWidth = 1.5 / this.zoom;
       ctx.stroke();
     }
-    for (const h of built.handles || []) {
+    for (const h of handles) {
       if (!h.p) continue;
-      ctx.fillStyle = h.k === "tx" ? COLORS.white : COLORS.sel;
+      ctx.fillStyle = h.k === "tx" ? COLORS.white : isHot(h.k) ? COLORS.gripHot : COLORS.sel;
       ctx.strokeStyle = h.k === "tx" ? COLORS.sel : COLORS.white;
       ctx.lineWidth = 1.2 / this.zoom;
       if (h.k === "sc") {

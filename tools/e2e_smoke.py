@@ -486,6 +486,26 @@ def main(url, out):
         assert page.evaluate(lastln) == [[35, 65], [35, 70]], page.evaluate(lastln)
         page.keyboard.press("Escape")
         page.keyboard.press("Escape")
+        # 27. grips on two selected lines: Shift+click makes both grips hot, a click on one stretches both
+        page.evaluate("() => { const v = window.cotare.view; v.zoom = 1.2; v.panX = 0; v.panY = 0; v.afterZoom(); }")
+        page.wait_for_timeout(300)
+        lines = "window.cotare.annots.filter(a => a.type === 'shape' && a.kind === 'line')"
+        ptsof = "(a => a.pts.map(p => [Math.round(p[0] / (72/25.4) * 100) / 100, Math.round((window.cotare.doc.pages[0].h - p[1]) / (72/25.4) * 100) / 100]))"
+        two = f"(() => {{ const ls = {lines}; return [ls.find(a => Math.round(a.pts[0][0] / (72/25.4)) === 110), ls[ls.length - 1]]; }})()"
+        page.evaluate(f"window.cotare.selectMany({two}.map(a => a.id))")
+        page.keyboard.down("Shift")
+        click(110, uy(60))
+        click(35, uy(70))
+        page.keyboard.up("Shift")
+        assert page.evaluate("window.cotare.hotSet && window.cotare.hotSet.size") == 2
+        click(35, uy(70))
+        assert page.evaluate("window.cotare.hotGrip.grips.length") == 2
+        page.click("#cmdIn")
+        typed("@5,0")
+        got = page.evaluate(f"{two}.map({ptsof})")
+        assert got == [[[110, 50], [115, 60]], [[35, 65], [40, 70]]], got
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
         page.keyboard.press("f")
         page.wait_for_timeout(300)
 

@@ -16,7 +16,7 @@ DrawCAD is not a CAD system: it annotates a fixed sheet (a PDF page or a scan). 
 behaviour only makes sense for model geometry (3D, UCS rotation, isometric snap, blocks), it is left
 out of the measure and listed as *not applicable*.
 
-**Headline (estimate): ≈ 42 % at the measured commit, ≈ 76 % on branch `v1.1`.** Snaps (11 running modes, tracking, extension, parallel, apparent
+**Headline (estimate): ≈ 42 % at the measured commit, ≈ 77 % on branch `v1.1`.** Snaps (11 running modes, tracking, extension, parallel, apparent
 intersection), polar and ortho, the alias table with AutoCAD names and the command line with
 autocomplete and history are real. Typed coordinates are missing entirely (no `x,y`, `@`, `<`, `#`),
 the command line knows only command names (no prompts, no options, no typed points), there are no
@@ -33,17 +33,16 @@ Re-measured on branch `v1.1` after phases 1–5, the same way and with the same 
 | Tracking, polar, ortho | 10 % | 60 % | 78 % | Shift toggles ortho; additional and relative polar angles, polar step |
 | Dynamic input | 10 % | 35 % | 62 % | `@ # <` from anywhere, absolute points through the command line, the prompt and its options menu next to the cursor |
 | Command line | 15 % | 40 % | 77 % | prompts, options by letter or click (DCO / DBA Select, TEXT H / R, DIST M too), typed points, transparent commands, F2 |
-| Grips and editing | 10 % | 30 % | 65 % | MOVE and COPY with base point and displacement; hot grips (Space: Stretch / Move / Rotate / Scale / Mirror, Base point, Copy, typed points and values) |
+| Grips and editing | 10 % | 30 % | 75 % | MOVE and COPY with base point and displacement; hot grips (Space: Stretch / Move / Rotate / Scale / Mirror, Base point, Copy, typed points and values); grips on up to 100 selected annotations, several hot grips with Shift |
 | Selection | 10 % | 40 % | 78 % | Select objects prompt (W, C, F, WP, CP, ALL, L, P, R, A), AutoCAD selection option |
 | Keys and aliases | 10 % | 55 % | 75 % | acad.pgp import, F2, E = ERASE |
-| **Total (estimate)** | 100 % | ≈ 42 % | **≈ 76 %** | |
+| **Total (estimate)** | 100 % | ≈ 42 % | **≈ 77 %** | |
 
 The total is the weighted sum of the rows (0.15 × 78 + 0.20 × 84 + 0.10 × 78 + 0.10 × 62 + 0.15 × 77 +
-0.10 × 65 + 0.10 × 78 + 0.10 × 75 = 75.85). The previous revision gave ≈ 76 % with grips at 45 %, which
+0.10 × 75 + 0.10 × 78 + 0.10 × 75 = 76.85). The previous revision gave ≈ 76 % with grips at 45 %, which
 sums to 73.85: it was overstated by about two points.
 
-Still missing, in the order they matter: several hot grips at once (Shift) and grips on several
-selected annotations; multifunctional grip menus; lasso (press-drag is the rectangle here, by design) and selection cycling;
+Still missing, in the order they matter: multifunctional grip menus; lasso (press-drag is the rectangle here, by design) and selection cycling;
 `TK` tracking points; tracking paths along polar angles.
 
 ## How this was measured
@@ -317,7 +316,7 @@ Ovidiu's confirmation (behaviour in his AutoCAD, or a product choice) before it 
 | CMD-D11 | Transparent commands with `'` | done (v1.1) | 4 |
 | CMD-D12 | `E` without a selection asks "Select objects:"; PICKADD option | done (v1.1) | 5 |
 | CMD-D13 | MOVE / COPY with base point and typed displacement | done (v1.1) | 5 |
-| CMD-D14 | Hot-grip modes, grip input; grips on several objects still planned | done (v1.1), partly | 6 |
+| CMD-D14 | Hot-grip modes, grip input, grips on several objects, several hot grips | done (v1.1); grip menus not done | 6 |
 | CMD-D15 | F2 history window with prompts and messages | done (v1.1) | 2 |
 | CMD-D16 | Additional and relative polar angles, PolarSnap | done (v1.1) | 6 |
 
@@ -467,7 +466,7 @@ Ovidiu's confirmation (behaviour in his AutoCAD, or a product choice) before it 
 - **Node tests:** `@10,0` moves every selected annotation by 10 real mm; a hole table moves only its
   table (existing rule).
 
-### CMD-D14 — Grips (done on `v1.1`, except grips on several objects)
+### CMD-D14 — Grips (done on `v1.1`)
 
 - A click on a grip without dragging makes it hot (dragging still stretches, as before). Space,
   Enter, right click or an empty Enter in the command line cycle Stretch → Move → Rotate → Scale →
@@ -481,9 +480,14 @@ Ovidiu's confirmation (behaviour in his AutoCAD, or a product choice) before it 
   typed; points scale about the base, text and symbols with them (`scaleAbout`).
 - **Mirror:** about a horizontal or vertical axis through the base, picked from the cursor's
   direction; texts stay readable, hatch angles flip (`mirrorAbout`).
-- Not done: several hot grips with Shift, grips on several selected annotations, grip menus.
+- Grips show on every selected annotation up to 100 (AutoCAD's GRIPOBJLIMIT); with several selected
+  the resize corners are left out. Shift+click makes grips hot (red, Shift+click again drops one);
+  a click on one of them starts the hot grip, and Stretch moves all hot grips by the same
+  displacement. A click elsewhere or a new selection drops them.
+- Not done: multifunctional grip menus (hover on a grip).
 - **Tests:** `frontend/tests/pages.test.js` (translate, rotate, scale, mirror about a base);
-  `tools/e2e_smoke.py` step 26 (Space → Move with `@0,-10`; Enter twice → Rotate 90).
+  `tools/e2e_smoke.py` step 26 (Space → Move with `@0,-10`; Enter twice → Rotate 90) and step 27
+  (two lines selected, Shift+click on a grip of each, `@5,0` stretches both).
 
 ### CMD-D15 — F2 history window (planned)
 
@@ -531,6 +535,7 @@ After phases 1–5 the same weights give about **≈ 65 %** (estimate).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-24 | minor | Grips on several selected annotations and several hot grips (Shift) on `v1.1`; grips 65 → 75 %; ≈ 77 % (estimate) |
 | 2026-11-24 | minor | Hot grips (CMD-D14, partly) on `v1.1`; grips 45 → 65 %; total corrected to the weighted sum, ≈ 76 % (estimate) |
 | 2026-11-24 | minor | Polar extras, WP / CP, .X / .Y, snap on scans on `v1.1`; ≈ 76 % (estimate) |
 | 2026-11-24 | minor | Select objects keywords, TEXT H / R, DIST M, prompt next to the cursor on `v1.1`; ≈ 71 % (estimate) |

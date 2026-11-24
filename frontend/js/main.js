@@ -28,6 +28,9 @@ function hashStr(str) {
 }
 
 const DATUM_LETTERS = "ABCDEFGHJKLMNPRSTUVWXYZ"; // ISO 5459: no I, O, Q
+// grips are shown on at most this many selected annotations (AutoCAD: GRIPOBJLIMIT, 100)
+export const GRIP_LIMIT = 100;
+const gripKey = (id, k) => `${id}:${k}`;
 
 class App {
   constructor() {
@@ -470,14 +473,19 @@ class App {
   startHotGrip(d) {
     const a = this.annots.find((x) => x.id === d.id);
     if (!a) return;
-    this.hotGrip = { id: d.id, k: d.k, base: [...d.p], ids: [...this.sel], mode: "stretch", copy: false, pickBase: false, ref: 10 * K };
-    this.logCmd("** GRIP **");
+    // Shift+click made other grips hot first: Stretch moves all of them with the clicked one
+    const picked = this.hotSet && this.hotSet.has(gripKey(d.id, d.k)) ? [...this.hotSet.values()] : [];
+    const grips = [{ id: d.id, k: d.k, p: [...d.p] }, ...picked.filter((x) => !(x.id === d.id && x.k === d.k))].filter((x) => this.annots.some((b) => b.id === x.id));
+    this.hotSet = null;
+    this.hotGrip = { id: d.id, k: d.k, grips, base: [...d.p], ids: [...this.sel], mode: "stretch", copy: false, pickBase: false, ref: 10 * K };
+    this.logCmd(grips.length > 1 ? `** GRIP ** (${grips.length})` : "** GRIP **");
     this.updateCmdPrompt();
     this.view.redraw();
   }
 
   endHotGrip() {
     this.hotGrip = null;
+    this.hotSet = null;
     this.view.overlay = null;
     this.dragTip = null;
     this.updateCmdPrompt();
@@ -518,13 +526,20 @@ class App {
   /** The annotations as the grip mode would leave them, for the point pt (or a typed value). */
   hotGripResult(pt, value = null) {
     const g = this.hotGrip;
-    const ids = g.mode === "stretch" ? [g.id] : g.ids;
+    const ids = g.mode === "stretch" ? [...new Set(g.grips.map((x) => x.id))] : g.ids;
     const src = ids.map((id) => this.annots.find((a) => a.id === id)).filter(Boolean);
     const out = src.map((a) => JSON.parse(JSON.stringify(a)));
     const b = g.base;
     let info = "";
     if (g.mode === "stretch") {
-      setHandle(out[0], g.k, pt, this.builtOf(src[0]));
+      // every hot grip moves by the same displacement as the picked one
+      const dx = pt[0] - b[0];
+      const dy = pt[1] - b[1];
+      const S = this.S();
+      for (const x of g.grips) {
+        const c = out[ids.indexOf(x.id)];
+        if (c) setHandle(c, x.k, [x.p[0] + dx, x.p[1] + dy], build(c, S, this.measure));
+      }
     } else if (g.mode === "move") {
       for (const c of out) moveAnnot(c, pt[0] - b[0], pt[1] - b[1]);
     } else if (g.mode === "rotate") {
@@ -1582,6 +1597,7 @@ class App {
   }
 
   select(id) {
+    this.hotSet = null;
     this.selectedId = id;
     this.sel = new Set(id ? [id] : []);
     this.panel.render();
@@ -1596,6 +1612,7 @@ class App {
   }
 
   selectMany(ids, add = false) {
+    this.hotSet = null;
     const next = add ? new Set(this.sel) : new Set();
     for (const id of ids) next.add(id);
     this.sel = next;
@@ -2794,7 +2811,25 @@ class App {
       this.drawFence(raw);
       return;
     }
-    if (!sp && !e.shiftKey && this.sel.size <= 1 && this.tryHandleDrag(sx, sy, false, e.pointerType === "touch")) return;
+    if (!sp && e.shiftKey) {
+      // as in AutoCAD: Shift+click on grips makes several hot; a click on one of them then stretches all
+      const hg = this.handleAt(sx, sy, e.pointerType === "touch");
+      if (hg && hg.h.k !== "sc" && hg.h.k !== "tx") {
+        const key = gripKey(hg.a.id, hg.h.k);
+        if (!this.hotSet) this.hotSet = new Map();
+        if (this.hotSet.has(key)) this.hotSet.delete(key);
+        else this.hotSet.set(key, { id: hg.a.id, k: hg.h.k, p: [...hg.h.p] });
+        if (!this.hotSet.size) this.hotSet = null;
+        this.view.redraw();
+        return;
+      }
+    }
+    if (!sp && !e.shiftKey && this.tryHandleDrag(sx, sy, false, e.pointerType === "touch")) return;
+    if (this.hotSet) {
+      // a click elsewhere drops the grips picked with Shift
+      this.hotSet = null;
+      this.view.redraw();
+    }
     const edge = !sp && !e.shiftKey && this.edgeAt(sx, sy, e.pointerType === "touch");
     if (edge) {
       if (!this.sel.has(edge.a.id)) this.select(edge.a.id);
@@ -2830,23 +2865,45 @@ class App {
    * resize handle counts: endpoints must stay free for chained dimensions from the same point.
    */
   /** Handle of the selected annotation closest to the cursor (screen pixels), or null. */
+  /** The selected annotations that show grips: all of them up to GRIP_LIMIT (none beyond, as in AutoCAD). */
+  get gripLimit() {
+    return GRIP_LIMIT;
+  }
+
+  gripOwners() {
+    if (!this.sel.size || this.sel.size > GRIP_LIMIT) return [];
+    return this.selectedAll().filter((a) => a.page === this.page && !this.hidden.has(this.layerOf(a)));
+  }
+
+  /** A grip of annotation a; with several annotations selected the resize corners are left out. */
+  gripsOf(a, multi = this.sel.size > 1) {
+    const hs = this.builtOf(a).handles || [];
+    return multi ? hs.filter((h) => h.k !== "sc") : hs;
+  }
+
   handleAt(sx, sy, touch = false) {
-    const sel = this.selected();
-    if (!sel || sel.page !== this.page || this.sel.size > 1 || this.hidden.has(this.layerOf(sel))) return null;
     const r = touch ? 16 : 10;
     let best = null;
     let bd = r;
-    for (const h of this.builtOf(sel).handles || []) {
-      if (!h.p) continue;
-      const [hx, hy] = this.view.toScreen(h.p);
-      // on a tie, the annotation's points win over the resize corners
-      const d = Math.hypot(hx - sx, hy - sy) + (h.k === "sc" ? 1.5 : 0);
-      if (d <= bd) {
-        bd = d;
-        best = { a: sel, h };
+    for (const sel of this.gripOwners()) {
+      for (const h of this.gripsOf(sel)) {
+        if (!h.p) continue;
+        const [hx, hy] = this.view.toScreen(h.p);
+        // on a tie, the annotation's points win over the resize corners
+        const d = Math.hypot(hx - sx, hy - sy) + (h.k === "sc" ? 1.5 : 0);
+        if (d <= bd) {
+          bd = d;
+          best = { a: sel, h };
+        }
       }
     }
     return best;
+  }
+
+  /** Is this grip hot (red): picked with Shift, or part of the hot grip in progress? */
+  isHotGrip(id, k) {
+    if (this.hotSet && this.hotSet.has(gripKey(id, k))) return true;
+    return !!(this.hotGrip && this.hotGrip.grips.some((x) => x.id === id && x.k === k));
   }
 
   /** What a handle does, in words (hover tooltip). */
