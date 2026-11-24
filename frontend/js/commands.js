@@ -11,6 +11,8 @@ export const DEFAULT_ALIASES = {
   pan: ["P", "PAN"],
   measure: ["DI", "DIST", "MEA", "MEASUREGEOM"],
   ucs: ["UCS", "ORIGIN", "ORIGINE"],
+  moveSel: ["M", "MOVE"],
+  copySel: ["CO", "CP", "COPY"],
   dimLin: ["DLI", "DIMLINEAR", "DIM"],
   dimAli: ["DAL", "DIMALIGNED"],
   dimDia: ["DDL", "DIMDIALIN"],
@@ -45,12 +47,13 @@ export const DEFAULT_ALIASES = {
   strike: ["STR", "TAIE"],
   white: ["WO", "WIPEOUT"],
   ink: ["INK"],
-  redact: ["E", "ERASE", "STERGE"],
+  redact: ["STERGE", "REDACT"],
   calib: ["CALIB", "SCALA", "K"],
 };
 
 /** Commands that are not tools. */
 export const ACTIONS = [
+  { id: "erase", label: "Șterge adnotările", aliases: ["E", "ERASE", "DEL"] },
   { id: "undo", label: "Anulează acțiunea", aliases: ["U", "UNDO"] },
   { id: "redo", label: "Refă", aliases: ["REDO", "MREDO"] },
   { id: "fit", label: "Zoom pe toată pagina", aliases: ["Z", "ZE", "ZOOM"], transparent: true },
@@ -78,7 +81,7 @@ export const RESERVED_KEYS = new Set(["f", "+", "-", "=", " "]);
 const norm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
 
 export function defaultKeyConfig() {
-  return { mode: "direct", keys: {}, aliases: {} };
+  return { mode: "direct", keys: {}, aliases: {}, pickadd: false };
 }
 
 export function keyConfig() {
@@ -89,6 +92,7 @@ export function keyConfig() {
         mode: c.mode === "autocad" ? "autocad" : "direct",
         keys: c.keys && typeof c.keys === "object" ? c.keys : {},
         aliases: c.aliases && typeof c.aliases === "object" ? c.aliases : {},
+        pickadd: !!c.pickadd,
       };
     }
   } catch (_) { /* storage unavailable */ }
@@ -224,7 +228,7 @@ export function importPgp(cfg, entries) {
   for (const t of TOOLS) for (const a of DEFAULT_ALIASES[t.id] || []) index.set(a.toUpperCase(), t.id);
   for (const a of ACTIONS) for (const x of a.aliases) index.set(x.toUpperCase(), a.id);
   for (const [name, id] of Object.entries(PGP_EXTRA)) if (!index.has(name)) index.set(name, id);
-  const next = { mode: cfg.mode, keys: { ...cfg.keys }, aliases: {} };
+  const next = { mode: cfg.mode, keys: { ...cfg.keys }, aliases: {}, pickadd: !!cfg.pickadd };
   const cur = {};
   for (const c of commandList(cfg)) cur[c.id] = [...c.aliases];
   const added = [];

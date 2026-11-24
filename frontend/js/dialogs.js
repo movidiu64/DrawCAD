@@ -615,7 +615,7 @@ export async function textDialog(app) {
 function mmGridHtml(cfg) {
   const groups = [];
   for (const t of TOOLS) {
-    if (t.id === "select" || t.id === "pan" || t.id === "calib") continue;
+    if (t.id === "select" || t.id === "pan" || t.id === "calib" || t.hidden) continue;
     let g = groups.find((x) => x.name === t.group);
     if (!g) groups.push((g = { name: t.group, tools: [] }));
     g.tools.push(t);
@@ -790,11 +790,13 @@ export function keysDialog(app) {
       <button data-mode="direct" class="${cfg.mode === "direct" ? "on" : ""}">Taste directe</button>
       <button data-mode="autocad" class="${cfg.mode === "autocad" ? "on" : ""}">Comenzi AutoCAD</button></div>
     <div class="note" id="kHelp"></div>
+    <label class="chk" id="kPickRow" style="margin-top:8px"><input type="checkbox" id="kPick" ${cfg.pickadd ? "checked" : ""}> Selecție ca în AutoCAD: click adaugă la selecție, Shift+click scoate</label>
     <div class="field" style="margin-top:8px"><label for="kQ">Caută</label><input type="search" id="kQ" placeholder="ex.: cerc, DLI, rază"></div>
     <div class="keytab"><table><thead><tr><th>Comandă</th><th>Tastă</th><th>Prescurtări (despărțite prin virgulă)</th></tr></thead><tbody id="kRows">${rowsHtml()}</tbody></table></div>
     <div class="note" id="kImp" hidden></div>
     <div class="foot"><span class="muted" id="kMsg" style="flex:1"></span><input type="file" id="kPgp" accept=".pgp,.txt,text/plain" hidden><button class="ghost" id="kImport" title="Prescurtările din AutoCAD (fișierul acad.pgp din folderul Support)">Importă acad.pgp…</button><button class="ghost" id="kReset">Revino la implicit</button><button class="ghost" data-close>Anulează</button><button class="primary" id="kSave">Aplică</button></div>`);
   const help = () => {
+    dlg.querySelector("#kPickRow").hidden = cfg.mode !== "autocad";
     dlg.querySelector("#kHelp").innerHTML = cfg.mode === "autocad"
       ? "<b>Comenzi AutoCAD:</b> scrii comanda oriunde pe desen (apare jos, în linia de comandă, cu sugestii) și o pornești cu <b>Spațiu</b> sau <b>Enter</b>. Spațiu sau Enter fără nimic scris <b>repetă ultima comandă</b>; la polilinie o termină. Spațiu ținut + tragere mută desenul, Esc renunță. Tastele directe nu se folosesc în acest mod."
       : "<b>Taste directe:</b> o tastă pornește unealta (coloana Tastă). Comenzile din coloana a treia merg și aici: <b>Enter</b> deschide linia de comandă de jos, scrii de exemplu <b class=\"mono\">DLI</b> și dai Spațiu sau Enter.";
@@ -816,7 +818,7 @@ export function keysDialog(app) {
       const def = (DEFAULT_ALIASES[id] || (ACTIONS.find((a) => a.id === id) || {}).aliases || []).map((x) => x.toUpperCase());
       if (list.join(",") !== def.join(",")) aliases[id] = list;
     });
-    return { mode: cfg.mode, keys, aliases };
+    return { mode: cfg.mode, keys, aliases, pickadd: dlg.querySelector("#kPick").checked };
   };
   const check = () => {
     cfg = read();
@@ -878,6 +880,7 @@ export function keysDialog(app) {
   });
   dlg.querySelector("#kReset").addEventListener("click", () => {
     cfg = { ...defaultKeyConfig(), mode: cfg.mode };
+    dlg.querySelector("#kPick").checked = false;
     dlg.querySelector("#kRows").innerHTML = rowsHtml();
     check();
   });

@@ -81,6 +81,15 @@ export const TOOLS = [
     hint: "Două puncte (cu snap) → distanța, Δx, Δy și unghiul, la scara desenului; nu se adaugă nimic pe desen",
     preview(pts, cur) { return { line: [pts[0], cur] }; } },
 
+  // MOVE / COPY on the selection (commands only, not on the toolbar): base point, second point
+  { id: "moveSel", label: "Mută obiectele", key: "", group: "Navigare", hidden: true, icon: "M12 3v18M3 12h18",
+    kind: "clicks", n: 2, hint: "Punctul de bază, apoi al doilea punct (sau @dx,dy) · Esc renunță",
+    make: (pts, app) => app.moveSelection(pts, false),
+    preview: (pts, cur, app) => app.movePreview(pts[0], cur) },
+  { id: "copySel", label: "Copiază obiectele", key: "", group: "Navigare", hidden: true, icon: "M8 8h12v12H8zM4 4h12v12",
+    kind: "clicks", n: 2, hint: "Punctul de bază, apoi unde pui copia (sau @dx,dy); copiile continuă până la Enter / Esc",
+    make: (pts, app) => app.moveSelection(pts, true),
+    preview: (pts, cur, app) => app.movePreview(pts[0], cur) },
   { id: "ucs", label: "Origine", key: "", group: "Navigare", icon: "M5 19V5M5 19h14M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2M3.5 17.5h3v3h-3z",
     kind: "clicks", n: 1,
     hint: "Click pe punctul care devine 0,0 pentru coordonatele scrise (de ex. colțul piesei) · X spre dreapta, Y în sus, în mm reali",
@@ -279,6 +288,8 @@ export const TOOLS = [
 const DIM_PROMPTS = ["Originea primei linii ajutătoare", "Originea celei de-a doua linii ajutătoare", "Poziția liniei de cotă"];
 const PROMPTS = {
   ucs: ["Originea (0,0)"],
+  moveSel: ["Punctul de bază", "Al doilea punct (sau @dx,dy)"],
+  copySel: ["Punctul de bază", "Unde pui copia (sau @dx,dy; Enter = gata)"],
   measure: ["Primul punct", "Al doilea punct"],
   dimLin: DIM_PROMPTS,
   dimAli: DIM_PROMPTS,

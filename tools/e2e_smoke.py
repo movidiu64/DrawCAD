@@ -350,13 +350,13 @@ def main(url, out):
         assert cen == [145, 167.5], cen
         # 20. acad.pgp import in the Keys dialog, then a transparent 'Z during a command
         pgp = out / "test.pgp"
-        pgp.write_text("; test\nLI, *LINE\nCO, *COPY\n", encoding="utf-8")
+        pgp.write_text("; test\nLI, *LINE\nLA, *LAYER\n", encoding="utf-8")
         page.evaluate("window.cotare.runCommand('keys')")
         page.wait_for_selector("#kImport")
         page.set_input_files("#kPgp", str(pgp))
         page.wait_for_selector("#kImp:not([hidden])")
         imp = page.inner_text("#kImp")
-        assert "1 adăugate" in imp and "COPY" in page.inner_html("#kImp"), imp
+        assert "1 adăugate" in imp and "LAYER" in page.inner_html("#kImp"), imp
         page.click("#kSave")
         page.wait_for_timeout(200)
         page.click("#cmdIn")
@@ -368,6 +368,29 @@ def main(url, out):
         assert page.evaluate("[window.cotare.tool, window.cotare.clicks.length]") == ["line", 1], "'Z keeps the command"
         page.keyboard.press("Escape")
         page.keyboard.press("Escape")
+        # 21. ERASE asks for objects (L = the last one), MOVE and COPY with a base point
+        n0 = page.evaluate("window.cotare.annots.length")
+        last_id = page.evaluate("window.cotare.annots[window.cotare.annots.length - 1].id")
+        page.click("#cmdIn")
+        typed("E")
+        assert page.evaluate("!!window.cotare.selPrompt")
+        page.click("#cmdIn")
+        typed("L")
+        page.click("#cmdIn")
+        page.keyboard.press("Enter")
+        assert page.evaluate("window.cotare.annots.length") == n0 - 1
+        assert not page.evaluate(f"window.cotare.annots.some(a => a.id === '{last_id}')")
+        ln = page.evaluate("window.cotare.annots.filter(a => a.type === 'shape' && a.kind === 'line').slice(-1)[0]")
+        page.evaluate(f"window.cotare.select('{ln['id']}')")
+        page.click("#cmdIn")
+        typed("M", "0,0", "@10,0")
+        moved = page.evaluate(f"window.cotare.annots.find(a => a.id === '{ln['id']}').pts[0][0] - {ln['pts'][0][0]}")
+        assert abs(moved - 10 * 72 / 25.4) < 1e-6, moved
+        page.click("#cmdIn")
+        typed("CO", "0,0", "@0,10", "@0,20")
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
+        assert page.evaluate("window.cotare.annots.length") == n0 + 1
         page.keyboard.press("Escape")
         page.keyboard.press("f")
         page.wait_for_timeout(300)
@@ -379,7 +402,7 @@ def main(url, out):
         page.screenshot(path=str(out / "editor.png"))
 
         kinds = page.evaluate("window.cotare.annots.map(a => a.type)")
-        assert len(kinds) == 31, kinds
+        assert len(kinds) == 32, kinds
 
         # export
         page.click("#btnExport")
@@ -423,15 +446,15 @@ def main(url, out):
         # reopen: dimensions come back editable
         prev_id = page.evaluate("window.cotare.doc.id")
         page.set_input_files("#fileInput", str(path))
-        # wait for the new document (loading takes time), not the old one which already had 31 annotations
-        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 31")
+        # wait for the new document (loading takes time), not the old one which already had 32 annotations
+        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 32")
         # closing without changes: straight to the start page
         page.click("#btnClose")
         page.wait_for_function("window.cotare.doc === null && !document.getElementById('emptyState').hidden")
         page.wait_for_function("document.querySelectorAll('#recentList [data-doc]').length >= 1", timeout=5000)
         # reopen from Recent, one change, then close with the prompt
         page.click("#recentList [data-doc]")
-        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 31")
+        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 32")
         page.wait_for_timeout(300)
         page.keyboard.press("t")
         click(100, 30)

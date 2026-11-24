@@ -18,7 +18,7 @@ test("defaults: no duplicate keys or commands, every tool has at least one comma
 
 test("AutoCAD commands: L, C, PL, REC, A, H, DLI, DDI, DRA, DAN, DAL, LE, TOL, E, U, Z", () => {
   const want = { L: "line", C: "circle", PL: "poly", REC: "rect", A: "arc", H: "hatch", DLI: "dimLin", DDI: "dimDiaC",
-    DRA: "dimRad", DAN: "dimAng", DAL: "dimAli", LE: "lead", DDL: "dimDia", TOL: "gdt", E: "redact", U: "undo", Z: "fit", P: "pan", T: "text" };
+    DRA: "dimRad", DAN: "dimAng", DAL: "dimAli", LE: "lead", DDL: "dimDia", TOL: "gdt", E: "erase", ERASE: "erase", STERGE: "redact", U: "undo", Z: "fit", P: "pan", T: "text" };
   for (const [a, id] of Object.entries(want)) assert.equal(resolveCommand(a, D).id, id, a);
   assert.equal(resolveCommand("dli", D).id, "dimLin"); // lowercase letters
   assert.equal(resolveCommand("Cerc", D).id, "circle"); // by name
@@ -93,10 +93,12 @@ test("acad.pgp import: mapped by AutoCAD names, unknown commands listed, conflic
   assert.ok(al("circle").includes("CE"));
   assert.ok(al("text").includes("DT"), "DTEXT maps to the text tool");
   assert.ok(al("osnap").includes("OSN"));
-  // C → COPY: COPY is unknown, so C stays on the circle
-  assert.ok(al("circle").includes("C"));
-  assert.ok(res.unknown.includes("COPY"));
+  // C is defined twice, last as *COPY: it moves from the circle to COPY (the pgp file wins)
+  assert.ok(al("copySel").includes("C"));
+  assert.ok(!al("circle").includes("C"));
+  assert.ok(res.moved.some((m) => m.alias === "C" && m.from === "circle" && m.to === "copySel"));
   assert.ok(res.unknown.includes("-LAYER"));
+  assert.ok(!res.unknown.includes("COPY"));
   assert.deepEqual(Object.keys(conflicts(res.cfg).aliases), [], "no alias on two commands");
   assert.equal(res.cfg.keys.line, "Q", "direct keys are not touched");
   assert.equal(resolveCommand("LI", res.cfg).id, "line");

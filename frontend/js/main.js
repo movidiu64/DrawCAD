@@ -5,6 +5,7 @@ import { View, COLORS } from "./view.js";
 import { Snapper, MODES, DEFAULT_MODES, parseOverride, overrideModes, LABELS } from "./osnap.js";
 import { Panel } from "./panel.js";
 import { TOOLS, TOOL_BY_ID, finalize, promptFor, resolveOption } from "./tools.js";
+import { clickSelection, windowSelection } from "./selection.js";
 import { parsePoint, resolvePoint, toUser, defaultOrigin, orthoActive, routeKey } from "./pointin.js";
 import * as dlg from "./dialogs.js";
 import { VIEW_LETTERS } from "./symbols.js";
@@ -98,6 +99,16 @@ class App {
    */
   escape(confirm = false) {
     const t = TOOL_BY_ID[this.tool];
+    if (this.selPrompt) {
+      // right click / Enter runs the command on the selection, Esc drops it
+      if (confirm) this.finishSelPrompt();
+      else {
+        this.selPrompt = null;
+        this.select(null);
+        this.updateCmdPrompt();
+      }
+      return;
+    }
     if (this.snapOverride) {
       this.snapOverride = null;
       this.updateCmdPrompt();
@@ -410,6 +421,17 @@ class App {
       }
       return;
     }
+    if (this.selPrompt) {
+      inp.placeholder = "ALL · L · Enter";
+      if (box) {
+        const n = this.sel.size;
+        const what = { erase: "Șterge adnotările", moveSel: "Mută obiectele", copySel: "Copiază obiectele" }[this.selPrompt.cmd] || "";
+        const then = this.selPrompt.cmd === "erase" ? "Enter șterge" : "Enter continuă";
+        box.innerHTML = `<b>${what} — selectează obiectele (${n} ${n === 1 ? "selectat" : "selectate"}) · ${then}, Esc renunță</b>`;
+        box.hidden = false;
+      }
+      return;
+    }
     if (!this.cmdActive()) {
       inp.placeholder = this.keyCfg.mode === "autocad" ? "Comandă (L, C, PL, DLI…)" : "Enter → comandă (L, C, DLI…)";
       if (box) box.hidden = true;
@@ -614,6 +636,7 @@ class App {
   buildToolbar() {
     const groups = [];
     for (const t of TOOLS) {
+      if (t.hidden) continue; // commands only (MOVE, COPY)
       let g = groups.find((x) => x.name === t.group);
       if (!g) groups.push((g = { name: t.group, tools: [] }));
       g.tools.push(t);
@@ -755,6 +778,7 @@ class App {
     this.cmdState = {};
     this.cmdAsk = null;
     this.chain = null;
+    this.selPrompt = null;
     this.snapOverride = null;
     this.snapPick = null;
     if (this.dyn) this.dynReset();
@@ -1272,6 +1296,110 @@ class App {
     this.selectedId = next.size ? [...next][next.size - 1] : null;
     this.panel.render();
     this.view.redraw();
+  }
+
+  /** Replaces the selection by a set (from the selection rules). */
+  setSelection(next) {
+    this.sel = new Set(next);
+    this.selectedId = this.sel.size ? [...this.sel][this.sel.size - 1] : null;
+    this.panel.render();
+    this.view.redraw();
+    if (this.selPrompt) this.updateCmdPrompt();
+  }
+
+  /** AutoCAD selection (click adds, Shift removes): at a Select objects prompt, or chosen. */
+  pickAdd() {
+    return !!(this.selPrompt || (this.keyCfg && this.keyCfg.mode === "autocad" && this.keyCfg.pickadd));
+  }
+
+  // ------------------------------------------------------------ ERASE (CMD-D12)
+  /** E / ERASE: deletes the selection, or asks for objects first. */
+  erase() {
+    if (!this.doc) return;
+    if (this.sel.size) {
+      this.deleteSelected();
+      return;
+    }
+    if (this.tool !== "select") this.setTool("select");
+    this.selPrompt = { cmd: "erase" };
+    this.updateCmdPrompt();
+  }
+
+  /** Enter at the Select objects prompt: the command runs on the selection. */
+  finishSelPrompt() {
+    const p = this.selPrompt;
+    this.selPrompt = null;
+    if (p && p.cmd === "erase" && this.sel.size) this.deleteSelected();
+    if (p && (p.cmd === "moveSel" || p.cmd === "copySel") && this.sel.size) this.moveCmd(p.cmd);
+    this.updateCmdPrompt();
+  }
+
+  // ------------------------------------------------------------ MOVE / COPY (CMD-D13)
+  /** M / CO: on the selection, or after a Select objects prompt. */
+  moveCmd(id) {
+    if (!this.sel.size) {
+      if (this.tool !== "select") this.setTool("select");
+      this.selPrompt = { cmd: id };
+      this.updateCmdPrompt();
+      return;
+    }
+    this.moveIds = [...this.sel];
+    this.setTool(id);
+  }
+
+  /** The selected annotations moved by the cursor (preview of MOVE / COPY). */
+  movePreview(base, cur) {
+    const dx = cur[0] - base[0];
+    const dy = cur[1] - base[1];
+    return (this.moveIds || []).map((id) => this.annots.find((a) => a.id === id)).filter(Boolean).map((a) => {
+      const c = JSON.parse(JSON.stringify(a));
+      moveAnnot(c, dx, dy);
+      return c;
+    });
+  }
+
+  /** MOVE / COPY with a base point and a second point (typed or picked). */
+  moveSelection(pts, copy) {
+    const [b, q] = pts;
+    const dx = q[0] - b[0];
+    const dy = q[1] - b[1];
+    const src = (this.moveIds || []).map((id) => this.annots.find((a) => a.id === id)).filter(Boolean);
+    if (!src.length) return null;
+    this.pushHistory();
+    if (copy) {
+      const items = src.map((a) => {
+        const c = JSON.parse(JSON.stringify(a));
+        c.id = newId();
+        moveAnnot(c, dx, dy);
+        return c;
+      });
+      this.annots.push(...items);
+      this.changed();
+      // as in AutoCAD: more copies from the same base point until Enter / Esc
+      this.clicks = [b];
+      return null;
+    }
+    for (const a of src) moveAnnot(a, dx, dy);
+    this.changed();
+    this.setTool("select");
+    this.selectMany(src.map((a) => a.id));
+    return null;
+  }
+
+  /** Options typed at the Select objects prompt: ALL, L (last). */
+  selPromptOption(text) {
+    const q = String(text || "").trim().toUpperCase();
+    const onPage = this.visibleBuilt().map(({ a }) => a.id);
+    if (q === "ALL" || q === "TOT") {
+      this.setSelection(new Set([...this.sel, ...onPage]));
+      return true;
+    }
+    if (q === "L" || q === "LAST" || q === "ULTIMUL") {
+      const last = [...this.annots].reverse().find((a) => onPage.includes(a.id));
+      if (last) this.setSelection(new Set([...this.sel, last.id]));
+      return true;
+    }
+    return false;
   }
 
   toggleSelect(id) {
@@ -2095,7 +2223,8 @@ class App {
         const y0 = Math.min(d.start[1], end[1]);
         const y1 = Math.max(d.start[1], end[1]);
         if ((x1 - x0) * this.view.zoom < 4 && (y1 - y0) * this.view.zoom < 4) {
-          if (!d.add) this.select(null);
+          if (this.pickAdd()) this.view.redraw(); // a click on nothing keeps the selection
+          else if (!d.add) this.select(null);
           else this.view.redraw();
           return;
         }
@@ -2109,7 +2238,8 @@ class App {
           const touch = !(b[2] < x0 || b[0] > x1 || b[3] < y0 || b[1] > y1);
           if (crossing ? touch : inside) ids.push(a.id);
         }
-        this.selectMany(ids, d.add);
+        if (this.pickAdd()) this.setSelection(windowSelection(this.sel, ids, { shift: d.add, pickadd: true }));
+        else this.selectMany(ids, d.add);
         return;
       }
       if (d.kind === "rect") {
@@ -2207,6 +2337,12 @@ class App {
     for (let i = items.length - 1; i >= 0; i--) {
       const { a, built } = items[i];
       if (hit(built, a, raw, tol)) {
+        if (this.pickAdd()) {
+          this.setSelection(clickSelection(this.sel, a.id, { shift: e.shiftKey, pickadd: true }));
+          if (e.shiftKey || this.selPrompt) return;
+          this.drag = { kind: "move", ids: [...this.sel], last: raw, start: raw, sx, sy };
+          return;
+        }
         if (e.shiftKey) {
           this.toggleSelect(a.id);
           return;
@@ -2557,7 +2693,7 @@ class App {
     const show = () => {
       hIdx = -1;
       // a point being typed: no command suggestions
-      list = this.cmdAsk || (this.cmdActive() && (/^[\s@#<0-9.+\-]/.test(inp.value) || resolveOption(this.currentOptions(), inp.value) || parseOverride(inp.value))) ? [] : suggest(inp.value, this.keyCfg);
+      list = this.cmdAsk || this.selPrompt || (this.cmdActive() && (/^[\s@#<0-9.+\-]/.test(inp.value) || resolveOption(this.currentOptions(), inp.value) || parseOverride(inp.value))) ? [] : suggest(inp.value, this.keyCfg);
       pick = 0;
       if (!list.length) {
         box.hidden = true;
@@ -2600,6 +2736,15 @@ class App {
       if (e.key === "Enter" || e.key === " " || e.key === "Tab") {
         e.preventDefault();
         const v = inp.value.trim();
+        if (this.selPrompt && e.key !== "Tab") {
+          inp.value = "";
+          box.hidden = true;
+          if (!v) {
+            inp.blur();
+            this.finishSelPrompt();
+          } else if (!this.selPromptOption(v)) dlg.toast(`La „selectează obiectele”: click, fereastră, ALL sau L (nu ${v})`);
+          return;
+        }
         if (!v && this.cmdAsk && e.key !== "Tab") {
           // nothing typed: the question is dropped, the default stays
           this.cmdAsk = null;
@@ -2741,12 +2886,8 @@ class App {
     };
     if (TOOL_BY_ID[id]) {
       if (!needDoc()) return;
-      // E (ERASE) with something selected deletes the selection, as in AutoCAD; otherwise starts removal from the original
-      if (id === "redact" && this.sel.size) {
-        this.deleteSelected();
-        this.lastCmd = id;
-        this.recordCmd(id, this._typedCmd);
-        this._typedCmd = null;
+      if (id === "moveSel" || id === "copySel") {
+        this.moveCmd(id);
         return;
       }
       this.setTool(id);
@@ -2760,6 +2901,7 @@ class App {
       return;
     }
     const act = {
+      erase: () => this.erase(),
       undo: () => this.doUndo(),
       redo: () => this.doRedo(),
       fit: () => this.view.fit(),
@@ -2903,6 +3045,11 @@ class App {
         this.space = true;
         $("canvas").style.cursor = "grab";
         e.preventDefault();
+        return;
+      }
+      if ((e.key === "Enter" || (e.key === " " && autocad)) && this.selPrompt && !this.mmenu) {
+        e.preventDefault();
+        this.finishSelPrompt();
         return;
       }
       if (e.key === "Enter" && !this.clicks.length && !this.mmenu) {
