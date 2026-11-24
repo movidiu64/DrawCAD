@@ -198,6 +198,42 @@ class ApiTest(unittest.TestCase):
         px = img.getpixel((int(150), int(100)))
         self.assertTrue(px[1] > px[0] + 30 and px[1] > px[2] + 30, px)  # green, not black
 
+    def test_compare_revisions(self):
+        from reportlab.pdfgen import canvas as rl
+
+        def drawing(hole_x, shift=0.0, extra=False):
+            buf = io.BytesIO()
+            c = rl.Canvas(buf, pagesize=(842, 595))
+            c.translate(shift, -shift)
+            c.rect(100, 100, 500, 300)
+            c.circle(hole_x, 250, 30)
+            c.drawString(120, 420, "Flansa rev")
+            if extra:
+                c.line(650, 150, 750, 150)
+            c.showPage()
+            c.save()
+            return buf.getvalue()
+
+        old = self.req("POST", "/api/open", drawing(300), {"X-Filename": "flansa_rev1.pdf"})
+        same = self.req("POST", "/api/open", drawing(300, shift=5.0), {"X-Filename": "flansa_rev1b.pdf"})
+        new = self.req("POST", "/api/open", drawing(340, extra=True), {"X-Filename": "flansa_rev2.pdf"})
+        # the same drawing, exported 5 pt off: aligned, nothing changed
+        r0 = self.req("POST", f"/api/doc/{same['id']}/compare", {"other": old["id"], "page": 0, "otherPage": 0})
+        self.assertEqual(r0["regions"], [], r0["shiftMm"])
+        # the hole moved and a line was added: removed and added ink, areas around them
+        r1 = self.req("POST", f"/api/doc/{new['id']}/compare", {"other": old["id"], "page": 0, "otherPage": 0})
+        self.assertGreater(r1["removed"], 0)
+        self.assertGreater(r1["added"], 0)
+        self.assertTrue(r1["image"].startswith("data:image/png;base64,"))
+        boxes = r1["regions"]
+        self.assertTrue(any(b[0] < 300 < b[2] and b[1] < 595 - 250 < b[3] for b in boxes), boxes)  # the hole
+        self.assertTrue(any(b[0] < 700 < b[2] for b in boxes), boxes)  # the new line
+        pdf, h = self.req("POST", f"/api/doc/{new['id']}/compare",
+                          {"other": old["id"], "page": 0, "otherPage": 0, "format": "pdf", "legend": "vechi|nou|ambele"}, raw=True)
+        self.assertTrue(pdf.startswith(b"%PDF"))
+        with self.assertRaises(urllib.error.HTTPError):
+            self.req("POST", f"/api/doc/{new['id']}/compare", {"other": "f" * 32, "page": 0, "otherPage": 0})
+
     def test_zone_cuts_lines_at_border(self):
         import ctypes
 

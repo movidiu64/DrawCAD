@@ -80,6 +80,7 @@ export const ACTIONS = [
   { id: "rotR", label: "Rotește pagina la dreapta", aliases: ["ROTR"] },
   { id: "rotL", label: "Rotește pagina la stânga", aliases: ["ROTL"] },
   { id: "pages", label: "Pagini (rotire, ordine, ștergere)", aliases: ["PAGES", "PAGINI"] },
+  { id: "compare", label: "Compară cu altă revizie", aliases: ["COMPARE", "CMP"] },
 ];
 
 // keys with a fixed role, which cannot be assigned to tools

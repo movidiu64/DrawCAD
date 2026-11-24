@@ -456,6 +456,23 @@ export class View {
         ctx.drawImage(dt.img, x0, y0, x1 - x0, y1 - y0);
       }
     }
+    // revision compare: the overlay (red / green / gray) over the page, as strong as the slider says
+    const cmp = this.app.compare;
+    if (cmp && cmp.page === this.pageN && cmp.img && cmp.alpha > 0) {
+      ctx.save();
+      ctx.globalAlpha = cmp.alpha;
+      ctx.drawImage(cmp.img, 0, 0, this.pageW, this.pageH);
+      ctx.restore();
+      if (this.cmpBox) {
+        const [x0, y0, x1, y1] = this.cmpBox;
+        ctx.save();
+        ctx.strokeStyle = COLORS.hitMark;
+        ctx.lineWidth = 2 / z;
+        ctx.setLineDash([6 / z, 4 / z]);
+        ctx.strokeRect(x0 - 4 / z, y0 - 4 / z, x1 - x0 + 8 / z, y1 - y0 + 8 / z);
+        ctx.restore();
+      }
+    }
     const app = this.app;
     const single = app.sel.size === 1;
     const grips = app.sel.size > 0 && app.sel.size <= (app.gripLimit || 100);

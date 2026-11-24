@@ -90,15 +90,16 @@ The state embedded in an export (`drawcad.json`) already reopens as editable. Th
   vector squares, so it stays sharp in PDF and DXF. Error correction level M;
   minimum module size checked against print (warning under 0.4 mm).
 
-## V12-6 — Revision compare
+## V12-6 — Revision compare · built
 
 - **Compare** two PDFs or two revisions of the same drawing: the older one is picked from Recent or
   uploaded.
 - The server renders both pages at the same DPI (PDFium) and combines them: only in old = red, only in
-  new = green / blue, common = gray. Pages of different size are aligned by the page box; an optional
-  two-point alignment (same point clicked on both) fixes a shifted or rescaled export.
-- Shown as an overlay mode in the editor (toggle, slider between old and new), with a list of changed
-  regions (connected areas of difference) to step through.
+  new = green, common = gray. Pages of different size are stretched to the same page box; an automatic
+  alignment (phase correlation, refined to the pixel) removes an overall shift. Two-point alignment for a
+  rescaled or rotated export is left for later.
+- Shown as an overlay in the editor (slider in the context bar), with the changed regions (connected areas of
+  difference, grouped on a 2.5 mm grid) to step through. Pages are compared without DrawCAD annotations.
 - Export of the comparison as a PDF page, for the review record.
 
 ---

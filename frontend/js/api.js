@@ -25,6 +25,16 @@ export async function uploadImage(id, blob) {
   return jsonOrThrow(r);
 }
 
+/** Revision compare: this page (newer) over a page of another document (older). */
+export async function compare(id, body) {
+  const r = await fetch(`api/doc/${id}/compare`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (body.format === "pdf") {
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Compararea a eșuat");
+    return r.blob();
+  }
+  return jsonOrThrow(r);
+}
+
 export const imageUrl = (id, img) => `api/doc/${id}/image/${img}`;
 
 export const listDocs = () => fetch("api/docs").then(jsonOrThrow);

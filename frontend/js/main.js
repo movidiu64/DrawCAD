@@ -448,6 +448,62 @@ class App {
     }
   }
 
+  // ------------------------------------------------------------ revision compare (V12-6)
+  /** Lays page otherPage of document other (the older revision) under the current page. */
+  async runCompare(other, otherPage, align, otherName) {
+    dlg.toast("Se compară…", 30000);
+    try {
+      const res = await api.compare(this.doc.id, { other, page: this.page, otherPage, align });
+      const img = new Image();
+      await new Promise((ok, bad) => {
+        img.onload = ok;
+        img.onerror = bad;
+        img.src = res.image;
+      });
+      this.compare = { other, otherPage, otherName, align, page: this.page, regions: res.regions, idx: -1, alpha: 1, img };
+      this.view.redraw();
+      this.renderCtx();
+      const n = res.regions.length;
+      const sh = res.shiftMm || [0, 0];
+      dlg.toast(n ? `${n} ${n === 1 ? "zonă modificată" : "zone modificate"}: roșu = doar în ${otherName}, verde = doar în revizia deschisă${sh[0] || sh[1] ? ` · aliniat cu ${fmtNum(sh[0], ",", 2)} / ${fmtNum(sh[1], ",", 2)} mm` : ""}` : "Nicio diferență de desen între cele două pagini.", 6000);
+    } catch (err) {
+      dlg.toast(`Compararea nu a reușit: ${err.message}`, 6000);
+    }
+  }
+
+  endCompare() {
+    this.compare = null;
+    this.view.cmpBox = null;
+    this.view.redraw();
+    this.renderCtx();
+  }
+
+  /** The next / previous changed area: zoom on it and outline it. */
+  stepCompare(d) {
+    const c = this.compare;
+    if (!c || !c.regions.length) return;
+    c.idx = (c.idx + d + c.regions.length) % c.regions.length;
+    const b = c.regions[c.idx];
+    const m = 12 * K;
+    this.view.zoomToBox([b[0] - m, b[1] - m, b[2] + m, b[3] + m]);
+    this.view.cmpBox = b;
+    this.view.redraw();
+    this.renderCtx();
+  }
+
+  async exportCompare() {
+    const c = this.compare;
+    if (!c) return;
+    try {
+      const blob = await api.compare(this.doc.id, { other: c.other, page: this.page, otherPage: c.otherPage, align: c.align, format: "pdf",
+        legend: `${tr("doar în")} ${c.otherName}|${tr("doar în")} ${this.doc.name}|${tr("în ambele")}` });
+      const base = this.doc.name.replace(/\.[^.]+$/, "");
+      await dlg.saveBlob(blob, `${base}_comparare.pdf`);
+    } catch (err) {
+      dlg.toast(err.message, 6000);
+    }
+  }
+
   // ------------------------------------------------------------ stamps, QR, watermark (V12-5)
   /** The stamp chosen for the tool, at pt (centre): today's date and the user's name under the word. */
   stampAt(pt) {
@@ -1956,6 +2012,7 @@ class App {
   }
 
   setDoc(meta, state) {
+    this.compare = null;
     this.doc = meta;
     localStorage.setItem("cotare.lastDoc", meta.id);
     this.annots = (state && state.annots) || [];
@@ -1981,6 +2038,7 @@ class App {
 
   setPage(n) {
     if (!this.doc) return;
+    if (this.compare && this.compare.page !== n) this.compare = null;
     this.page = n;
     this.clicks = [];
     this.selectedId = null;
@@ -3898,6 +3956,13 @@ class App {
       if (one && one.type === "dim" && one.kind === "lin") acts.push(["dco", "Cote în lanț de aici", "DCO"], ["dba", "Față de bază de aici", "DBA"]);
       acts.push(["move", "Mută", "M"], ["copy", "Copiază", "CO"], ["zoom", "Zoom la selecție", ""], ["del", "Șterge", "E"]);
       html = `${ico(TOOL_BY_ID.select.icon)}<b>${one ? esc(tr(typeName(one))) : `${sel.length} adnotări selectate`}</b><span class="vs"></span>${acts.map(([k, l, al]) => `<button class="ca${k === "del" ? " dng" : ""}" data-ctx="${k}">${l}${al ? `<i>${al}</i>` : ""}</button>`).join("")}`;
+    } else if (this.compare && this.compare.page === this.page && this.tool === "select" && !this.cmdActive()) {
+      const c = this.compare;
+      const n = c.regions.length;
+      html = `${ico("M4 5h7v14H4zM13 5h7v14h-7z")}<b>Comparare</b><span class="cmpleg"><i class="old"></i>${esc(c.otherName)}<i class="new"></i>${esc(tr("revizia deschisă"))}</span><span class="vs"></span>
+        <label class="cdef" title="Cât de tare se vede comparația peste pagină">${esc(tr("Suprapunere"))}<input type="range" id="cmpAlpha" min="0" max="100" value="${Math.round(c.alpha * 100)}"></label>
+        <span class="vs"></span><button class="ca" data-cmp="prev" ${n ? "" : "disabled"} aria-label="${esc(tr("Zona anterioară"))}">◀</button><span class="mono cmpn">${n ? `${c.idx + 1 > 0 ? c.idx + 1 : "–"}/${n}` : "0"}</span><button class="ca" data-cmp="next" ${n ? "" : "disabled"} aria-label="${esc(tr("Zona următoare"))}">▶</button>
+        <button class="ca" data-cmp="pdf">PDF</button><button class="ca" data-cmp="close" title="${esc(tr("Închide comparația"))}">${esc(tr("Închide"))}</button>`;
     } else {
       const t = TOOL_BY_ID[this.tool];
       if (!t) return;
@@ -3918,6 +3983,18 @@ class App {
     box._html = html;
     box.innerHTML = html;
     box.querySelectorAll("[data-ctx]").forEach((b) => b.addEventListener("click", () => this.ctxAction(b.dataset.ctx)));
+    box.querySelectorAll("[data-cmp]").forEach((b) => b.addEventListener("click", () => {
+      const k = b.dataset.cmp;
+      if (k === "prev") this.stepCompare(-1);
+      else if (k === "next") this.stepCompare(1);
+      else if (k === "pdf") this.exportCompare();
+      else this.endCompare();
+    }));
+    const ca = box.querySelector("#cmpAlpha");
+    if (ca) ca.addEventListener("input", () => {
+      this.compare.alpha = Number(ca.value) / 100;
+      this.view.redraw();
+    });
     const ln = box.querySelector("#ctxLine");
     if (ln) ln.addEventListener("change", () => {
       const p = LINE_PRESETS.find((x) => x.id === ln.value);
@@ -4613,6 +4690,7 @@ class App {
       close: () => this.doc && this.closeDoc(),
       settings: () => needDoc() && dlg.settingsDialog(this),
       keys: () => dlg.keysDialog(this),
+      compare: () => needDoc() && dlg.compareDialog(this),
       osnap: () => this.toggleSnapFlag("on"),
       ortho: () => this.toggleSnapFlag("ortho"),
       polar: () => this.toggleSnapFlag("polar"),

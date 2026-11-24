@@ -8,7 +8,7 @@ import { drawPrims, COLORS } from "./view.js";
 import { TOOL_BY_ID, DRAW_TOOLS } from "./tools.js";
 import { commandList, keyConfig } from "./commands.js";
 import { tr } from "./i18n.js";
-import { pagesDialog as dlgPages, toast } from "./dialogs.js";
+import { pagesDialog as dlgPages, toast, compareDialog } from "./dialogs.js";
 
 const ORIG_EDIT = new Set(["white", "redact", "ink"]); // changes to the original, no layer
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -294,6 +294,9 @@ export class Panel {
           }).join("")}
         ${app.hidden.size ? `<div class="sub">Ascunderea e doar pe ecran: exportul conține toate straturile.</div>` : ""}
       </div>
+      <div class="sec"><div class="h">Comparare revizii</div>
+        <div class="sub">Pune peste pagina aceasta o pagină dintr-o revizie mai veche: roșu = doar în cea veche, verde = doar în cea deschisă.</div>
+        <div class="btns"><button class="ghost" data-act="compare">Compară cu altă revizie…</button></div></div>
       ${this.inkHtml()}`;
   }
 
@@ -1285,6 +1288,9 @@ export class Panel {
         break;
       case "cmtdone":
         upd((a) => { a.done = !a.done; });
+        break;
+      case "compare":
+        compareDialog(app);
         break;
       case "tblib":
         app.openTblockLibrary();

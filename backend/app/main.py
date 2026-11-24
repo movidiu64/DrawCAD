@@ -592,6 +592,52 @@ async def api_image_get(request: Request):
     return Response(path.read_bytes(), media_type=mime, headers={"Cache-Control": "private, max-age=86400, immutable"})
 
 
+async def api_compare(request: Request):
+    """Revision compare: page `page` of this document (newer) over page `otherPage` of document `other`
+    (older). JSON with the overlay PNG and the changed areas, or the comparison as a PDF page."""
+    from . import compare
+
+    doc_id = request.path_params["doc_id"]
+    try:
+        body = await _json_body(request, 64 * 1024)
+    except (OverflowError, ValueError):
+        return _err("Cerere invalidă")
+    if not isinstance(body, dict):
+        return _err("Cerere invalidă")
+    other = str(body.get("other", ""))
+    try:
+        n, meta = _page_index(doc_id, body.get("page", 0))
+        m, ometa = _page_index(other, body.get("otherPage", 0))
+    except (ValueError, FileNotFoundError, IndexError, TypeError):
+        return _err("Pagină sau document inexistent", 404)
+    # the other document must be one this browser may open, like the one in the address
+    owner = _req_owner(request)
+    if owner is not None and ometa.get("owner") != owner:
+        return _err("Pagină sau document inexistent", 404)
+    pn = meta["pages"][n]
+    po = ometa["pages"][m]
+
+    def work():
+        return compare.compare_pages(_original(other), m, _original(doc_id), n, (pn["w"], pn["h"]), (po["w"], po["h"]),
+                                     align=bool(body.get("align", True)))
+
+    try:
+        res = await run_in_threadpool(work)
+    except Exception as e:  # noqa: BLE001
+        return _err(f"Compararea a eșuat: {e}", 500)
+    if body.get("format") == "pdf":
+        legend = str(body.get("legend") or "only in the older revision|only in the newer revision|in both")[:300]
+        pdf = await run_in_threadpool(lambda: compare.overlay_pdf(res, (pn["w"], pn["h"]), legend))
+        return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="comparare.pdf"'})
+    import base64
+
+    png = await run_in_threadpool(lambda: compare.overlay_png(res))
+    return JSONResponse({
+        "image": "data:image/png;base64," + base64.b64encode(png).decode("ascii"),
+        "regions": res["regions"], "removed": res["removed"], "added": res["added"], "shiftMm": res["shift_mm"],
+    })
+
+
 async def api_state(request: Request):
     doc_id = request.path_params["doc_id"]
     try:
@@ -1274,6 +1320,7 @@ routes = [
     Route("/api/doc/{doc_id}/pages", api_pages, methods=["POST"]),
     Route("/api/doc/{doc_id}/export", api_export, methods=["POST"]),
     Route("/api/doc/{doc_id}/images", api_image_add, methods=["POST"]),
+    Route("/api/doc/{doc_id}/compare", api_compare, methods=["POST"]),
     Route("/api/doc/{doc_id}/image/{img}", api_image_get),
     Mount("/", app=StaticFiles(directory=str(FRONTEND_DIR), html=True), name="static"),
 ]

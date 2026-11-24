@@ -725,6 +725,16 @@ def main(url, out):
         # the export knows its revision; opening it does not change the number yet
         rev0 = page.evaluate("[window.cotare.settings.revNo, window.cotare.settings.exportedRev]")
         assert rev0[0] == rev0[1], rev0
+        # revision compare with the document it came from: the same drawing, no changed areas
+        page.click("#ptabs [data-ptab='layers']")
+        page.click("[data-act='compare']")
+        page.wait_for_selector("#cmpGo:not([disabled])")
+        page.click("#cmpGo")
+        page.wait_for_function("!!window.cotare.compare", timeout=60000)
+        assert page.evaluate("window.cotare.compare.regions.length") == 0, page.evaluate("JSON.stringify(window.cotare.compare.regions)")
+        assert "Compar" in page.inner_text("#ctxTool")
+        page.click("[data-cmp='close']")
+        page.click("#ptabs [data-ptab='props']")
         # closing without changes: straight to the start page
         page.click("#btnClose")
         page.wait_for_function("window.cotare.doc === null && !document.getElementById('emptyState').hidden")

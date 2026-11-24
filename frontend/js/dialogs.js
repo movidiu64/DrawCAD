@@ -920,6 +920,57 @@ export function settingsDialog(app) {
   setTimeout(() => $d(`[data-stab="${cur}"]`).focus(), 0);
 }
 
+// ------------------------------------------------------------------ revision compare (V12-6)
+/** Which older revision to lay under the current page: a document from the list, or a PDF uploaded now. */
+export async function compareDialog(app) {
+  let docs = [];
+  try {
+    docs = (await api.listDocs()).filter((d) => d.id !== app.doc.id);
+  } catch (_) { /* no list */ }
+  let chosen = docs[0] ? docs[0].id : null;
+  const dlg = showModal(`
+    <h2>Compară cu altă revizie</h2>
+    <div class="sub">Pagina ${app.page + 1} din ${esc(app.doc.name)} (revizia nouă) peste o pagină dintr-un desen mai vechi. Se compară desenele ca PDF, fără adnotările adăugate în DrawCAD.</div>
+    <div class="lbl">Revizia veche</div>
+    <div class="cmplist" id="cmpList">${docs.slice(0, 30).map((d) => `<label class="cmpitem"><input type="radio" name="cmpDoc" value="${d.id}" ${d.id === chosen ? "checked" : ""}>
+      <span translate="no">${esc(d.name)}</span><span class="sub">${(d.pages || []).length} pag. · ${ago(d.updated)}</span></label>`).join("") || `<div class="note">Niciun alt document pe server. Încarcă revizia veche (PDF sau scan).</div>`}</div>
+    <div class="row"><button class="ghost" id="cmpUp">Încarcă revizia veche…</button><input type="file" id="cmpFile" accept=".pdf,application/pdf,image/*" hidden>
+      <div class="field" style="max-width:120px"><label for="cmpPage">Pagina din cea veche</label><input type="text" class="mono" id="cmpPage" value="${app.page + 1}"></div></div>
+    <label class="chk"><input type="checkbox" id="cmpAlign" checked> Aliniază automat (un export decalat cu câțiva milimetri nu apare ca modificare)</label>
+    <div class="foot"><span class="muted" id="cmpMsg"></span><button class="ghost" data-close>Anulează</button><button class="primary" id="cmpGo" ${chosen ? "" : "disabled"}>Compară</button></div>`);
+  const pick = () => {
+    const r = dlg.querySelector("[name=cmpDoc]:checked");
+    chosen = r ? r.value : chosen;
+    dlg.querySelector("#cmpGo").disabled = !chosen;
+  };
+  dlg.querySelectorAll("[name=cmpDoc]").forEach((r) => r.addEventListener("change", pick));
+  dlg.querySelector("#cmpUp").addEventListener("click", () => dlg.querySelector("#cmpFile").click());
+  dlg.querySelector("#cmpFile").addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    dlg.querySelector("#cmpMsg").textContent = "Se încarcă…";
+    try {
+      const meta = await api.openFile(f);
+      docs = [meta, ...docs];
+      chosen = meta.id;
+      dlg.querySelector("#cmpList").insertAdjacentHTML("afterbegin", `<label class="cmpitem"><input type="radio" name="cmpDoc" value="${meta.id}" checked><span translate="no">${esc(meta.name)}</span><span class="sub">${meta.pages.length} pag.</span></label>`);
+      dlg.querySelectorAll("[name=cmpDoc]").forEach((r) => r.addEventListener("change", pick));
+      dlg.querySelector("#cmpMsg").textContent = "";
+      pick();
+    } catch (err) {
+      dlg.querySelector("#cmpMsg").textContent = err.message;
+    }
+  });
+  dlg.querySelector("#cmpGo").addEventListener("click", () => {
+    const d = docs.find((x) => x.id === chosen);
+    if (!d) return;
+    const n = Math.max(1, Math.min((d.pages || []).length || 1, parseInt(dlg.querySelector("#cmpPage").value, 10) || 1));
+    const align = dlg.querySelector("#cmpAlign").checked;
+    closeModal();
+    app.runCompare(d.id, n - 1, align, d.name);
+  });
+}
+
 // ------------------------------------------------------------------ stamps (V12-5)
 // the words are drawing text: they follow the document's drawing language (settings.dlang)
 export const STAMP_PRESETS = {
