@@ -47,7 +47,7 @@ The state embedded in an export (`drawcad.json`) already reopens as editable. Th
 - As built: command `IAT` / `IMAGEATTACH`; the server limit is `DRAWCAD_MAX_IMAGE_MB` (40) and 100 MP.
 - Security: `security_smoke.py` gets crafted images (decompression bomb, wrong extension, SVG renamed).
 
-## V12-3 — Custom title block (browser library)
+## V12-3 — Custom title block (browser library) · built
 
 - **Library in the browser** (`localStorage`, `cotare.tblocks`), shown in a dialog: new, edit, duplicate,
   delete, export `.drawcad-tb.json`, import.
@@ -62,7 +62,9 @@ The state embedded in an export (`drawcad.json`) already reopens as editable. Th
 - **Placement:** the tool snaps the block's bottom-right corner to the frame corner; the revision table
   and parts list already sit above a title block and keep doing so.
 - A logo image inside a block is stored in the library as data (limit 300 KB per block, so the browser
-  storage is not filled).
+  storage is not filled); placed on a drawing it is uploaded as an image of the document.
+- As built: command `TB` / `TITLEBLOCK`; a placed block keeps its own copy of the template; `{data}` is the
+  date of the current revision (`settings.revDate`, set when a revision starts or the first block is placed).
 
 ## V12-4 — Markup: revision cloud, highlighter, comments
 

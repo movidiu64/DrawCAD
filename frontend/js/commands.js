@@ -45,6 +45,7 @@ export const DEFAULT_ALIASES = {
   viewlabel: ["VL", "ETI"],
   balloon: ["BAL", "BALLOON"],
   image: ["IAT", "IMAGEATTACH", "IMG"],
+  tblock: ["TB", "TITLEBLOCK"],
   strike: ["STR", "TAIE"],
   white: ["WO", "WIPEOUT"],
   ink: ["INK"],

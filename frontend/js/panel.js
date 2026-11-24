@@ -3,6 +3,7 @@ import { typeName, newId, fmtNum, parseNum, build, derive, K, SCALABLE, SCALE_MI
 import { LTYPES, LTYPE_BY_ID, WIDTHS, PRESETS, resizeShape } from "./shapes.js";
 import { fmtDev } from "./iso286.js";
 import { GDT_SYMBOLS, GDT_BY_ID, MODIFIERS, symbolPrims, diaAllowed } from "./gdt.js";
+import { templateFields, fieldValues, FIELD_LABELS, AUTO_FIELDS } from "./tblock.js";
 import { drawPrims, COLORS } from "./view.js";
 import { TOOL_BY_ID, DRAW_TOOLS } from "./tools.js";
 import { commandList, keyConfig } from "./commands.js";
@@ -630,6 +631,22 @@ export class Panel {
       <div class="sub">Triunghiul pe linia de cotă = axa; pe contur, decalat = suprafața.</div></div>`;
   }
 
+  html_tblock(a) {
+    const app = this.app;
+    const S = app.S();
+    const vals = fieldValues(a, S, { page: S.pagesWH && S.pagesWH[a.page || 0], total: S.pagesWH ? S.pagesWH.length : 0 });
+    const keys = templateFields(a.tpl);
+    const typed = keys.filter((k) => !AUTO_FIELDS.includes(k));
+    const auto = keys.filter((k) => AUTO_FIELDS.includes(k));
+    const fld = (k, ro) => `<div class="field"><label for="tbf_${k}">${esc(FIELD_LABELS[k] || k)}</label><input type="text" id="tbf_${k}" data-tbf="${k}" value="${esc(ro ? vals[k] : (a.vals || {})[k] || "")}" ${ro ? `placeholder="${esc(vals[k])}"` : ""}></div>`;
+    return `<div class="sec"><div class="h">Indicator · ${esc((a.tpl && a.tpl.name) || "")}</div>
+      ${typed.map((k) => fld(k, false)).join("") || `<div class="sub">Șablonul nu are câmpuri de completat.</div>`}</div>
+      ${auto.length ? `<div class="sec"><div class="h">Completate automat</div>
+      ${auto.map((k) => `<div class="field"><label for="tbf_${k}">${esc(FIELD_LABELS[k] || k)}</label><input type="text" id="tbf_${k}" data-tbf="${k}" value="${esc((a.vals || {})[k] || "")}" placeholder="${esc(vals[k])}"></div>`).join("")}
+      <div class="sub">Revizia, data reviziei, scara, formatul și foaia vin din document; scrie ceva doar ca să le înlocuiești.</div></div>` : ""}
+      <div class="sec"><div class="btns"><button class="ghost" data-act="tblib">Bibliotecă de indicatoare…</button></div></div>`;
+  }
+
   html_image(a) {
     const op = a.op ?? 1;
     return `<div class="sec"><div class="h">Imagine</div>
@@ -809,6 +826,19 @@ export class Panel {
         setTimeout(() => {
           if (!el.contains(document.activeElement) || !document.activeElement.dataset.ord) this.render();
         }, 0);
+      });
+    });
+    el.querySelectorAll("[data-tbf]").forEach((inp) => {
+      inp.addEventListener("input", () => {
+        const k = inp.dataset.tbf;
+        app.updateSel((a) => {
+          a.vals = { ...(a.vals || {}), [k]: inp.value };
+          if (!inp.value) delete a.vals[k];
+        }, `tbf_${k}`);
+      });
+      inp.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === "Escape") inp.blur();
+        e.stopPropagation();
       });
     });
     el.querySelectorAll("[data-datum]").forEach((inp) => {
@@ -1123,6 +1153,9 @@ export class Panel {
           const hh = Math.abs(r[2] - r[0]) / 2;
           a.r = [cx - hw, cy - hh, cx + hw, cy + hh];
         });
+        break;
+      case "tblib":
+        app.openTblockLibrary();
         break;
       case "imgop":
         upd((a) => { a.op = Number(v); });

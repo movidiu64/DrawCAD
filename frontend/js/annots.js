@@ -4,6 +4,7 @@ import { deviations, fmtDev } from "./iso286.js";
 import { symbolPrims, GDT_BY_ID, MODIFIERS } from "./gdt.js";
 import { buildShape, SHAPE_NAMES } from "./shapes.js";
 import { buildSection, buildDetail, buildBalloon } from "./symbols.js";
+import { buildTblock } from "./tblock.js";
 
 export const K = 72 / 25.4; // pt per mm
 export const CAP = 1515 / 2048; // cap height in osifont, relative to the em
@@ -47,6 +48,7 @@ export const TYPE_NAMES = {
   holes: "Tabel de găuri",
   ucs: "Originea coordonatelor",
   image: "Imagine",
+  tblock: "Indicator",
 };
 
 export function typeName(a) {
@@ -1254,7 +1256,10 @@ export function imageRect(p, q, iw, ih, free = false) {
   return [p[0], p[1], p[0] + Math.sign(dx || 1) * iw * k, p[1] + Math.sign(dy || 1) * ih * k];
 }
 
-const BUILDERS = { image: buildImage, ord: buildOrd, dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, ink: buildInk, shape: buildShape, section: buildSection, detail: buildDetail, balloon: buildBalloon, bom: buildBom, holes: buildHoles, ucs: buildUcs };
+// the title block needs its page's size and the number of pages (fields Format and Foaia): S.pagesWH
+const buildTb = (a, S, measure) => buildTblock(a, S, measure, { page: S.pagesWH && S.pagesWH[a.page || 0], total: S.pagesWH ? S.pagesWH.length : 0 });
+
+const BUILDERS = { tblock: buildTb, image: buildImage, ord: buildOrd, dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, ink: buildInk, shape: buildShape, section: buildSection, detail: buildDetail, balloon: buildBalloon, bom: buildBom, holes: buildHoles, ucs: buildUcs };
 
 // characters without a glyph in osifont → existing equivalents (same on screen and in the PDF)
 const GLYPH_SUBST = { "…": "...", "„": '"', "”": '"', "“": '"', "«": '"', "»": '"', "‚": ",", "‘": "'", "\u00a0": " ", "−": "-" };

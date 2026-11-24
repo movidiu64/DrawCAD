@@ -85,6 +85,13 @@ def _restore_images(exported: bytes, state: dict, out_dir: str) -> None:
             if a.get("img") not in ids:
                 continue
             a["img"] = ids[a["img"]]
+        logo = a.get("tpl", {}).get("logo") if a.get("type") == "tblock" and isinstance(a.get("tpl"), dict) else None
+        if isinstance(logo, dict):
+            # a title block keeps its lines and texts even if its logo did not come back
+            if logo.get("img") in ids:
+                logo["img"] = ids[logo["img"]]
+            else:
+                a["tpl"].pop("logo", None)
         keep.append(a)
     state["annots"] = keep
 

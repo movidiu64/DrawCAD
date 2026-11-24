@@ -2,7 +2,8 @@
 import * as api from "./api.js";
 import { diaAllowed } from "./gdt.js";
 import { nextRev } from "./revision.js";
-import { build, derive, hit, holeTable, setHandle, moveAnnot, annotSnapPoints, exportPrims, K, fmtNum, newId, scaleAnchor, typeName, SCALE_MIN, SCALE_MAX, scaledS, strikeLabelBox, onBoxEdge, annotSnapSegs, primsBBox, imageRect } from "./annots.js";
+import { templateFromItems, templateFields } from "./tblock.js";
+import { build, derive, hit, holeTable, setHandle, moveAnnot, annotSnapPoints, exportPrims, K, fmtNum, newId, scaleAnchor, typeName, SCALE_MIN, SCALE_MAX, CAP, scaledS, strikeLabelBox, onBoxEdge, annotSnapSegs, primsBBox, imageRect } from "./annots.js";
 import { View, COLORS } from "./view.js";
 import { Snapper, MODES, DEFAULT_MODES, parseOverride, overrideModes, LABELS } from "./osnap.js";
 import { Panel } from "./panel.js";
@@ -18,6 +19,8 @@ import { hasVertices, addVertex, removeVertex, PRESETS as LINE_PRESETS } from ".
 import { startI18n, lang as uiLang, tr } from "./i18n.js";
 
 const round2 = (v) => Math.round(v * 100) / 100;
+/** Today as written on drawings (dd.mm.yyyy). */
+const today = () => new Date().toLocaleDateString("ro-RO", { day: "2-digit", month: "2-digit", year: "numeric" });
 
 /** Does segment [x0, y0, x1, y1] cross box [x0, y0, x1, y1]? (Liang–Barsky clipping) */
 function segHitsBox(q, b) {
@@ -418,6 +421,104 @@ class App {
       if (a.type === "strike") a.side = this.freeStrikeSide(a);
       this.addAnnot(finalize(a));
     }
+  }
+
+  // ------------------------------------------------------------ title blocks (V12-3)
+  /** The browser's title block library (localStorage). */
+  tblockLib() {
+    try {
+      const v = JSON.parse(localStorage.getItem("cotare.tblocks") || "[]");
+      return Array.isArray(v) ? v : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  saveTblockLib(list) {
+    try {
+      localStorage.setItem("cotare.tblocks", JSON.stringify(list));
+      return true;
+    } catch (_) {
+      dlg.toast("Biblioteca de indicatoare nu a putut fi salvată: spațiul browserului e plin (logo prea mare?).", 7000);
+      return false;
+    }
+  }
+
+  openTblockLibrary(pick = false) {
+    dlg.tblockDialog(this, { pick });
+  }
+
+  /** The title block chosen for the tool, placed with its bottom-right corner at pt. */
+  tblockAt(pt, preview = false) {
+    const tpl = this.tblockTpl;
+    if (!tpl || !pt) return null;
+    const copy = JSON.parse(JSON.stringify(tpl));
+    delete copy.id;
+    const vals = {};
+    if (templateFields(copy).includes("autor") && this.settings.author) vals.autor = this.settings.author;
+    if (!preview && !this.settings.revDate) this.settings = { ...this.settings, revDate: today() };
+    return { type: "tblock", p: [...pt], tpl: copy, vals, page: this.page };
+  }
+
+  /** After placing: the logo goes to the server as an image of the document; back to Select. */
+  async afterTblock(a) {
+    setTimeout(() => {
+      this.setTool("select");
+      this.select(a.id);
+    }, 0);
+    const L = a.tpl && a.tpl.logo;
+    if (!L || !L.data || L.img) return;
+    try {
+      const blob = await (await fetch(L.data)).blob();
+      const res = await api.uploadImage(this.doc.id, blob);
+      const cur = this.annots.find((x) => x.id === a.id);
+      if (cur && cur.tpl && cur.tpl.logo) {
+        cur.tpl.logo.img = res.img;
+        delete cur.tpl.logo.data;
+        this.cache.delete(cur.id);
+        this.changed();
+      }
+    } catch (err) {
+      dlg.toast(`Logo-ul nu a putut fi pus: ${err.message}`, 6000);
+    }
+  }
+
+  /** A template from the selected lines, texts and image (the image becomes the logo). */
+  async tblockFromSelection(name) {
+    const sel = this.selectedAll().filter((a) => a.page === this.page);
+    const S = this.S();
+    const items = [];
+    for (const a of sel) {
+      const b = this.builtOf(a);
+      if (a.type === "image") {
+        try {
+          const blob = await (await fetch(api.imageUrl(this.doc.id, a.img))).blob();
+          if (blob.size > 300 * 1024) {
+            dlg.toast("Imaginea e prea mare pentru bibliotecă (peste 300 kB): micșoreaz-o întâi.", 7000);
+            continue;
+          }
+          const data = await new Promise((ok, bad) => {
+            const fr = new FileReader();
+            fr.onload = () => ok(fr.result);
+            fr.onerror = bad;
+            fr.readAsDataURL(blob);
+          });
+          items.push({ kind: "logo", r: a.r, data });
+        } catch (_) { /* image unavailable */ }
+        continue;
+      }
+      for (const p of b.prims) {
+        if (p.ed) continue;
+        if (p.t === "L") items.push({ kind: "line", p: p.p, heavy: (p.w || 0) >= 0.45 * K });
+        else if (p.t === "P" && !p.fill) {
+          const q = p.p;
+          for (let i = 2; i < q.length; i += 2) items.push({ kind: "line", p: [q[i - 2], q[i - 1], q[i], q[i + 1]], heavy: (p.w || 0) >= 0.45 * K });
+          if (p.close && q.length > 4) items.push({ kind: "line", p: [q[q.length - 2], q[q.length - 1], q[0], q[1]], heavy: (p.w || 0) >= 0.45 * K });
+        } else if (p.t === "T" && !p.a) items.push({ kind: "text", p: p.p, txt: p.txt, h: p.s * CAP });
+      }
+    }
+    void S;
+    return templateFromItems(items, name);
   }
 
   // ------------------------------------------------------------ images (V12-2)
@@ -1737,6 +1838,7 @@ class App {
     this.view.redraw();
     if (id === "image" && this.doc) this.startImageTool();
     else if (id !== "image") this.pendingImage = null;
+    if (id === "tblock" && this.doc && !this.tblockTpl) this.openTblockLibrary(true);
   }
 
   // ------------------------------------------------------------ documents
@@ -2149,7 +2251,7 @@ class App {
     const S = this.settings;
     if (S.autoRev === false || S.exportedRev == null || String(S.exportedRev) !== String(S.revNo || "1")) return;
     const old = S.revNo || "1";
-    this.settings = { ...S, revNo: nextRev(old) };
+    this.settings = { ...S, revNo: nextRev(old), revDate: today() };
     this.cache.clear();
     this.panel.render();
     dlg.toast(`Revizie nouă: rev ${this.settings.revNo} (rev ${old} era deja exportată). O schimbi în Setări → Foaie și revizii.`, 6000);
@@ -2270,9 +2372,12 @@ class App {
 
   // ------------------------------------------------------------ annotations
   S() {
-    if (!this._S || this._Skey !== JSON.stringify(this.settings)) {
-      this._Skey = JSON.stringify(this.settings);
-      this._S = derive(this.settings);
+    // the page sizes too: a title block shows its sheet format and "sheet n / total"
+    const pagesWH = this.doc ? this.doc.pages.map((p) => [p.w, p.h]) : [];
+    const key = JSON.stringify(this.settings) + JSON.stringify(pagesWH);
+    if (!this._S || this._Skey !== key) {
+      this._Skey = key;
+      this._S = { ...derive(this.settings), pagesWH };
     }
     return this._S;
   }
@@ -2632,6 +2737,7 @@ class App {
     this.annots.push(a);
     this.select(a.id);
     this.changed();
+    if (a.type === "tblock") this.afterTblock(a);
     const focus = { text: "#tTxt", lead: "#lTxt", strike: "#sNew", note: "#nTxt" }[a.type];
     if (focus) {
       const el = $("panel").querySelector(focus);

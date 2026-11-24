@@ -6,6 +6,7 @@ import { TOOLS, FAMILIES } from "./tools.js";
 import { lang as uiLang, setLang, LANGS } from "./i18n.js";
 import { SHEETS } from "./pages.js";
 import { revName } from "./revision.js";
+import { isoTemplate, cleanTemplate, templateFields } from "./tblock.js";
 import { COLORS, drawPrims } from "./view.js";
 import { commandList, conflicts, defaultKeyConfig, keyConfig, saveKeyConfig, labelOf, RESERVED_KEYS, DEFAULT_ALIASES, ACTIONS, parsePgp, importPgp } from "./commands.js";
 
@@ -916,6 +917,172 @@ export function settingsDialog(app) {
   });
   show(cur);
   setTimeout(() => $d(`[data-stab="${cur}"]`).focus(), 0);
+}
+
+// ------------------------------------------------------------------ title blocks (V12-3)
+const readDataUrl = (file) => new Promise((ok, bad) => {
+  const fr = new FileReader();
+  fr.onload = () => ok(fr.result);
+  fr.onerror = bad;
+  fr.readAsDataURL(file);
+});
+const imageSize = (url) => new Promise((ok) => {
+  const im = new Image();
+  im.onload = () => ok([im.naturalWidth, im.naturalHeight]);
+  im.onerror = () => ok([0, 0]);
+  im.src = url;
+});
+const tbId = () => `tb${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
+/** The browser's title block library: place, generate (ISO 7200), make from the selection, rename,
+ * duplicate, export / import as .drawcad-tb.json, delete. pick: opened by the tool, to choose one. */
+export function tblockDialog(app, opts = {}) {
+  const lib = () => app.tblockLib();
+  const nSel = app.selectedAll().filter((a) => a.page === app.page && ["shape", "text", "image"].includes(a.type)).length;
+  const render = () => {
+    const list = lib();
+    const rows = list.map((t, i) => `<div class="tbrow">
+        <div class="tbname"><b>${esc(t.name)}</b><span class="sub">${fmtNum(t.w, ",", 1)} × ${fmtNum(t.h, ",", 1)} mm${t.logo ? " · logo" : ""} · ${templateFields(t).length} câmpuri</span></div>
+        <button class="primary" data-tbput="${i}">Pune pe desen</button>
+        <button class="ghost" data-tbren="${i}">Redenumește</button>
+        <button class="ghost" data-tbdup="${i}">Duplică</button>
+        <button class="ghost" data-tbexp="${i}">Exportă</button>
+        <button class="ghost danger" data-tbdel="${i}" aria-label="Șterge ${esc(t.name)}">Șterge</button></div>`).join("");
+    const dlg = showModal(`
+      <h2>Indicatoare</h2>
+      <div class="sub">Șabloanele stau în acest browser. Le muți pe alt calculator cu Exportă / Importă.</div>
+      <div class="tblist">${rows || `<div class="note">Niciun indicator încă. Începe cu unul după ISO 7200 sau desenează-l cu linii și texte, selectează-l și alege „Din selecție”.</div>`}</div>
+      <div class="row"><button class="ghost" id="tbNew">Nou după ISO 7200…</button>
+        <button class="ghost" id="tbSel" ${nSel ? "" : `disabled title="Selectează întâi liniile, textele și imaginea indicatorului"`}>Din selecție (${nSel})</button>
+        <button class="ghost" id="tbImp">Importă…</button>
+        <input type="file" id="tbFile" accept=".json,application/json" hidden></div>
+      <div class="sub">În texte, câmpurile se scriu între acolade: {titlu}, {nr_desen}, {material}, {masa}, {tol}, {autor}, {verificat}, {aprobat}, {firma}; {rev}, {data}, {scara}, {format} și {foaia} se completează singure.</div>
+      <div class="foot"><button class="ghost" data-close>Închide</button></div>`);
+    const save = (list2) => {
+      app.saveTblockLib(list2);
+      render();
+    };
+    dlg.querySelectorAll("[data-tbput]").forEach((b) => b.addEventListener("click", () => {
+      app.tblockTpl = lib()[Number(b.dataset.tbput)];
+      closeModal();
+      if (app.tool === "tblock") app.setHint(TOOLS.find((t) => t.id === "tblock").hint);
+      else app.setTool("tblock");
+    }));
+    dlg.querySelectorAll("[data-tbren]").forEach((b) => b.addEventListener("click", () => {
+      const list2 = lib();
+      const t = list2[Number(b.dataset.tbren)];
+      const name = window.prompt("Numele indicatorului", t.name);
+      if (name && name.trim()) {
+        t.name = name.trim().slice(0, 80);
+        save(list2);
+      }
+    }));
+    dlg.querySelectorAll("[data-tbdup]").forEach((b) => b.addEventListener("click", () => {
+      const list2 = lib();
+      const t = JSON.parse(JSON.stringify(list2[Number(b.dataset.tbdup)]));
+      t.id = tbId();
+      t.name = `${t.name} (copie)`;
+      list2.push(t);
+      save(list2);
+    }));
+    dlg.querySelectorAll("[data-tbexp]").forEach((b) => b.addEventListener("click", async () => {
+      const t = { ...lib()[Number(b.dataset.tbexp)] };
+      delete t.id;
+      const blob = new Blob([JSON.stringify(t, null, 1)], { type: "application/json" });
+      const safe = t.name.replace(/[\\/:*?<>|\u0022]+/g, "_");
+      await saveBlob(blob, `${safe}.drawcad-tb.json`);
+    }));
+    dlg.querySelectorAll("[data-tbdel]").forEach((b) => b.addEventListener("click", () => {
+      const list2 = lib();
+      const t = list2[Number(b.dataset.tbdel)];
+      if (!window.confirm(`Ștergi indicatorul „${t.name}” din bibliotecă? Desenele pe care e pus nu se schimbă.`)) return;
+      list2.splice(Number(b.dataset.tbdel), 1);
+      save(list2);
+    }));
+    dlg.querySelector("#tbNew").addEventListener("click", () => tblockGenerator(app, () => tblockDialog(app, opts)));
+    dlg.querySelector("#tbSel").addEventListener("click", async () => {
+      const name = window.prompt("Numele indicatorului", "Indicatorul meu");
+      if (!name) return;
+      const t = await app.tblockFromSelection(name.trim().slice(0, 80));
+      if (!t) {
+        toast("În selecție nu sunt linii sau texte.");
+        return;
+      }
+      t.id = tbId();
+      save([...lib(), t]);
+      toast(`Indicator salvat: ${t.name} (${templateFields(t).length} câmpuri)`);
+    });
+    dlg.querySelector("#tbImp").addEventListener("click", () => dlg.querySelector("#tbFile").click());
+    dlg.querySelector("#tbFile").addEventListener("change", async (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      try {
+        if (f.size > 600 * 1024) throw new Error("fișier prea mare");
+        const t = cleanTemplate(JSON.parse(await f.text()));
+        if (!t || !(t.lines.length || t.texts.length)) throw new Error("nu e un indicator DrawCAD");
+        t.id = tbId();
+        save([...lib(), t]);
+        toast(`Importat: ${t.name}`);
+      } catch (err) {
+        toast(`Nu s-a putut importa: ${err.message}`, 6000);
+      }
+    });
+  };
+  render();
+  // opened by the tool and closed without choosing: back to Select
+  if (opts.pick) {
+    const obs = new MutationObserver(() => {
+      if (modal().hidden) {
+        obs.disconnect();
+        if (app.tool === "tblock" && !app.tblockTpl) app.setTool("select");
+      }
+    });
+    obs.observe(modal(), { attributes: true, attributeFilter: ["hidden"] });
+  }
+}
+
+/** A new title block after ISO 7200: name, language of the labels, the owner (company) or a logo. */
+function tblockGenerator(app, back) {
+  let logo = null;
+  const dlg = showModal(`
+    <h2>Indicator nou după ISO 7200</h2>
+    <div class="sub">180 mm lățime, 40 mm înălțime: Desenat / Verificat / Aprobat și proprietarul, denumirea, materialul, masa, toleranțele generale, nr. desen, revizia, foaia, scara, formatul și data.</div>
+    <div class="row"><div class="field"><label for="tgName">Nume</label><input type="text" id="tgName" value="ISO 7200"></div>
+      <div class="field"><span class="lbl">Limba etichetelor</span><div class="seg" id="tgLang">
+        <button data-l="ro" class="${(app.settings.dlang || "ro") === "ro" ? "on" : ""}" translate="no">Română</button><button data-l="en" class="${app.settings.dlang === "en" ? "on" : ""}" translate="no">English</button></div></div></div>
+    <div class="field"><label for="tgComp">Firmă (în locul logo-ului; gol = câmpul {firma})</label><input type="text" id="tgComp" value=""></div>
+    <div class="row"><button class="ghost" id="tgLogoBtn">Logo (PNG / JPG, max. 300 kB)…</button><span class="sub" id="tgLogoInfo">fără logo</span>
+      <input type="file" id="tgLogo" accept="image/png,image/jpeg,image/webp" hidden></div>
+    <div class="foot"><button class="ghost" id="tgBack">Înapoi</button><button class="primary" id="tgMake">Creează</button></div>`);
+  let lang = app.settings.dlang === "en" ? "en" : "ro";
+  dlg.querySelectorAll("#tgLang [data-l]").forEach((b) => b.addEventListener("click", () => {
+    lang = b.dataset.l;
+    dlg.querySelectorAll("#tgLang [data-l]").forEach((x) => x.classList.toggle("on", x === b));
+  }));
+  dlg.querySelector("#tgLogoBtn").addEventListener("click", () => dlg.querySelector("#tgLogo").click());
+  dlg.querySelector("#tgLogo").addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    if (f.size > 300 * 1024) {
+      dlg.querySelector("#tgLogoInfo").textContent = "Prea mare: peste 300 kB";
+      return;
+    }
+    const data = await readDataUrl(f);
+    const [w, h] = await imageSize(data);
+    if (!w) {
+      dlg.querySelector("#tgLogoInfo").textContent = "Imagine necitibilă";
+      return;
+    }
+    logo = { data, w, h };
+    dlg.querySelector("#tgLogoInfo").textContent = `${f.name} · ${w} × ${h} px`;
+  });
+  dlg.querySelector("#tgBack").addEventListener("click", back);
+  dlg.querySelector("#tgMake").addEventListener("click", () => {
+    const t = isoTemplate({ name: dlg.querySelector("#tgName").value.trim() || "ISO 7200", lang, company: dlg.querySelector("#tgComp").value.trim(), logo });
+    t.id = tbId();
+    if (app.saveTblockLib([...app.tblockLib(), t])) toast(`Indicator creat: ${t.name}`);
+    back();
+  });
 }
 
 // ------------------------------------------------------------------ keys and commands

@@ -1617,7 +1617,12 @@ def _attach(pdf_bytes: bytes, state: dict | None, original: bytes | None, rev: s
         pk.attachments[ATTACH_JSON] = pikepdf.AttachedFileSpec(pk, _json.dumps(state, ensure_ascii=False).encode("utf-8"), mime_type="application/json")
         if original is not None:
             pk.attachments[ATTACH_ORIGINAL] = pikepdf.AttachedFileSpec(pk, original, mime_type="application/pdf")
-            used = {a.get("img") for a in state.get("annots", []) if isinstance(a, dict) and a.get("type") == "image"}
+            used = set()
+            for a in state.get("annots", []):
+                if isinstance(a, dict) and a.get("type") == "image":
+                    used.add(a.get("img"))
+                elif isinstance(a, dict) and a.get("type") == "tblock" and isinstance(a.get("tpl"), dict) and isinstance(a["tpl"].get("logo"), dict):
+                    used.add(a["tpl"]["logo"].get("img"))  # the logo of a title block
             for iid, path in (images or {}).items():
                 if iid in used:
                     ext = "jpg" if str(path).endswith(".jpg") else "png"
