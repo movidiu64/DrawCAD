@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<title>DrawCAD — start</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#111418}
+a{color:#f2a93b}a:hover{color:#ffc56b}
+button{font:inherit;color:inherit;cursor:pointer}
+input{font:inherit;color:inherit}
+button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid #f2a93b;outline-offset:2px}
+.card:hover{border-color:#4a525e !important}
+.ib:hover{background:#262c34 !important}
+</style>
+</helmet>
+<div style="width: 100%; min-height: 900px; display: flex; flex-direction: column; background: #111418; color: #e6e8eb; font-family: Inter, system-ui, sans-serif; font-size: 13px">
+  <header style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px 0 14px; background: #171b20; border-bottom: 1px solid #2a3038">
+    <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f2a93b" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 5v14M21 5v14M3 12h18M3 12l4-2.5M3 12l4 2.5M21 12l-4-2.5M21 12l-4 2.5"></path></svg>
+      <span>DrawCAD</span>
+    </div>
+    <div style="flex: 1"></div>
+    <div role="radiogroup" aria-label="Limba interfeței" translate="no" style="display: flex; padding: 2px; gap: 2px; border-radius: 6px; background: #111418; border: 1px solid #2a3038">
+      <button role="radio" aria-checked="true" style="height: 24px; padding: 0 10px; border: 0; border-radius: 4px; background: #2a3038; font-size: 12px">Română</button>
+      <button role="radio" aria-checked="false" style="height: 24px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #8f99a5; font-size: 12px">English</button>
+    </div>
+    <button class="ib" aria-label="Setări" title="Setări" style="display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 6px; background: transparent; color: #b9c1cb"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"></path></svg></button>
+  </header>
+
+  <main style="flex: 1; width: 100%; max-width: 1160px; margin: 0 auto; padding: 40px 28px 32px; box-sizing: border-box; display: flex; flex-direction: column; gap: 36px">
+    <div style="display: flex; flex-wrap: wrap; gap: 20px">
+      <div style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-height: 280px; padding: 32px 24px; box-sizing: border-box; border: 1.5px dashed #3a414b; border-radius: 12px; background: #15191e; text-align: center">
+        <div style="display: grid; place-items: center; width: 56px; height: 56px; border-radius: 14px; background: rgba(242,169,59,0.12)">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f2a93b" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5M4 15v4h16v-4"></path></svg>
+        </div>
+        <h1 style="margin: 4px 0 0; font-size: 20px; font-weight: 600">Trage aici un PDF sau o imagine</h1>
+        <p style="margin: 0; max-width: 460px; color: #b9c1cb; line-height: 1.5">PDF exportat din CAD, scanare sau fotografie a desenului. Originalul nu se modifică: cotele, toleranțele și reviziile se aplică doar la export.</p>
+        <div style="display: flex; align-items: center; gap: 10px; margin-top: 6px">
+          <button style="height: 36px; padding: 0 18px; border: 0; border-radius: 6px; background: #f2a93b; color: #15181c; font-weight: 600">Alege fișier</button>
+          <span style="font-size: 12px; color: #8f99a5">sau <kbd style="font-family: 'JetBrains Mono', monospace; padding: 1px 5px; border: 1px solid #353c46; border-radius: 4px; color: #b9c1cb">Ctrl O</kbd></span>
+        </div>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8f99a5; margin-top: 4px">PDF · PNG · JPG · TIFF · max. 200 MB</span>
+      </div>
+
+      <aside style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 14px; padding: 20px; box-sizing: border-box; border: 1px solid #2a3038; border-radius: 12px; background: #171b20">
+        <h2 style="margin: 0; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: #8f99a5">Comenzi ca în AutoCAD</h2>
+        <div style="display: grid; grid-template-columns: 64px minmax(0, 1fr); row-gap: 8px; column-gap: 10px; font-size: 12px">
+          <span style="font-family: 'JetBrains Mono', monospace; color: #f2a93b">DLI</span><span style="color: #b9c1cb">Cotă liniară</span>
+          <span style="font-family: 'JetBrains Mono', monospace; color: #f2a93b">DDI</span><span style="color: #b9c1cb">Diametru de cerc</span>
+          <span style="font-family: 'JetBrains Mono', monospace; color: #f2a93b">TOL</span><span style="color: #b9c1cb">Cadru GD&amp;T (ISO 1101)</span>
+          <span style="font-family: 'JetBrains Mono', monospace; color: #f2a93b">STR</span><span style="color: #b9c1cb">Taie cota (revizie)</span>
+          <span style="font-family: 'JetBrains Mono', monospace; color: #f2a93b">Z</span><span style="color: #b9c1cb">Zoom pe toată pagina</span>
+        </div>
+        <a href="#" style="font-size: 12px; text-decoration: none">Toate tastele și comenzile →</a>
+        <div style="height: 1px; background: #2a3038"></div>
+        <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #b9c1cb; line-height: 1.5">
+          <span style="display: flex; align-items: center; gap: 8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7fd1a1" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"></path></svg>Mod privat: documentele sunt doar în acest browser</span>
+          <span style="color: #8f99a5">Documentele nefolosite se șterg după 30 de zile.</span>
+        </div>
+      </aside>
+    </div>
+
+    <section style="display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap">
+        <h2 style="margin: 0; font-size: 15px; font-weight: 600">Documente recente</h2>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #8f99a5">6</span>
+        <div style="flex: 1"></div>
+        <label style="display: flex; align-items: center; gap: 8px; width: 240px; max-width: 100%; height: 30px; padding: 0 8px; border: 1px solid #2a3038; border-radius: 6px; background: #171b20; color: #8f99a5">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"></circle><path d="M15 15l6 6"></path></svg>
+          <input placeholder="Caută după nume" aria-label="Caută după nume" style="flex: 1; min-width: 0; border: 0; background: transparent; outline: none">
+        </label>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px">
+        <sc-for list="{{ docs }}" as="d" hint-placeholder-count="6">
+          <a href="Main.dc.html" class="card" style="display: flex; flex-direction: column; border: 1px solid #2a3038; border-radius: 10px; background: #171b20; overflow: hidden; text-decoration: none; color: #e6e8eb">
+            <div style="height: 150px; display: grid; place-items: center; background: #23272e; padding: 14px; box-sizing: border-box">
+              <svg viewBox="0 0 210 148" aria-hidden="true" style="height: 100%; width: auto; background: #fcfcfa; box-shadow: 0 4px 14px rgba(0,0,0,0.4)">
+                <rect x="4" y="4" width="202" height="140" fill="none" stroke="#333" stroke-width="0.8"></rect>
+                <circle cx="62" cy="72" r="{{ d.r1 }}" fill="none" stroke="#333" stroke-width="1"></circle>
+                <circle cx="62" cy="72" r="{{ d.r2 }}" fill="none" stroke="#333" stroke-width="1"></circle>
+                <line x1="20" y1="72" x2="104" y2="72" stroke="#888" stroke-width="0.4" stroke-dasharray="5 1.5 1 1.5"></line>
+                <rect x="{{ d.sx }}" y="46" width="{{ d.sw }}" height="52" fill="none" stroke="#333" stroke-width="1"></rect>
+                <line x1="30" y1="112" x2="94" y2="112" stroke="#2563eb" stroke-width="0.7"></line>
+                <line x1="124" y1="40" x2="124" y2="104" stroke="#2563eb" stroke-width="0.7"></line>
+                <rect x="140" y="118" width="62" height="22" fill="none" stroke="#333" stroke-width="0.7"></rect>
+              </svg>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px; padding: 10px 12px 12px">
+              <span style="font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ d.name }}</span>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8f99a5">{{ d.meta }}</span>
+              <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 12px; color: #8f99a5">
+                <span style="flex: 1">{{ d.when }}</span>
+                <sc-if value="{{ d.rev }}" hint-placeholder-val="{{ false }}">
+                  <span style="display: flex; align-items: center; gap: 4px; padding: 1px 6px; border-radius: 4px; background: rgba(239,68,68,0.14); color: #ff9b9b; font-size: 11px">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true"><path d="M12 4l9 16H3z"></path></svg>{{ d.revLabel }}</span>
+                </sc-if>
+              </div>
+            </div>
+          </a>
+        </sc-for>
+      </div>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const D = [
+      ['flansa-DN60.pdf', 'A2 · 1 pag. · 19 adnotări', 'acum 2 min', 'Rev. 1', 40, 22, 120, 44],
+      ['arbore-07.pdf', 'A3 · 2 pag. · 31 adnotări', 'ieri, 16:40', '', 30, 14, 118, 70],
+      ['bucsa-ghidare.pdf', 'A4 · 1 pag. · 8 adnotări', 'acum 3 zile', '', 36, 20, 128, 40],
+      ['roata-dintata-z32.pdf', 'A3 · 1 pag. · 24 adnotări', '18 nov.', 'Rev. 2', 44, 30, 122, 50],
+      ['capac-lagar-scan.jpg', 'Scanare · OCR · 5 adnotări', '14 nov.', '', 38, 26, 126, 46],
+      ['placa-baza.pdf', 'A2 · 3 pag. · 52 adnotări', '9 nov.', 'Rev. 3', 34, 12, 116, 72]
+    ];
+    return {
+      docs: D.map((d) => ({ name: d[0], meta: d[1], when: d[2], rev: !!d[3], revLabel: d[3], r1: d[4], r2: d[5], sx: d[6], sw: d[7] }))
+    };
+  }
+}
+</script>
+</body>
+</html>

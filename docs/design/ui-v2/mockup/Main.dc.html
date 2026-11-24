@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<title>DrawCAD — editor</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#111418}
+a{color:#f2a93b}a:hover{color:#ffc56b}
+button{font:inherit;color:inherit;cursor:pointer}
+input,select{font:inherit;color:inherit}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #f2a93b;outline-offset:1px}
+.ib:hover{background:#262c34 !important;color:#e6e8eb !important}
+.row:hover{background:#1f242b}
+.scroll::-webkit-scrollbar{width:10px}
+.scroll::-webkit-scrollbar-thumb{background:#2a3038;border-radius:5px;border:3px solid #171b20}
+</style>
+</helmet>
+<div style="width: 100%; height: 900px; display: flex; flex-direction: column; background: #111418; color: #e6e8eb; font-family: Inter, system-ui, sans-serif; font-size: 13px; overflow: hidden">
+
+  <!-- Header -->
+  <header style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 10px 0 14px; background: #171b20; border-bottom: 1px solid #2a3038; flex-wrap: wrap">
+    <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; letter-spacing: 0.01em">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f2a93b" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 5v14M21 5v14M3 12h18M3 12l4-2.5M3 12l4 2.5M21 12l-4-2.5M21 12l-4 2.5"></path></svg>
+      <span>DrawCAD</span>
+    </div>
+    <div style="width: 1px; height: 22px; background: #2a3038; margin: 0 4px"></div>
+    <div role="tablist" aria-label="Documente deschise" style="display: flex; align-items: center; gap: 2px; min-width: 0">
+      <button role="tab" aria-selected="true" style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 6px 0 10px; border: 1px solid #353c46; border-radius: 6px; background: #1f242b; font-size: 13px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b9c1cb" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"></path><path d="M14 3v4h4"></path></svg>
+        <span style="font-weight: 500">flansa-DN60.pdf</span>
+        <span title="Salvat pe server" style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: #7fd1a1"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7fd1a1" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>salvat</span>
+        <span aria-label="Închide documentul" style="display: grid; place-items: center; width: 20px; height: 20px; border-radius: 4px; color: #8f99a5"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></span>
+      </button>
+      <button role="tab" aria-selected="false" class="ib" style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #b9c1cb; font-size: 13px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"></path><path d="M14 3v4h4"></path></svg>
+        <span>arbore-07.pdf</span>
+      </button>
+      <button class="ib" aria-label="Deschide un desen (Ctrl+O)" title="Deschide un desen (Ctrl+O)" style="display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 6px; background: transparent; color: #8f99a5">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+      </button>
+    </div>
+    <div style="flex: 1"></div>
+    <button class="ib" style="display: flex; align-items: center; gap: 8px; width: 280px; max-width: 100%; height: 30px; padding: 0 8px 0 10px; border: 1px solid #2a3038; border-radius: 6px; background: #111418; color: #8f99a5; font-size: 12px; text-align: left">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"></circle><path d="M15 15l6 6"></path></svg>
+      <span style="flex: 1">Caută text în desen, OCR…</span>
+      <kbd style="font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 1px 5px; border: 1px solid #353c46; border-radius: 4px; color: #b9c1cb">Ctrl F</kbd>
+    </button>
+    <div style="flex: 1"></div>
+    <div style="display: flex; align-items: center; gap: 2px">
+      <button class="ib" aria-label="Anulează (Ctrl+Z)" title="Anulează (Ctrl+Z)" style="display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 6px; background: transparent; color: #b9c1cb"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"></path><path d="M4 9h10a6 6 0 0 1 0 12h-3"></path></svg></button>
+      <button class="ib" aria-label="Refă (Ctrl+Y)" title="Refă (Ctrl+Y)" style="display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 6px; background: transparent; color: #b9c1cb"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5"></path><path d="M20 9H10a6 6 0 0 0 0 12h3"></path></svg></button>
+    </div>
+    <div style="display: flex; align-items: center; height: 30px; padding: 2px; gap: 1px; background: #1f242b; border-radius: 6px">
+      <button class="ib" aria-label="Micșorează" style="width: 26px; height: 26px; border: 0; border-radius: 4px; background: transparent; font-size: 15px">−</button>
+      <span style="min-width: 46px; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 12px">57 %</span>
+      <button class="ib" aria-label="Mărește" style="width: 26px; height: 26px; border: 0; border-radius: 4px; background: transparent; font-size: 15px">+</button>
+      <button class="ib" title="Potrivește pagina (F)" style="height: 26px; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; color: #b9c1cb; font-size: 12px">Potrivește</button>
+    </div>
+    <button class="ib" aria-label="Setări" title="Setări" style="display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 6px; background: transparent; color: #b9c1cb"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"></path></svg></button>
+    <div style="display: flex; height: 32px; border-radius: 6px; overflow: hidden">
+      <button style="height: 32px; padding: 0 14px; border: 0; background: #f2a93b; color: #15181c; font-weight: 600; font-size: 13px">Exportă</button>
+      <button aria-label="Alege formatul de export" style="display: grid; place-items: center; width: 28px; height: 32px; border: 0; border-left: 1px solid #c9842a; background: #f2a93b; color: #15181c"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+    </div>
+  </header>
+
+  <!-- Body -->
+  <div style="flex: 1; min-height: 0; display: flex; flex-wrap: wrap; overflow: auto">
+
+    <!-- Tool rail -->
+    <nav aria-label="Unelte" style="flex: 0 0 56px; display: flex; flex-direction: column; align-items: center; padding: 8px 0; background: #171b20; border-right: 1px solid #2a3038; height: 100%; box-sizing: border-box; overflow-y: auto">
+      <sc-for list="{{ groups }}" as="g" hint-placeholder-count="6">
+        <div role="group" aria-label="{{ g.name }}" style="display: flex; flex-direction: column; align-items: center; gap: 2px; padding: {{ g.pad }}; border-top: {{ g.border }}; width: 40px">
+          <sc-for list="{{ g.tools }}" as="t" hint-placeholder-count="3">
+            <button onClick="{{ t.pick }}" aria-label="{{ t.label }}" aria-pressed="{{ t.pressed }}" title="{{ t.tip }}" style="position: relative; display: grid; place-items: center; width: 40px; height: 38px; border: 0; border-radius: 6px; background: {{ t.bg }}; color: {{ t.fg }}; box-shadow: {{ t.sh }}">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ t.icon }}"></path></svg>
+              <sc-if value="{{ t.more }}" hint-placeholder-val="{{ false }}">
+                <svg width="5" height="5" viewBox="0 0 5 5" aria-hidden="true" style="position: absolute; right: 4px; bottom: 4px"><path d="M5 0V5H0z" fill="currentColor"></path></svg>
+              </sc-if>
+            </button>
+          </sc-for>
+        </div>
+      </sc-for>
+    </nav>
+
+    <!-- Center -->
+    <main style="flex: 999 1 560px; min-width: 0; height: 100%; display: flex; flex-direction: column">
+      <!-- Context bar: active tool + options + pages -->
+      <div style="display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 0 12px; background: #171b20; border-bottom: 1px solid #2a3038; flex-wrap: wrap">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f2a93b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ ctx.icon }}"></path></svg>
+        <strong style="font-weight: 600; font-size: 13px; white-space: nowrap">{{ ctx.label }}</strong>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: #1f242b; color: #b9c1cb">{{ ctx.alias }}</span>
+        <span style="flex: 1 1 200px; min-width: 0; color: #8f99a5; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ ctx.hint }}</span>
+        <sc-if value="{{ ctx.isDim }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #b9c1cb">
+            <span>Toleranță implicită</span>
+            <button class="ib" style="display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border: 1px solid #2a3038; border-radius: 6px; background: #111418; font-family: 'JetBrains Mono', monospace; font-size: 12px">ISO 286 · h7<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+            <span>Text</span>
+            <button class="ib" style="display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border: 1px solid #2a3038; border-radius: 6px; background: #111418; font-family: 'JetBrains Mono', monospace; font-size: 12px">3,5 mm<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+          </div>
+        </sc-if>
+        <div style="width: 1px; height: 20px; background: #2a3038"></div>
+        <div role="tablist" aria-label="Pagini" style="display: flex; align-items: center; gap: 2px; padding: 2px; background: #111418; border-radius: 6px">
+          <button role="tab" aria-selected="true" style="height: 24px; padding: 0 10px; border: 0; border-radius: 4px; background: #2a3038; font-size: 12px">Pag. 1</button>
+          <button role="tab" aria-selected="false" class="ib" style="height: 24px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #8f99a5; font-size: 12px">Pag. 2</button>
+        </div>
+        <button class="ib" aria-label="Pagini: rotire, ordine, ștergere" title="Pagini: rotire, ordine, ștergere" style="display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: #b9c1cb"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h7v12H4zM13 6h7v12h-7z"></path></svg></button>
+      </div>
+
+      <!-- Canvas -->
+      <div style="flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; padding: 24px 28px 44px; background: #23272e; overflow: hidden">
+        <svg viewBox="0 0 840 594" role="img" aria-label="Desen tehnic: flanșă DN60, vedere frontală și secțiunea A-A, cu cote, toleranțe GD&amp;T și o revizie" style="width: 100%; max-width: 1040px; max-height: 100%; height: auto; display: block; background: #fcfcfa; box-shadow: 0 10px 30px rgba(0,0,0,0.45); font-family: Inter, sans-serif">
+          <defs>
+            <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#222" stroke-width="0.7"></line></pattern>
+            <marker id="ar" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1.5L10 5L0 8.5z" fill="#1d4ed8"></path></marker>
+            <marker id="ark" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1.5L10 5L0 8.5z" fill="#1a1a1a"></path></marker>
+          </defs>
+          <!-- sheet frame -->
+          <rect x="14" y="14" width="812" height="566" fill="none" stroke="#1a1a1a" stroke-width="1.4"></rect>
+          <g stroke="#1a1a1a" stroke-width="0.8">
+            <line x1="115" y1="14" x2="115" y2="8"></line><line x1="217" y1="14" x2="217" y2="8"></line><line x1="318" y1="14" x2="318" y2="8"></line><line x1="420" y1="14" x2="420" y2="8"></line><line x1="521" y1="14" x2="521" y2="8"></line><line x1="623" y1="14" x2="623" y2="8"></line><line x1="724" y1="14" x2="724" y2="8"></line>
+          </g>
+
+          <!-- front view -->
+          <g fill="none" stroke="#555" stroke-width="0.6" stroke-dasharray="14 3 2 3">
+            <line x1="112" y1="290" x2="388" y2="290"></line>
+            <line x1="250" y1="152" x2="250" y2="428"></line>
+            <circle cx="250" cy="290" r="92"></circle>
+          </g>
+          <g fill="none" stroke="#1a1a1a" stroke-width="1.3">
+            <circle cx="250" cy="290" r="120"></circle>
+            <circle cx="250" cy="290" r="62"></circle>
+            <circle cx="250" cy="290" r="45" stroke-width="0.8"></circle>
+            <circle cx="250" cy="290" r="30"></circle>
+            <circle cx="329.7" cy="336" r="11"></circle><circle cx="250" cy="382" r="11"></circle><circle cx="170.3" cy="336" r="11"></circle>
+            <circle cx="170.3" cy="244" r="11"></circle><circle cx="250" cy="198" r="11"></circle><circle cx="329.7" cy="244" r="11"></circle>
+          </g>
+          <g stroke="#1a1a1a">
+            <line x1="250" y1="144" x2="250" y2="158" stroke-width="2.4"></line>
+            <line x1="250" y1="408" x2="250" y2="422" stroke-width="2.4"></line>
+            <polygon points="222,151 232,147 232,155" fill="#1a1a1a"></polygon>
+            <line x1="232" y1="151" x2="250" y2="151" stroke-width="1"></line>
+            <polygon points="222,415 232,411 232,419" fill="#1a1a1a"></polygon>
+            <line x1="232" y1="415" x2="250" y2="415" stroke-width="1"></line>
+          </g>
+          <text x="226" y="142" font-size="13" fill="#1a1a1a" text-anchor="middle">A</text>
+          <text x="212" y="420" font-size="13" fill="#1a1a1a" text-anchor="middle">A</text>
+
+          <!-- front view: dimensions (added = blue) -->
+          <g stroke="#1d4ed8" stroke-width="0.8" fill="none">
+            <line x1="130" y1="296" x2="130" y2="476"></line>
+            <line x1="370" y1="296" x2="370" y2="476"></line>
+            <line x1="130" y1="470" x2="370" y2="470" marker-start="url(#ar)" marker-end="url(#ar)"></line>
+          </g>
+          <text x="250" y="465" font-size="11" fill="#1d4ed8" text-anchor="middle">Ø100</text>
+
+          <!-- selected dimension Ø60 h7 -->
+          <line x1="188" y1="445" x2="312" y2="445" stroke="rgba(242,169,59,0.38)" stroke-width="8" stroke-linecap="round"></line>
+          <rect x="226" y="429" width="48" height="14" rx="3" fill="rgba(242,169,59,0.22)"></rect>
+          <g stroke="#1d4ed8" stroke-width="0.9" fill="none">
+            <line x1="188" y1="296" x2="188" y2="451"></line>
+            <line x1="312" y1="296" x2="312" y2="451"></line>
+            <line x1="188" y1="445" x2="312" y2="445" marker-start="url(#ar)" marker-end="url(#ar)"></line>
+          </g>
+          <text x="250" y="440" font-size="11" fill="#1d4ed8" text-anchor="middle">Ø60 h7</text>
+          <g fill="#f2a93b" stroke="#15181c" stroke-width="0.8">
+            <rect x="185" y="293" width="6" height="6"></rect><rect x="309" y="293" width="6" height="6"></rect>
+            <rect x="185" y="442" width="6" height="6"></rect><rect x="309" y="442" width="6" height="6"></rect>
+            <rect x="247" y="422" width="6" height="6"></rect>
+          </g>
+
+          <!-- bolt pattern: position tolerance -->
+          <text x="52" y="179" font-size="10" fill="#1d4ed8">6× Ø11</text>
+          <g stroke="#1d4ed8" stroke-width="0.8" fill="none">
+            <rect x="52" y="184" width="80" height="16"></rect>
+            <line x1="72" y1="184" x2="72" y2="200"></line><line x1="116" y1="184" x2="116" y2="200"></line>
+            <line x1="132" y1="192" x2="163.8" y2="235.1" marker-end="url(#ar)"></line>
+          </g>
+          <g fill="#1d4ed8" font-size="10" text-anchor="middle">
+            <circle cx="62" cy="192" r="4.2" fill="none" stroke="#1d4ed8" stroke-width="0.8"></circle>
+            <line x1="56" y1="192" x2="68" y2="192" stroke="#1d4ed8" stroke-width="0.8"></line><line x1="62" y1="186" x2="62" y2="198" stroke="#1d4ed8" stroke-width="0.8"></line>
+            <text x="94" y="196">Ø0,1</text><text x="124" y="196">A</text>
+          </g>
+
+          <!-- revision on bolt circle: Ø86 → Ø88 -->
+          <g stroke="#1d4ed8" stroke-width="0.8" fill="none">
+            <line x1="352" y1="188" x2="315" y2="225" marker-end="url(#ar)"></line>
+            <line x1="352" y1="188" x2="410" y2="188"></line>
+          </g>
+          <text x="356" y="184" font-size="11" fill="#1d4ed8">Ø86</text>
+          <line x1="354" y1="180" x2="380" y2="180" stroke="#dc2626" stroke-width="1.1"></line>
+          <text x="384" y="184" font-size="11" fill="#dc2626">Ø88</text>
+          <polygon points="414,186 428,186 421,174" fill="none" stroke="#dc2626" stroke-width="0.9"></polygon>
+          <text x="421" y="184.5" font-size="8" fill="#dc2626" text-anchor="middle">1</text>
+
+          <!-- section A-A -->
+          <text x="620" y="140" font-size="13" fill="#1a1a1a" text-anchor="middle" letter-spacing="1">A-A (1:1)</text>
+          <g stroke="#1a1a1a" stroke-width="1.3" fill="url(#hatch)">
+            <path d="M560 170H585V187H560Z"></path>
+            <path d="M560 209H585V228H680V260H560Z"></path>
+            <path d="M560 410H585V393H560Z"></path>
+            <path d="M560 371H585V352H680V320H560Z"></path>
+          </g>
+          <g stroke="#555" stroke-width="0.6" stroke-dasharray="14 3 2 3">
+            <line x1="545" y1="290" x2="698" y2="290"></line>
+            <line x1="552" y1="198" x2="593" y2="198"></line>
+            <line x1="552" y1="382" x2="593" y2="382"></line>
+          </g>
+          <!-- datum A on back face -->
+          <polygon points="560,334 560,346 551,340" fill="#1d4ed8"></polygon>
+          <line x1="551" y1="340" x2="536" y2="340" stroke="#1d4ed8" stroke-width="0.8"></line>
+          <rect x="520" y="332" width="16" height="16" fill="#fcfcfa" stroke="#1d4ed8" stroke-width="0.8"></rect>
+          <text x="528" y="344" font-size="10" fill="#1d4ed8" text-anchor="middle">A</text>
+          <!-- runout frame -->
+          <g stroke="#1d4ed8" stroke-width="0.8" fill="none">
+            <rect x="690" y="190" width="70" height="16"></rect>
+            <line x1="710" y1="190" x2="710" y2="206"></line><line x1="744" y1="190" x2="744" y2="206"></line>
+            <line x1="690" y1="198" x2="660" y2="198"></line>
+            <line x1="660" y1="198" x2="660" y2="228" marker-end="url(#ar)"></line>
+            <line x1="695" y1="202" x2="705" y2="194"></line>
+            <path d="M705 194l-4 0.6M705 194l-0.6 4"></path>
+          </g>
+          <g fill="#1d4ed8" font-size="10" text-anchor="middle"><text x="727" y="202">0,06</text><text x="752" y="202">A</text></g>
+          <!-- bore Ø30 H7 -->
+          <g stroke="#1d4ed8" stroke-width="0.8" fill="none">
+            <line x1="684" y1="260" x2="712" y2="260"></line>
+            <line x1="684" y1="320" x2="712" y2="320"></line>
+            <line x1="706" y1="260" x2="706" y2="320" marker-start="url(#ar)" marker-end="url(#ar)"></line>
+          </g>
+          <text x="700" y="290" font-size="10" fill="#1d4ed8" text-anchor="middle" transform="rotate(-90 700 290)">Ø30 H7</text>
+          <!-- length 38 -->
+          <g stroke="#1d4ed8" stroke-width="0.8" fill="none">
+            <line x1="560" y1="414" x2="560" y2="476"></line>
+            <line x1="680" y1="358" x2="680" y2="476"></line>
+            <line x1="560" y1="470" x2="680" y2="470" marker-start="url(#ar)" marker-end="url(#ar)"></line>
+          </g>
+          <text x="620" y="465" font-size="11" fill="#1d4ed8" text-anchor="middle">38</text>
+
+          <!-- notes (added) -->
+          <g fill="#1d4ed8" font-size="9">
+            <text x="40" y="520">1. Muchiile nespecificate teșite 0,5×45°</text>
+            <text x="40" y="534">2. Toleranțe generale ISO 2768-mK</text>
+            <text x="40" y="548">3. Rugozitate generală Ra 3,2</text>
+          </g>
+
+          <!-- revision table (auto) -->
+          <g stroke="#1a1a1a" stroke-width="0.8" fill="none">
+            <rect x="600" y="474" width="220" height="36"></rect>
+            <line x1="600" y1="490" x2="820" y2="490"></line>
+            <line x1="630" y1="474" x2="630" y2="510"></line><line x1="752" y1="474" x2="752" y2="510"></line>
+          </g>
+          <g font-size="8" fill="#1a1a1a"><text x="606" y="485">Rev.</text><text x="636" y="485">Descriere</text><text x="758" y="485">Data</text></g>
+          <polygon points="608,505 622,505 615,493" fill="none" stroke="#dc2626" stroke-width="0.9"></polygon>
+          <text x="615" y="503.5" font-size="7.5" fill="#dc2626" text-anchor="middle">1</text>
+          <g font-size="8.5" fill="#dc2626"><text x="636" y="503">Ø86 → Ø88, cercul găurilor</text><text x="758" y="503">23.11.2026</text></g>
+
+          <!-- title block -->
+          <g stroke="#1a1a1a" stroke-width="0.9" fill="none">
+            <rect x="600" y="514" width="220" height="60"></rect>
+            <line x1="680" y1="514" x2="680" y2="574"></line><line x1="770" y1="514" x2="770" y2="574"></line>
+            <line x1="600" y1="534" x2="680" y2="534"></line><line x1="600" y1="554" x2="680" y2="554"></line>
+            <line x1="770" y1="534" x2="820" y2="534"></line><line x1="770" y1="554" x2="820" y2="554"></line>
+            <line x1="680" y1="554" x2="770" y2="554"></line>
+          </g>
+          <g font-size="7.5" fill="#1a1a1a"><text x="604" y="527">Desenat</text><text x="604" y="547">Verificat</text><text x="604" y="567">Aprobat</text></g>
+          <text x="725" y="540" font-size="12" font-weight="600" fill="#1a1a1a" text-anchor="middle">FLANȘĂ DN60</text>
+          <text x="725" y="568" font-size="9" fill="#1a1a1a" text-anchor="middle">DC-0142</text>
+          <g font-size="9" fill="#1a1a1a" text-anchor="middle"><text x="795" y="528">1:1</text><text x="795" y="548">A3</text><text x="795" y="568">Rev. 1</text></g>
+        </svg>
+
+        <!-- legend -->
+        <div style="position: absolute; left: 14px; bottom: 12px; display: flex; align-items: center; gap: 14px; padding: 5px 10px; border-radius: 6px; background: rgba(17,20,24,0.82); font-size: 11px; color: #b9c1cb">
+          <span style="display: flex; align-items: center; gap: 6px"><i style="width: 8px; height: 8px; border-radius: 2px; background: #e6e8eb"></i>Original</span>
+          <span style="display: flex; align-items: center; gap: 6px"><i style="width: 8px; height: 8px; border-radius: 2px; background: #3b82f6"></i>Adăugat</span>
+          <span style="display: flex; align-items: center; gap: 6px"><i style="width: 8px; height: 8px; border-radius: 2px; background: #ef4444"></i>Revizie</span>
+        </div>
+      </div>
+    </main>
+
+    <!-- Right panel -->
+    <aside aria-label="Panou" style="flex: 1 1 320px; max-width: 100%; height: 100%; display: flex; flex-direction: column; background: #171b20; border-left: 1px solid #2a3038; min-width: 0; box-sizing: border-box">
+      <div role="tablist" aria-label="Panou" style="display: flex; padding: 0 8px; border-bottom: 1px solid #2a3038">
+        <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="3">
+          <button role="tab" aria-selected="{{ tb.sel }}" onClick="{{ tb.pick }}" style="flex: 1; height: 40px; border: 0; background: transparent; font-size: 12px; font-weight: 500; color: {{ tb.fg }}; box-shadow: {{ tb.sh }}">{{ tb.label }}</button>
+        </sc-for>
+      </div>
+
+      <div class="scroll" style="flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px 18px; display: flex; flex-direction: column; gap: 18px">
+
+        <!-- PROPERTIES -->
+        <sc-if value="{{ isProp }}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; flex-direction: column; gap: 18px">
+            <div style="display: flex; align-items: flex-start; gap: 8px">
+              <div style="flex: 1; min-width: 0">
+                <div style="font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #8f99a5">Cotă diametru</div>
+                <div style="font-family: 'JetBrains Mono', monospace; font-size: 20px; font-weight: 500; margin-top: 2px">{{ preview }}</div>
+                <div style="font-size: 12px; color: #8f99a5; margin-top: 2px">Pagina 1 · strat Adăugate · măsurat 59,98 mm</div>
+              </div>
+              <button class="ib" aria-label="Duplică" title="Duplică (Ctrl+D)" style="display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 6px; background: transparent; color: #b9c1cb"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M8 8h12v12H8z"></path><path d="M4 16V4h12"></path></svg></button>
+              <button class="ib" aria-label="Șterge adnotarea" title="Șterge (Delete)" style="display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 6px; background: transparent; color: #b9c1cb"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"></path></svg></button>
+            </div>
+
+            <section style="display: flex; flex-direction: column; gap: 10px">
+              <h3 style="margin: 0; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: #8f99a5">Valoare</h3>
+              <div style="display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 8px">
+                <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #b9c1cb">Prefix
+                  <select style="height: 30px; padding: 0 6px; border: 1px solid #2a3038; border-radius: 6px; background: #111418; font-family: 'JetBrains Mono', monospace"><option>Ø</option><option>R</option><option>M</option><option>□</option><option>—</option></select>
+                </label>
+                <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #b9c1cb">Nominal (mm)
+                  <input value="60" style="height: 30px; box-sizing: border-box; padding: 0 8px; border: 1px solid #2a3038; border-radius: 6px; background: #111418; font-family: 'JetBrains Mono', monospace; text-align: right">
+                </label>
+              </div>
+              <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #b9c1cb">Text înlocuitor (opțional)
+                <input placeholder="lasă gol pentru valoarea calculată" style="height: 30px; box-sizing: border-box; padding: 0 8px; border: 1px solid #2a3038; border-radius: 6px; background: #111418">
+              </label>
+            </section>
+
+            <section style="display: flex; flex-direction: column; gap: 10px">
+              <h3 style="margin: 0; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: #8f99a5">Toleranță</h3>
+              <div role="radiogroup" aria-label="Tipul toleranței" style="display: flex; padding: 2px; gap: 2px; border-radius: 6px; background: #111418; border: 1px solid #2a3038">
+                <sc-for list="{{ tolModes }}" as="m" hint-placeholder-count="4">
+                  <button role="radio" aria-checked="{{ m.sel }}" onClick="{{ m.pick }}" style="flex: 1; height: 26px; border: 0; border-radius: 4px; font-size: 12px; background: {{ m.bg }}; color: {{ m.fg }}">{{ m.label }}</button>
+                </sc-for>
+              </div>
+
+              <sc-if value="{{ tolIso }}" hint-placeholder-val="{{ true }}">
+                <div style="display: flex; flex-direction: column; gap: 10px">
+                  <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px">
+                    <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #b9c1cb">Câmp (arbore)
+                      <select style="height: 30px; padding: 0 6px; border: 1px solid #2a3038; border-radius: 6px; background: #111418; font-family: 'JetBrains Mono', monospace"><option>h6</option><option selected="selected">h7</option><option>g6</option><option>k6</option><option>m6</option><option>p6</option></select>
+                    </label>
+                    <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #b9c1cb">Ajustaj cu
+                      <select style="height: 30px; padding: 0 6px; border: 1px solid #2a3038; border-radius: 6px; background: #111418; font-family: 'JetBrains Mono', monospace"><option>—</option><option>H7 / h7</option><option>H8 / h7</option></select>
+                    </label>
+                  </div>
+                  <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; row-gap: 6px; column-gap: 12px; padding: 10px 12px; border-radius: 6px; background: #111418; border: 1px solid #2a3038; font-size: 12px">
+                    <span style="color: #8f99a5">Abatere superioară es</span><span style="font-family: 'JetBrains Mono', monospace; text-align: right">0,000</span>
+                    <span style="color: #8f99a5">Abatere inferioară ei</span><span style="font-family: 'JetBrains Mono', monospace; text-align: right">−0,030</span>
+                    <span style="color: #8f99a5">Toleranță IT7</span><span style="font-family: 'JetBrains Mono', monospace; text-align: right">0,030</span>
+                    <div style="grid-column: 1 / -1; height: 1px; background: #2a3038"></div>
+                    <span style="color: #8f99a5">Dimensiune max / min</span><span style="font-family: 'JetBrains Mono', monospace; text-align: right; color: #f2c27a">60,000 / 59,970</span>
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #b9c1cb">
+                    <span>Afișare pe desen</span>
+                    <div role="radiogroup" aria-label="Afișare pe desen" style="display: flex; padding: 2px; gap: 2px; border-radius: 6px; background: #111418; border: 1px solid #2a3038">
+                      <button role="radio" aria-checked="true" style="flex: 1; height: 26px; border: 0; border-radius: 4px; background: #2a3038; color: #e6e8eb; font-family: 'JetBrains Mono', monospace; font-size: 11px">h7</button>
+                      <button role="radio" aria-checked="false" style="flex: 1.6; height: 26px; border: 0; border-radius: 4px; background: transparent; color: #8f99a5; font-family: 'JetBrains Mono', monospace; font-size: 11px">h7 (0/−0,030)</button>
+                      <button role="radio" aria-checked="false" style="flex: 1.3; height: 26px; border: 0; border-radius: 4px; background: transparent; color: #8f99a5; font-family: 'JetBrains Mono', monospace; font-size: 11px">0/−0,030</button>
+                    </div>
+                  </div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ tolSym }}" hint-placeholder-val="{{ false }}">
+                <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #b9c1cb">Toleranță simetrică ± (mm)
+                  <input value="0,05" style="height: 30px; box-sizing: border-box; padding: 0 8px; border: 1px solid #2a3038; border-radius: 6px; background: #111418; font-family: 'JetBrains Mono', monospace; text-align: right">
+                </label>
+              </sc-if>
+              <sc-if value="{{ tolDev }}" hint-placeholder-val="{{ false }}">
+                <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px">
+                  <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #b9c1cb">Abatere superioară
+                    <input value="+0,02" style="height: 30px; box-sizing: border-box; padding: 0 8px; border: 1px solid #2a3038; border-radius: 6px; background: #111418; font-family: 'JetBrains Mono', monospace; text-align: right">
+                  </label>
+                  <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #b9c1cb">Abatere inferioară
+                    <input value="−0,01" style="height: 30px; box-sizing: border-box; padding: 0 8px; border: 1px solid #2a3038; border-radius: 6px; background: #111418; font-family: 'JetBrains Mono', monospace; text-align: right">
+                  </label>
+                </div>
+              </sc-if>
+            </section>
+
+            <section style="display: flex; flex-direction: column; gap: 10px">
+              <h3 style="margin: 0; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: #8f99a5">Revizie</h3>
+              <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #b9c1cb">Valoarea veche rămâne tăiată, cea nouă apare lângă ea, cu triunghiul reviziei. Tabelul de revizii se completează singur.</p>
+              <button class="ib" style="display: flex; align-items: center; justify-content: center; gap: 8px; height: 32px; border: 1px solid #353c46; border-radius: 6px; background: transparent; font-weight: 500; font-size: 12px">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 4l9 16H3z"></path></svg>
+                Taie și înlocuiește valoarea
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #8f99a5">STR</span>
+              </button>
+            </section>
+
+            <button class="ib" aria-expanded="false" style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0; border: 0; border-top: 1px solid #2a3038; background: transparent; color: #b9c1cb; font-size: 12px; text-align: left">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+              <span style="flex: 1">Aspect</span><span style="color: #8f99a5">săgeți, text, poziție</span>
+            </button>
+          </div>
+        </sc-if>
+
+        <!-- LAYERS & DOCUMENT -->
+        <sc-if value="{{ isLayers }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; gap: 18px">
+            <section style="display: flex; flex-direction: column; gap: 4px">
+              <h3 style="margin: 0 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: #8f99a5">Straturi</h3>
+              <sc-for list="{{ layers }}" as="l" hint-placeholder-count="4">
+                <div class="row" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 4px 0 8px; border-radius: 6px">
+                  <i style="width: 10px; height: 10px; border-radius: 3px; background: {{ l.color }}; border: {{ l.border }}; box-sizing: border-box"></i>
+                  <span style="flex: 1">{{ l.name }}</span>
+                  <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #8f99a5">{{ l.count }}</span>
+                  <button class="ib" aria-label="Ascunde stratul" style="display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: #b9c1cb"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12z"></path><circle cx="12" cy="12" r="2.6"></circle></svg></button>
+                </div>
+              </sc-for>
+            </section>
+            <section style="display: flex; flex-direction: column; gap: 8px">
+              <h3 style="margin: 0; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: #8f99a5">Scara desenului</h3>
+              <div style="display: flex; gap: 8px">
+                <input value="1" aria-label="mm reali pe mm hârtie" style="flex: 1; min-width: 0; height: 30px; box-sizing: border-box; padding: 0 8px; border: 1px solid #2a3038; border-radius: 6px; background: #111418; font-family: 'JetBrains Mono', monospace; text-align: right">
+                <button class="ib" style="height: 30px; padding: 0 12px; border: 1px solid #353c46; border-radius: 6px; background: transparent; font-size: 12px; font-weight: 500">Calibrează</button>
+              </div>
+              <div style="display: flex; gap: 4px">
+                <button style="height: 24px; padding: 0 8px; border: 1px solid #2a3038; border-radius: 12px; background: transparent; color: #b9c1cb; font-family: 'JetBrains Mono', monospace; font-size: 11px">2:1</button>
+                <button style="height: 24px; padding: 0 8px; border: 1px solid #f2a93b; border-radius: 12px; background: rgba(242,169,59,0.12); color: #f2a93b; font-family: 'JetBrains Mono', monospace; font-size: 11px">1:1</button>
+                <button style="height: 24px; padding: 0 8px; border: 1px solid #2a3038; border-radius: 12px; background: transparent; color: #b9c1cb; font-family: 'JetBrains Mono', monospace; font-size: 11px">1:2</button>
+                <button style="height: 24px; padding: 0 8px; border: 1px solid #2a3038; border-radius: 12px; background: transparent; color: #b9c1cb; font-family: 'JetBrains Mono', monospace; font-size: 11px">1:5</button>
+              </div>
+            </section>
+            <section style="display: flex; flex-direction: column; gap: 8px">
+              <h3 style="margin: 0; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: #8f99a5">La tipărire</h3>
+              <label style="display: flex; gap: 10px; align-items: flex-start; font-size: 13px">
+                <input type="checkbox" style="margin: 2px 0 0; accent-color: #f2a93b">
+                <span>Linii și text negre pe tot desenul<br><span style="font-size: 12px; color: #8f99a5">Pentru câteva linii folosește unealta Înnegrește din grupul Revizie.</span></span>
+              </label>
+            </section>
+            <section style="display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 12px; font-size: 12px">
+              <h3 style="grid-column: 1 / -1; margin: 0 0 2px; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: #8f99a5">Document</h3>
+              <span style="color: #8f99a5">Fișier</span><span>flansa-DN60.pdf</span>
+              <span style="color: #8f99a5">Pagina 1</span><span style="font-family: 'JetBrains Mono', monospace">594,1 × 420,2 mm · A2</span>
+              <span style="color: #8f99a5">Original</span><span>neatins, adnotările se aplică la export</span>
+            </section>
+          </div>
+        </sc-if>
+
+        <!-- ANNOTATIONS -->
+        <sc-if value="{{ isAnn }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; gap: 10px">
+            <label style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border: 1px solid #2a3038; border-radius: 6px; background: #111418; color: #8f99a5">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"></circle><path d="M15 15l6 6"></path></svg>
+              <input placeholder="Filtrează adnotările" aria-label="Filtrează adnotările" style="flex: 1; min-width: 0; border: 0; background: transparent; outline: none">
+            </label>
+            <div style="display: flex; gap: 4px; flex-wrap: wrap">
+              <button style="height: 24px; padding: 0 9px; border: 1px solid #f2a93b; border-radius: 12px; background: rgba(242,169,59,0.12); color: #f2a93b; font-size: 11px">Toate 19</button>
+              <button style="height: 24px; padding: 0 9px; border: 1px solid #2a3038; border-radius: 12px; background: transparent; color: #b9c1cb; font-size: 11px">Cote 11</button>
+              <button style="height: 24px; padding: 0 9px; border: 1px solid #2a3038; border-radius: 12px; background: transparent; color: #b9c1cb; font-size: 11px">GD&amp;T 3</button>
+              <button style="height: 24px; padding: 0 9px; border: 1px solid #2a3038; border-radius: 12px; background: transparent; color: #b9c1cb; font-size: 11px">Revizii 1</button>
+              <button style="height: 24px; padding: 0 9px; border: 1px solid #2a3038; border-radius: 12px; background: transparent; color: #b9c1cb; font-size: 11px">Text 4</button>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 1px">
+              <sc-for list="{{ annots }}" as="a" hint-placeholder-count="8">
+                <div class="row" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; background: {{ a.bg }}; box-shadow: {{ a.sh }}">
+                  <i style="width: 6px; height: 6px; border-radius: 50%; background: {{ a.dot }}"></i>
+                  <span style="flex: 1; font-size: 12px; color: #b9c1cb">{{ a.type }}</span>
+                  <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px">{{ a.val }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="padding: 8px 16px; border-top: 1px solid #2a3038; font-size: 11px; color: #8f99a5; display: flex; gap: 12px; flex-wrap: wrap">
+        <span><kbd style="font-family: 'JetBrains Mono', monospace; color: #b9c1cb">Esc</kbd> deselectează</span>
+        <span><kbd style="font-family: 'JetBrains Mono', monospace; color: #b9c1cb">Del</kbd> șterge</span>
+        <span><kbd style="font-family: 'JetBrains Mono', monospace; color: #b9c1cb">Shift F</kbd> zoom pe selecție</span>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Status + command line -->
+  <footer style="display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 10px; background: #171b20; border-top: 1px solid #2a3038; flex-wrap: wrap">
+    <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #b9c1cb; white-space: nowrap; min-width: 170px">X 489,40  Y 430,29 mm</span>
+    <label style="flex: 1 1 280px; display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 8px; border: 1px solid #2a3038; border-radius: 6px; background: #111418; font-family: 'JetBrains Mono', monospace; font-size: 12px">
+      <span aria-hidden="true" style="color: #f2a93b">›</span>
+      <input aria-label="Linie de comandă" placeholder="Comandă: L, C, DLI, TOL… apoi Space sau Enter" style="flex: 1; min-width: 0; border: 0; background: transparent; outline: none">
+      <span style="color: #8f99a5; font-size: 11px; white-space: nowrap">ultima: DDI</span>
+    </label>
+    <div style="display: flex; align-items: center; gap: 2px">
+      <sc-for list="{{ toggles }}" as="s" hint-placeholder-count="4">
+        <button aria-pressed="{{ s.on }}" onClick="{{ s.pick }}" title="{{ s.tip }}" style="height: 24px; padding: 0 8px; border: 0; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.04em; background: {{ s.bg }}; color: {{ s.fg }}">{{ s.label }}</button>
+      </sc-for>
+    </div>
+    <div style="width: 1px; height: 18px; background: #2a3038"></div>
+    <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #b9c1cb">Scara 1:1</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tool: 'select', tab: 'prop', tol: 'iso', snap: true, track: true, polar: true, ortho: false };
+  }
+  renderVals() {
+    const s = this.state;
+    const I = {
+      select: 'M5 3l13 8-6 1.5L9 19z',
+      pan: 'M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3',
+      measure: 'M3 17L17 3l4 4L7 21zM7 13l2 2M10 10l2 2M13 7l2 2',
+      dimLin: 'M4 6v12M20 6v12M4 12h16M4 12l3-2M4 12l3 2M20 12l-3-2M20 12l-3 2',
+      dimDia: 'M4 12a8 8 0 1 0 16 0a8 8 0 1 0 -16 0M5 19L19 5',
+      dimAng: 'M4 20h16M4 20L17 6M12 20a8 8 0 0 0-2.6-5.9',
+      lead: 'M4 20l8-8h8M4 20l1-4M4 20l4-1',
+      rough: 'M3 13l3 5 8-14h7M6.5 13h5',
+      gdt: 'M3 8h18v8H3zM9 8v8M16 8v8',
+      datum: 'M8 15h8v6H8zM12 15v-4M8 11h8l-4-6z',
+      note: 'M5 4h14v16H5zM8 8h8M8 12h8M8 16h5',
+      revtab: 'M3 5h18v14H3zM3 10h18M9 10v9',
+      line: 'M4 20L20 4',
+      circle: 'M4 12a8 8 0 1 0 16 0a8 8 0 1 0 -16 0',
+      hatch: 'M4 4h16v16H4zM4 12l8-8M4 20L20 4M12 20l8-8',
+      strike: 'M12 4l9 16H3zM2 12h20',
+      white: 'M7 20h10M5 15l9-9 5 5-9 9H8z',
+      redact: 'M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13'
+    };
+    const G = [
+      ['Navigare', [
+        ['select', 'Selecție', 'V', 'SEL', 'Click pe o adnotare pentru a o edita · trage de pătrățele · Delete șterge · Esc deselectează', false],
+        ['pan', 'Mută vederea', 'H', 'P', 'Trage pentru a muta foaia · rotița = zoom · oricând: butonul din mijloc sau Space + tragere', false],
+        ['measure', 'Măsoară', 'M', 'DI', 'Două puncte cu snap → distanța, Δx, Δy și unghiul, la scara desenului', false]]],
+      ['Cote', [
+        ['dimLin', 'Cotă liniară', 'D', 'DLI', 'Punct 1 → punct 2 → poziția liniei de cotă (orizontală sau verticală după unde muți)', true],
+        ['dimDia', 'Diametru', 'O', 'DDL', 'Generatoarea de sus → cea de jos → poziția liniei (prefix Ø)', true],
+        ['dimAng', 'Unghi', 'U', 'DAN', 'Vârful → un punct pe fiecare latură → poziția arcului', true],
+        ['lead', 'Indicație', 'L', 'LE', 'Vârful săgeții → cotul liniei · textul se scrie în panou', true]]],
+      ['Toleranțe', [
+        ['rough', 'Rugozitate', 'Q', 'RUG', 'Punct pe suprafață → al doilea click: simbol direct sau cu linie de indicație (ISO 1302)', false],
+        ['gdt', 'Cadru GD&T', '', 'TOL', 'Click pe element sau pe o cotă → poziția cadrului (ISO 1101)', false],
+        ['datum', 'Bază', '', 'DATUM', 'Click pe suprafață → poziția literei (ISO 5459, fără I, O, Q)', false]]],
+      ['Documentare', [
+        ['note', 'Note', '', 'NOTE', 'Click → bloc de note tehnice, un rând pe linie', false],
+        ['revtab', 'Tabel revizii', '', 'REV', 'Click → tabelul reviziilor, completat automat din cotele revizuite', true]]],
+      ['Desen', [
+        ['line', 'Linie', '', 'L', 'Punct → punct · lungimea și unghiul se pot tasta în timpul desenării', true],
+        ['circle', 'Cerc', '', 'C', 'Centrul → raza, sau tastează diametrul', true],
+        ['hatch', 'Hașură', '', 'H', 'Click într-un contur închis → hașură ISO 128', true]]],
+      ['Revizie', [
+        ['strike', 'Taie cota', '', 'STR', 'Click pe o cotă → valoarea veche rămâne tăiată, cea nouă apare lângă, cu triunghiul reviziei', false],
+        ['white', 'Acoperă', '', 'WO', 'Dreptunghi alb peste conținutul original (în PDF rămâne dedesubt)', true],
+        ['redact', 'Șterge din original', '', 'E', 'Selectează obiecte PDF → sunt eliminate cu adevărat la export', false]]]
+    ];
+    let ctx = null;
+    const groups = G.map((g, gi) => ({
+      name: g[0],
+      pad: gi === 0 ? '0 0 6px' : '6px 0',
+      border: gi === 0 ? 'none' : '1px solid #2a3038',
+      tools: g[1].map((t) => {
+        const on = s.tool === t[0];
+        const item = {
+          id: t[0], label: t[1], icon: I[t[0]], more: t[5], pressed: on ? 'true' : 'false',
+          tip: t[1] + '  ·  ' + t[3] + (t[2] ? '  ·  tasta ' + t[2] : ''),
+          bg: on ? 'rgba(242,169,59,0.14)' : 'transparent',
+          fg: on ? '#f2a93b' : '#b9c1cb',
+          sh: on ? 'inset 2px 0 0 #f2a93b' : 'none',
+          pick: () => this.setState({ tool: t[0] })
+        };
+        if (on) ctx = { label: t[1], icon: I[t[0]], alias: t[3] + (t[2] ? ' · ' + t[2] : ''), hint: t[4], isDim: g[0] === 'Cote' };
+        return item;
+      })
+    }));
+
+    const tabs = [['prop', 'Proprietăți'], ['layers', 'Straturi'], ['ann', 'Adnotări · 19']].map((t) => ({
+      label: t[1], sel: s.tab === t[0] ? 'true' : 'false',
+      fg: s.tab === t[0] ? '#e6e8eb' : '#8f99a5',
+      sh: s.tab === t[0] ? 'inset 0 -2px 0 #f2a93b' : 'none',
+      pick: () => this.setState({ tab: t[0] })
+    }));
+
+    const tolModes = [['none', 'Fără'], ['sym', '±'], ['dev', 'Abateri'], ['iso', 'ISO 286']].map((m) => ({
+      label: m[1], sel: s.tol === m[0] ? 'true' : 'false',
+      bg: s.tol === m[0] ? '#2a3038' : 'transparent',
+      fg: s.tol === m[0] ? '#e6e8eb' : '#8f99a5',
+      pick: () => this.setState({ tol: m[0] })
+    }));
+    const preview = { none: 'Ø60', sym: 'Ø60 ±0,05', dev: 'Ø60 +0,02/−0,01', iso: 'Ø60 h7' }[s.tol];
+
+    const toggles = [['snap', 'SNAP', 'Snap pe obiecte (F3)'], ['track', 'URMĂRIRE', 'Urmărire din punctele achiziționate (F11)'], ['polar', 'POLAR 15°', 'Urmărire polară (F10)'], ['ortho', 'ORTHO', 'Ortho (F8, Shift = temporar)']].map((t) => ({
+      label: t[1], tip: t[2], on: s[t[0]] ? 'true' : 'false',
+      bg: s[t[0]] ? 'rgba(242,169,59,0.12)' : 'transparent',
+      fg: s[t[0]] ? '#f2a93b' : '#8f99a5',
+      pick: () => this.setState({ [t[0]]: !s[t[0]] })
+    }));
+
+    const layers = [
+      { name: 'Original PDF', count: 'neatins', color: '#e6e8eb', border: 'none' },
+      { name: 'Adăugate', count: '19', color: '#3b82f6', border: 'none' },
+      { name: 'Revizii', count: '1', color: '#ef4444', border: 'none' },
+      { name: 'Ștergeri / acoperiri', count: '0', color: 'transparent', border: '1px dashed #8f99a5' }
+    ];
+
+    const A = [
+      ['Cotă', 'Ø100', 0], ['Cotă diametru', preview, 1], ['Cotă', 'Ø30 H7', 0], ['Cotă', '38', 0],
+      ['Indicație', 'Ø86 → Ø88', 2], ['GD&T poziție', 'Ø0,1 A', 0], ['GD&T bătaie', '0,06 A', 0],
+      ['Bază', 'A', 0], ['Note', '3 rânduri', 0], ['Tabel revizii', '1 rând', 0]
+    ];
+    const annots = A.map((a) => ({
+      type: a[0], val: a[1],
+      dot: a[2] === 2 ? '#ef4444' : '#3b82f6',
+      bg: a[2] === 1 ? 'rgba(242,169,59,0.10)' : 'transparent',
+      sh: a[2] === 1 ? 'inset 2px 0 0 #f2a93b' : 'none'
+    }));
+
+    return {
+      groups, ctx, tabs, tolModes, toggles, layers, annots, preview,
+      isProp: s.tab === 'prop', isLayers: s.tab === 'layers', isAnn: s.tab === 'ann',
+      tolIso: s.tol === 'iso', tolSym: s.tol === 'sym', tolDev: s.tol === 'dev'
+    };
+  }
+}
+</script>
+</body>
+</html>
