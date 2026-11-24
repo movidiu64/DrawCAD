@@ -54,6 +54,7 @@ commit that built it.
 |---|---|---|---|
 | UI-D1 | Tool rail, one slot per family, flyouts; **revised** by `research.md`: icon and label (72 px), icon-only as an option | built (e2dad48) | editor-*, states |
 | UI-D1a | A slot shows the family member used last; one click runs it and opens the list, moving onto the drawing closes it | built (e2dad48, revised after testing) | states |
+| UI-D1c | Hover with intent: 400 ms on a slot opens its list (no tool change); with a list open, hover switches families at once; 250 ms grace before closing on the drawing; option in Settings (NN/g and Baymard: hover delay against accidental opening and flicker) | built (v1.1) | — |
 | UI-D1b | `calib` leaves the rail (K, `CALIB`, Calibrate in Straturi) | built (e2dad48) | editor-layers |
 | UI-D2 | Context bar replaces the page-tab row; legend as a chip on the canvas | built (6f08861); tool defaults (tolerance, text height) not yet | editor-properties, editor-dimension-tool |
 | UI-D3 | Panel tabs Proprietăți / Straturi / Adnotări | built (b49c869) | editor-properties, editor-layers, editor-annotations |

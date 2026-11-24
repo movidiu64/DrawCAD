@@ -675,6 +675,7 @@ export function settingsDialog(app) {
     <div class="sec">
       <div class="lbl">Bara de unelte · pentru toate documentele</div>
       <label class="chk"><input type="checkbox" id="sRailLbl" ${app.railCfg().labels ? "checked" : ""}> Etichete sub iconițe</label>
+      <label class="chk"><input type="checkbox" id="sRailHover" ${app.railCfg().hover ? "checked" : ""}> Lista familiei se deschide când ții mouse-ul pe buton</label>
       <div class="railfams" id="sRailFams">${FAMILIES.map((f) => `<label class="chk"><input type="checkbox" data-fam="${f.id}" ${app.railCfg().hidden.includes(f.id) ? "" : "checked"}> ${f.label}</label>`).join("")}</div>
       <div class="sub">O familie ascunsă rămâne la îndemână din linia de comandă și cu tastele ei.</div>
     </div>
@@ -737,11 +738,13 @@ export function settingsDialog(app) {
   const railSave = () => {
     const c = app.railCfg();
     c.labels = dlg.querySelector("#sRailLbl").checked;
+    c.hover = dlg.querySelector("#sRailHover").checked;
     c.hidden = [...dlg.querySelectorAll("#sRailFams [data-fam]")].filter((x) => !x.checked).map((x) => x.dataset.fam);
     app.saveRailCfg(c);
     app.buildToolbar();
   };
   dlg.querySelector("#sRailLbl").addEventListener("change", railSave);
+  dlg.querySelector("#sRailHover").addEventListener("change", railSave);
   dlg.querySelectorAll("#sRailFams [data-fam]").forEach((x) => x.addEventListener("change", railSave));
   dlg.querySelector("#sMmReset").addEventListener("click", () => {
     dlg.querySelector("#sMm").innerHTML = mmGridHtml(MM_DEFAULT);

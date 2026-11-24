@@ -1119,4 +1119,5 @@ export const EN = {
   "Pentru AutoCAD, Allplan și alte programe CAD.": "For AutoCAD, Allplan and other CAD programs.",
   "{} MB": "{} MB",
   "{} kB": "{} kB",
+  "Lista familiei se deschide când ții mouse-ul pe buton": "A family's list opens when the mouse rests on its button",
 };

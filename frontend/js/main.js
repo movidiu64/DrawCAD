@@ -1100,7 +1100,7 @@ class App {
     try {
       c = JSON.parse(localStorage.getItem("cotare.rail") || "{}") || {};
     } catch (_) { /* default */ }
-    return { labels: c.labels !== false, hidden: Array.isArray(c.hidden) ? c.hidden : [], last: c.last && typeof c.last === "object" ? c.last : {} };
+    return { labels: c.labels !== false, hover: c.hover !== false, hidden: Array.isArray(c.hidden) ? c.hidden : [], last: c.last && typeof c.last === "object" ? c.last : {} };
   }
 
   saveRailCfg(c) {
@@ -1165,6 +1165,24 @@ class App {
         e.preventDefault();
         if (f.tools.length > 1) this.toggleFlyout(f.id, true);
       });
+      // hover with intent (UI-D1c): resting on a slot opens its list without changing the tool; with a
+      // list already open, moving along the rail switches it at once, as a menu bar does
+      b.addEventListener("pointerenter", (e) => {
+        if (e.pointerType !== "mouse" || !this.railCfg().hover) return;
+        clearTimeout(this.flyTimer);
+        if (f.tools.length < 2) {
+          if (!$("railFly").hidden) this.flyTimer = setTimeout(() => this.hideFlyout(), 300);
+          return;
+        }
+        if (!$("railFly").hidden) {
+          if (this.flyFam !== f.id) this.toggleFlyout(f.id, true, false);
+          return;
+        }
+        this.flyTimer = setTimeout(() => this.toggleFlyout(f.id, true, false), 400);
+      });
+      b.addEventListener("pointerleave", () => {
+        if ($("railFly").hidden) clearTimeout(this.flyTimer);
+      });
       // press and hold (touch): the flyout
       let timer = 0;
       b.addEventListener("pointerdown", (e) => {
@@ -1205,9 +1223,13 @@ class App {
     document.addEventListener("pointerdown", (e) => {
       if (!$("railFly").hidden && !e.target.closest("#railFly") && !e.target.closest("[data-fam]")) this.hideFlyout();
     });
+    // on the drawing the list closes, after a short grace in case the pointer only slipped out
     $("viewport").addEventListener("pointerover", (e) => {
-      if (e.pointerType === "mouse" && !$("railFly").hidden) this.hideFlyout();
+      if (e.pointerType !== "mouse" || $("railFly").hidden) return;
+      clearTimeout(this.flyTimer);
+      this.flyTimer = setTimeout(() => this.hideFlyout(), 250);
     });
+    fly.addEventListener("pointerenter", () => clearTimeout(this.flyTimer));
     this.markRail();
     if (this.keyCfg) this.applyKeyCfg(this.keyCfg);
   }
@@ -1239,6 +1261,7 @@ class App {
   }
 
   hideFlyout() {
+    clearTimeout(this.flyTimer);
     const fly = $("railFly");
     if (!fly || fly.hidden) return;
     // keys go back to the drawing (a focused row would keep them)
