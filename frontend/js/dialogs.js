@@ -213,7 +213,7 @@ export function exportDialog(app, opts = {}) {
           <label class="chk"><input type="checkbox" id="xOcr" checked> Textul recunoscut (OCR)${app.ocrLang ? "" : " — indisponibil pe server"}</label>
           <label class="chk"><input type="checkbox" id="xVec" checked> Scanuri: vectorizează imaginea <span class="muted">(experimental)</span></label>
           <label class="chk"><input type="checkbox" id="xImg"> Scanuri: imaginea ca fundal (arhivă ZIP cu DXF + PNG)</label>
-          <div class="note">Straturi separate: PDF-GEOMETRIE, PDF-TEXT, SCAN-VECTORI, OCR-TEXT, DRAWCAD-COTE… Arcele rămân arce, cercurile cercuri. Pe un scan, textul se recunoaște automat (OCR) dacă nu a fost deja; vectorizarea dă o bază de lucru, nu un desen curat — verifică cotele importante.</div>
+          <div class="note">Straturi separate: PDF-GEOMETRIE, PDF-TEXT, SCAN-VECTORI, OCR-TEXT, DRAWCAD-COTE… Arcele rămân arce, cercurile cercuri. Imaginile puse în DrawCAD ies lângă DXF, în arhiva ZIP. Pe un scan, textul se recunoaște automat (OCR) dacă nu a fost deja; vectorizarea dă o bază de lucru, nu un desen curat — verifică cotele importante.</div>
         </div>
         <div id="ePdfOpts" class="dxfopts">
         <label class="chk" style="font-size:13px"><input type="checkbox" id="eEmbed" checked> Atașează stratul editabil (la redeschidere cotele rămân editabile)</label>

@@ -38,3 +38,28 @@ test("stamp: double frame around the word, date and name under it; turned", () =
   const r = build({ ...a, angle: 15 }, S, measure);
   assert.ok(r.prims.filter((p) => p.t === "T").every((p) => p.a === 15));
 });
+
+test("QR and title block stay upright under rotate / mirror; scale grows the QR side", async () => {
+  const { rotateAbout, mirrorAbout, scaleAbout } = await import("../js/pages.js");
+  const S = derive({});
+  const center = (a) => {
+    const b = build(a, S, measure).bbox;
+    return [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
+  };
+  const near = (p, q) => assert.ok(Math.hypot(p[0] - q[0], p[1] - q[1]) < 1e-6, `${p} vs ${q}`);
+  const qr = () => ({ type: "qr", p: [100, 100], size: 20, vals: { nr_desen: "X" } });
+  const c0 = center(qr());
+  // a quarter turn about (0, 0): the center turns, the code stays the same square (not rotated)
+  const r = rotateAbout(qr(), 90, [0, 0], S, measure);
+  near(center(r), [-c0[1], c0[0]]);
+  // mirror about x = 0: the center is mirrored, the code is not
+  near(center(mirrorAbout(qr(), "v", [0, 0], S, measure)), [-c0[0], c0[1]]);
+  // scale ×1.5 about its corner: 30 mm side, corner unchanged
+  const s = scaleAbout(qr(), 1.5, [100, 100]);
+  assert.equal(s.size, 30);
+  assert.deepEqual(s.p, [100, 100]);
+  const tb = { type: "tblock", p: [200, 300], tpl: { w: 180, h: 40, lines: [[0, 0, 180, 0, 1], [0, 40, 180, 40, 1]], texts: [] }, vals: {} };
+  const t0 = center(JSON.parse(JSON.stringify(tb)));
+  near(center(mirrorAbout(JSON.parse(JSON.stringify(tb)), "h", [0, 500], S, measure)), [t0[0], 1000 - t0[1]]);
+  assert.equal(scaleAbout(JSON.parse(JSON.stringify(tb)), 2, [0, 0]).scale, 2);
+});

@@ -1194,7 +1194,7 @@ class App {
       info = `× ${fmtNum(kk, ",", 2)}`;
     } else if (g.mode === "mirror") {
       const axis = Math.abs(pt[0] - b[0]) >= Math.abs(pt[1] - b[1]) ? "h" : "v";
-      for (const c of out) mirrorAbout(c, axis, b);
+      for (const c of out) mirrorAbout(c, axis, b, this.S(), this.measure);
       info = axis === "h" ? "axă orizontală" : "axă verticală";
     }
     return { out, info };
@@ -2184,6 +2184,8 @@ class App {
       if (op.op === "scale" && (op.pages == null || n === 1)) settings = { ...settings, scale: (Number(settings.scale) || 1) / op.factor };
       const res = await api.pageOp(this.doc.id, { ...op, state: { ...this.stateJson(), settings, annots } });
       this.annots = annots;
+      // a comparison drawn for the page before the change would no longer line up
+      if (this.compare) this.endCompare();
       if (settings !== this.settings) {
         this.settings = settings;
         this._S = null;

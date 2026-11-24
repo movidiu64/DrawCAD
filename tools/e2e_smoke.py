@@ -695,10 +695,17 @@ def main(url, out):
             page.click("[data-pg=cur]")
         with page.expect_download() as dl:
             page.click("#eGo")
-        dxf_path = out / "export.dxf"
-        dl.value.save_as(str(dxf_path))
-        assert dl.value.suggested_filename.endswith(".dxf"), dl.value.suggested_filename
-        dxf = dxf_path.read_text("utf-8")
+        # the logo placed on this page goes next to the DXF: a ZIP with the DXF and the image
+        zip_path = out / "export_dxf.zip"
+        dl.value.save_as(str(zip_path))
+        assert dl.value.suggested_filename.endswith(".zip"), dl.value.suggested_filename
+        import zipfile
+        with zipfile.ZipFile(zip_path) as z:
+            names = z.namelist()
+            assert sorted(n.rsplit(".", 1)[1] for n in names) == ["dxf", "png"], names
+            dxf = z.read([n for n in names if n.endswith(".dxf")][0]).decode("utf-8")
+        assert "DRAWCAD-IMAGINI" in dxf and "DRAWCAD-STAMPILE" in dxf
+        (out / "export.dxf").write_text(dxf, "utf-8")
         assert dxf.startswith("  0\nSECTION") and "DRAWCAD-COTE" in dxf and "PDF-GEOMETRIE" in dxf
         page.wait_for_timeout(300)
 

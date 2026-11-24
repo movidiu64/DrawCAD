@@ -165,10 +165,38 @@ class ApiTest(unittest.TestCase):
         d = pdfium.PdfDocument(pdf)
         kinds = [o.type for o in d[0].get_objects(max_depth=3)]
         self.assertIn(pdfium.raw.FPDF_PAGEOBJ_IMAGE, kinds)
-        # DXF cannot hold images: they are left out, the rest is exported
-        dxf, _h = self.req("POST", f"/api/doc/{doc}/export",
-                           {"filename": "img.dxf", "format": "dxf", "pages": prims, "removals": {}, "pageSel": [0]}, raw=True)
-        self.assertIn(b"SECTION", dxf[:200])
+        # DXF: the image is saved next to the DXF (ZIP) and referenced by an IMAGE entity; the
+        # highlighter keeps its width and transparency, stamps and the watermark their layers
+        import zipfile
+
+        import ezdxf
+
+        dprims = {"0": prims["0"] + [
+            {"t": "P", "p": [50, 300, 200, 300], "w": 12, "c": "hlGreen", "op": 0.38, "cap": "round", "blend": "multiply"},
+            {"t": "T", "p": [60, 400], "txt": "APROBAT", "s": 14, "c": "stRed"},
+            {"t": "T", "p": [80, 500], "txt": "CONFIDENTIAL", "s": 60, "a": 30, "c": "wm", "op": 0.12}]}
+        zdata, h = self.req("POST", f"/api/doc/{doc}/export",
+                            {"filename": "img.dxf", "format": "dxf", "pages": dprims, "removals": {}, "pageSel": [0]}, raw=True)
+        self.assertEqual(h["X-Export-Kind"], "zip")
+        z = zipfile.ZipFile(io.BytesIO(zdata))
+        self.assertEqual(sorted(z.namelist()), ["img.dxf", "img_img1.png"])
+        msp = ezdxf.read(io.StringIO(z.read("img.dxf").decode("utf-8"))).modelspace()
+        images = msp.query("IMAGE")
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0].image_def.dxf.filename, "img_img1.png")
+        self.assertEqual(images[0].dxf.layer, "DRAWCAD-IMAGINI")
+        # turned a quarter: the 120×60 pt rectangle holds the image standing up
+        sx, sy = images[0].dxf.u_pixel.magnitude * 120, images[0].dxf.v_pixel.magnitude * 60
+        self.assertAlmostEqual(sx, 60 * 25.4 / 72, 2)
+        self.assertAlmostEqual(sy, 120 * 25.4 / 72, 2)
+        mark = [e for e in msp.query("LWPOLYLINE") if e.dxf.layer == "DRAWCAD-MARKER"][0]
+        self.assertAlmostEqual(mark.dxf.const_width, 12 * 25.4 / 72, 3)
+        self.assertAlmostEqual(mark.transparency, 0.62, 2)
+        texts = {t.dxf.text: t for t in msp.query("TEXT")}
+        self.assertEqual(texts["APROBAT"].dxf.layer, "DRAWCAD-STAMPILE")
+        self.assertEqual(texts["APROBAT"].rgb, (198, 40, 40))
+        self.assertEqual(texts["CONFIDENTIAL"].dxf.layer, "DRAWCAD-FILIGRAN")
+        self.assertAlmostEqual(texts["CONFIDENTIAL"].transparency, 0.88, 2)
         meta2 = self.req("POST", "/api/open", pdf, {"X-Filename": "img.pdf"})
         imgs = [a for a in meta2["state"]["annots"] if a["type"] == "image"]
         self.assertEqual(len(imgs), 1)

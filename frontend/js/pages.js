@@ -3,8 +3,19 @@
 import { build, moveAnnot, SCALABLE, SCALE_MIN, SCALE_MAX } from "./annots.js";
 
 const POINT_KEYS = ["p1", "p2", "p3", "c", "p", "v", "target", "pos", "vp", "tp", "elbow", "base", "lp"];
-// annotations that always stay horizontal (tables): moved whole, not rotated point by point
-const UPRIGHT = new Set(["revtab", "bom"]);
+// annotations that always stay horizontal (tables, title blocks, QR codes): moved whole by their
+// center, not rotated or mirrored point by point
+const UPRIGHT = new Set(["revtab", "bom", "tblock", "qr"]);
+
+/** Moves an upright annotation so that its center goes through f (rotation, mirror). */
+function moveCenter(a, f, S, measure) {
+  const b = build(a, S, measure).bbox;
+  if (!b) return false;
+  const c = [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
+  const nc = f(c);
+  moveAnnot(a, nc[0] - c[0], nc[1] - c[1]);
+  return true;
+}
 
 /** A point of the W×H page after rotating the page by `deg` (90, 180, 270) clockwise. */
 export function rotatePoint(p, deg, W, H) {
@@ -29,16 +40,8 @@ export function rotateAnnot(a, deg, W, H, S = null, measure = null) {
   deg = normDeg(deg);
   if (!deg) return a;
   const R = (p) => (Array.isArray(p) && p.length >= 2 ? rotatePoint(p, deg, W, H) : p);
-  if (UPRIGHT.has(a.type) && S) {
-    // the table's center goes where its center goes, but it stays horizontal
-    const b = build(a, S, measure).bbox;
-    if (b) {
-      const c = [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
-      const nc = R(c);
-      moveAnnot(a, nc[0] - c[0], nc[1] - c[1]);
-      return a;
-    }
-  }
+  // the table's center goes where its center goes, but it stays horizontal
+  if (UPRIGHT.has(a.type) && S && moveCenter(a, R, S, measure)) return a;
   if (a.type === "holes") {
     // the hole letters follow the holes; the table, kept horizontal, follows its center
     const b = S ? build({ ...a, tags: false }, S, measure).size : null;
@@ -108,14 +111,17 @@ export function scaleAbout(a, k, base) {
   if (!(k > 0) || Math.abs(k - 1) < 1e-9) return a;
   scaleAnnot(a, k);
   translateAnnot(a, base[0] * (1 - k), base[1] * (1 - k));
-  if (SCALABLE.has(a.type)) a.scale = Math.min(SCALE_MAX, Math.max(SCALE_MIN, Math.round((a.scale || 1) * k * 1000) / 1000));
+  if (SCALABLE.has(a.type) || a.type === "tblock") a.scale = Math.min(SCALE_MAX, Math.max(SCALE_MIN, Math.round((a.scale || 1) * k * 1000) / 1000));
+  // QR code: its side in mm (a QR code under ~10 mm is hard to read with a phone)
+  if (a.type === "qr") a.size = Math.min(100, Math.max(10, Math.round((a.size || 20) * k * 10) / 10));
   return a;
 }
 
 /** Mirror about the vertical (axis "v": x = base x) or horizontal (axis "h") line through the base.
  *  Texts stay readable (as AutoCAD with MIRRTEXT = 0): only positions are mirrored. */
-export function mirrorAbout(a, axis, base) {
+export function mirrorAbout(a, axis, base, S = null, measure = null) {
   const M = (p) => (Array.isArray(p) && p.length >= 2 ? (axis === "v" ? [2 * base[0] - p[0], p[1]] : [p[0], 2 * base[1] - p[1]]) : p);
+  if (UPRIGHT.has(a.type) && S && moveCenter(a, M, S, measure)) return a;
   for (const k of POINT_KEYS) if (a[k]) a[k] = M(a[k]);
   if (Array.isArray(a.pts)) a.pts = a.pts.map(M);
   if (Array.isArray(a.r) && a.r.length === 4) {

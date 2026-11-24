@@ -513,7 +513,7 @@ export const EN = {
   "Strat": "Layer",
   "Stratul era ascuns pe ecran; l-am reafișat ca să vezi ce ai adăugat.": "The layer was hidden on screen; it is shown again so you can see what you added.",
   "Straturi": "Layers",
-  "Straturi separate: PDF-GEOMETRIE, PDF-TEXT, SCAN-VECTORI, OCR-TEXT, DRAWCAD-COTE… Arcele rămân arce, cercurile cercuri. Pe un scan, textul se recunoaște automat (OCR) dacă nu a fost deja; vectorizarea dă o bază de lucru, nu un desen curat — verifică cotele importante.": "Separate layers: PDF-GEOMETRIE, PDF-TEXT, SCAN-VECTORI, OCR-TEXT, DRAWCAD-COTE… Arcs stay arcs, circles stay circles. On a scan, text is recognized automatically (OCR) if not done already; vectorization gives a working base, not a clean drawing — check important dimensions.",
+  "Straturi separate: PDF-GEOMETRIE, PDF-TEXT, SCAN-VECTORI, OCR-TEXT, DRAWCAD-COTE… Arcele rămân arce, cercurile cercuri. Imaginile puse în DrawCAD ies lângă DXF, în arhiva ZIP. Pe un scan, textul se recunoaște automat (OCR) dacă nu a fost deja; vectorizarea dă o bază de lucru, nu un desen curat — verifică cotele importante.": "Separate layers: PDF-GEOMETRIE, PDF-TEXT, SCAN-VECTORI, OCR-TEXT, DRAWCAD-COTE… Arcs stay arcs, circles stay circles. Images placed in DrawCAD go next to the DXF, in the ZIP archive. On a scan, text is recognized automatically (OCR) if not done already; vectorization gives a working base, not a clean drawing — check important dimensions.",
   "Stânga": "Left",
   "Stânga-jos": "Bottom left",
   "Stânga-sus": "Top left",

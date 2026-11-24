@@ -1146,6 +1146,19 @@ async def _export_dxf(doc_id, prims, rem, sel, opts, color, base_name):
             with Image.open(io.BytesIO(png)) as im:
                 img = (f"{stem}.png", png, im.size)
 
+        # images placed in DrawCAD: saved next to the DXF, which references them
+        pimgs = []
+        for n, p in enumerate(q for q in page_prims if q.get("t") == "I" and q.get("src")):
+            src = Path(p["src"])
+            try:
+                from PIL import Image
+
+                with Image.open(src) as im:
+                    px = im.size
+            except Exception:  # noqa: BLE001
+                continue
+            pimgs.append((f"{stem}_img{n + 1}{src.suffix}", src.read_bytes(), px, p))
+
         def build():
             d = dxfout.DxfPage(content["W"], content["H"], scale)
             d.frame()
@@ -1157,6 +1170,8 @@ async def _export_dxf(doc_id, prims, rem, sel, opts, color, base_name):
                 d.add_vectors(vec)
             if lines:
                 d.add_ocr(lines, rot)
+            for name, _, px, p in pimgs:
+                d.add_annot_image(name, px, p["p"], p.get("rot", 0), float(p.get("op", 1) or 1))
             if page_prims:
                 d.add_prims(page_prims, color)
             return d.bytes(), d.counts
@@ -1166,6 +1181,7 @@ async def _export_dxf(doc_id, prims, rem, sel, opts, color, base_name):
         files.append((f"{stem}.dxf", data))
         if img:
             files.append((img[0], img[1]))
+        files += [(name, data) for name, data, _, _ in pimgs]
     if len(files) == 1:
         return files[0][1], reports, "dxf", stats
     buf = io.BytesIO()

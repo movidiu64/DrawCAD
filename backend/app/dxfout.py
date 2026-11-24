@@ -24,6 +24,7 @@ import ezdxf  # noqa: E402
 from ezdxf import zoom  # noqa: E402
 
 from .pdfcore import (
+    COLOR_MARK,
     PDFIUM_LOCK,
     PageGeo,
     R,
@@ -55,7 +56,25 @@ LAYERS = {
     "DRAWCAD-ACOPERIRI": 7,
     "DRAWCAD-COTE": 7,
     "DRAWCAD-REVIZIE": 7,
+    "DRAWCAD-MARKER": 3,
+    "DRAWCAD-STAMPILE": 1,
+    "DRAWCAD-FILIGRAN": 8,
+    "DRAWCAD-IMAGINI": 7,
 }
+# DXF line weights stop at 2.11 mm: wider strokes (the highlighter) get a polyline width
+MAX_LINEWEIGHT_MM = 2.11
+
+
+def _annot_layer(c) -> str:
+    if c == "rev":
+        return "DRAWCAD-REVIZIE"
+    if isinstance(c, str) and c.startswith("hl"):
+        return "DRAWCAD-MARKER"
+    if isinstance(c, str) and c.startswith("st"):
+        return "DRAWCAD-STAMPILE"
+    if c == "wm":
+        return "DRAWCAD-FILIGRAN"
+    return "DRAWCAD-COTE"
 
 
 def _lineweight(mm: float) -> int:
@@ -366,8 +385,9 @@ class DxfPage:
         a = {"layer": layer, "style": "ISO", "insert": self.xy(p)}
         if rgb is not None and not _gray_dark(rgb):
             a["true_color"] = ezdxf.rgb2int(rgb)
-        self.msp.add_text(txt, height=round(h_mm, 4), rotation=round(ang % 360, 4), dxfattribs=a)
+        e = self.msp.add_text(txt, height=round(h_mm, 4), rotation=round(ang % 360, 4), dxfattribs=a)
         self._count("texte")
+        return e
 
     # --- sources
     def add_pdf(self, content, text=True):
@@ -398,14 +418,22 @@ class DxfPage:
         for p in rest:
             t = p.get("t")
             c = p.get("c", "add")
-            layer = "DRAWCAD-REVIZIE" if c == "rev" else "DRAWCAD-COTE"
+            layer = _annot_layer(c)
             rgb = None
-            if isinstance(c, str) and re.match(r"^#[0-9a-fA-F]{6}$", c):
+            if c in COLOR_MARK:
+                rgb = tuple(round(v * 255) for v in COLOR_MARK[c])
+            elif isinstance(c, str) and re.match(r"^#[0-9a-fA-F]{6}$", c):
                 rgb = tuple(int(c[i:i + 2], 16) for i in (1, 3, 5))
             elif color_mode == "layers":
                 rgb = (47, 111, 214) if c != "rev" else (198, 40, 40)
-            at = self.attribs(layer, float(p.get("w", 0.7)), rgb, p.get("dp"))
+            w_pt = float(p.get("w", 0.7))
+            wide = w_pt * PT_MM > MAX_LINEWEIGHT_MM
+            at = self.attribs(layer, None if wide else w_pt, rgb, p.get("dp"))
             fat = self.attribs(layer, None, rgb)
+            op = p.get("op")
+            if isinstance(op, (int, float)) and 0 <= op < 1:
+                # see-through like on the sheet (highlighter, watermark)
+                at["transparency"] = fat["transparency"] = ezdxf.colors.float2transparency(1 - max(0.05, float(op)))
             if t == "L":
                 x1, y1, x2, y2 = p["p"]
                 self.msp.add_line(self.xy((x1, y1)), self.xy((x2, y2)), dxfattribs=at)
@@ -426,7 +454,8 @@ class DxfPage:
                     h.paths.add_polyline_path([self.xy(q) for q in pts], is_closed=True)
                     self._count("hașuri")
                 if stroke:
-                    self.msp.add_lwpolyline([self.xy(q) for q in pts], format="xy", close=close, dxfattribs=at)
+                    pat = {**at, "const_width": round(w_pt * self.k, 4)} if wide else at
+                    self.msp.add_lwpolyline([self.xy(q) for q in pts], format="xy", close=close, dxfattribs=pat)
                     self._count("polilinii")
             elif t == "C":
                 cx, cy = p["p"]
@@ -442,7 +471,26 @@ class DxfPage:
                     self._count("cercuri")
             elif t == "T":
                 s = float(p.get("s", 10))
-                self.add_text(str(p.get("txt", "")), p["p"], s * CAP_OSIFONT * self.k, float(p.get("a", 0)), layer, rgb)
+                e = self.add_text(str(p.get("txt", "")), p["p"], s * CAP_OSIFONT * self.k, float(p.get("a", 0)), layer, rgb)
+                if e is not None and "transparency" in at:
+                    e.dxf.transparency = at["transparency"]
+
+    def add_annot_image(self, filename, px_size, rect, rot=0, op=1.0):
+        """An image placed in DrawCAD: IMAGE entity that references the file saved next to the DXF."""
+        x0, y0, x1, y1 = rect
+        w, h = abs(x1 - x0) * self.k, abs(y1 - y0) * self.k
+        rot = int(rot or 0) % 360
+        iw, ih = (h, w) if rot in (90, 270) else (w, h)
+        cx, cy = self.xy(((x0 + x1) / 2, (y0 + y1) / 2))
+        # quarter turns clockwise on the sheet; the insert point is the image's own lower left corner
+        a = math.radians(-rot)
+        ca, sa = math.cos(a), math.sin(a)
+        ins = (cx + (-iw / 2) * ca - (-ih / 2) * sa, cy + (-iw / 2) * sa + (-ih / 2) * ca)
+        idef = self.doc.add_image_def(filename=filename, size_in_pixel=px_size)
+        img = self.msp.add_image(idef, insert=ins, size_in_units=(iw, ih), rotation=-rot, dxfattribs={"layer": "DRAWCAD-IMAGINI"})
+        if op is not None and op < 1:
+            img.dxf.fade = max(0, min(100, round((1 - op) * 100)))
+        self._count("imagini")
 
     def add_ocr(self, lines, skew=None):
         for ln in lines:
