@@ -229,7 +229,7 @@ export const EN = {
   "Export anterior: cotele au fost reîncărcate editabile.": "Earlier export: dimensions were reloaded as editable.",
   "Export eșuat": "Export failed",
   "Export eșuat: {}": "Export failed: {}",
-  "Exportat {}{}{}{}{}{}": "Exported {}{}{}{}{}{}",
+  "Exportat {} ({}){}{}{}{}{}": "Exported {} ({}){}{}{}{}{}",
   "Exportă": "Export",
   "Exportă PDF": "Export PDF",
   "Exportă PDF și închide": "Export PDF and close",
@@ -1115,4 +1115,8 @@ export const EN = {
   "Personalizată": "Custom",
   "Tipul și grosimea liniilor noi (ISO 128-24)": "Type and width of new lines (ISO 128-24)",
   "Înălțimea textului pe desen, pentru tot documentul": "Text height on the drawing, for the whole document",
+  "PDF vectorial, pentru tipărit, trimis și arhivat.": "Vector PDF, for printing, sending and archiving.",
+  "Pentru AutoCAD, Allplan și alte programe CAD.": "For AutoCAD, Allplan and other CAD programs.",
+  "{} MB": "{} MB",
+  "{} kB": "{} kB",
 };

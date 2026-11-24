@@ -64,7 +64,7 @@ commit that built it.
 | UI-D6 | Accent fill only for the primary action; `--accent-tint` for state; tabular figures for values (research F7) | built (452f1cc) | all |
 | UI-D7 | Start screen: drop zone, a card on layers with the Keys link, recent documents as cards | built (5f27a88) | start |
 | UI-D7a | Thumbnails of recent documents (needs a backend endpoint) | planned | start |
-| UI-D8 | Export dialog: PDF / DXF kept, one line per format, OCR stays a PDF option | decided | states |
+| UI-D8 | Export dialog: PDF / DXF kept, one line per format, OCR stays a PDF option; toast with the file size | built (v1.1) | states |
 
 ## Layout
 

@@ -238,5 +238,5 @@ Each phase is one PR on `v1.1`, cites the decisions it builds and has screenshot
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-11-24 | minor | Phases 1–5 built on `v1.1` (UI-D1 as revised, D2–D7, D10–D13, D15 motion, D16, D17); still open: D8, D9, D14, light theme |
+| 2026-11-24 | minor | Phases 1–5 built on `v1.1` (UI-D1 as revised, D2–D7, D10–D13, D15 motion, D16, D17); still open: D9, D14, light theme (D8 and the context-bar defaults built after) |
 | 2026-11-24 | major | First UI audit on `v1.1` (≈ 50 %); references CADCraft, SolidCraft / Fusion, SolidWorks, Onshape, Shapr3D, Plasticity; decisions UI-D9 … D16 and phases with UI-D1 … D8 |

@@ -191,6 +191,7 @@ export function exportDialog(app, opts = {}) {
     <div class="seg" id="eFmt" style="margin-bottom:12px">
       <button data-fmt="pdf" class="on">PDF</button>
       <button data-fmt="dxf">DXF (AutoCAD, Allplan…)</button></div>
+    <div class="sub" id="eFmtNote" style="margin:-4px 0 12px">PDF vectorial, pentru tipărit, trimis și arhivat.</div>
     <div class="field"><label for="eName">Nume fișier</label><input type="text" class="mono" id="eName" value="${esc(suggested)}.pdf"></div>
     <div class="cols">
       <div class="cards">
@@ -235,6 +236,8 @@ export function exportDialog(app, opts = {}) {
   dlg.querySelectorAll("[data-fmt]").forEach((b) => b.addEventListener("click", () => {
     fmt = b.dataset.fmt;
     dlg.querySelectorAll("[data-fmt]").forEach((x) => x.classList.toggle("on", x === b));
+    // what the chosen format is for (UI-D8)
+    dlg.querySelector("#eFmtNote").textContent = fmt === "dxf" ? "Pentru AutoCAD, Allplan și alte programe CAD." : "PDF vectorial, pentru tipărit, trimis și arhivat.";
     dlg.querySelector("#eDxfOpts").hidden = fmt !== "dxf";
     dlg.querySelector("#ePdfOpts").hidden = fmt !== "pdf";
     const sr = dlg.querySelector("#eSplitRow");
@@ -314,7 +317,9 @@ export function exportDialog(app, opts = {}) {
         dx = ` · ${ents} entități, ${tot("texte")} texte${skew ? ` · scan îndreptat cu ${fmtNum(Math.abs(skew), ",", 2)}°` : ""}`;
         for (const n of Object.keys(stats)) if (stats[n].scan) app.ocrPages.add(Number(n));
       }
-      toast(`Exportat ${a.download}${dx}${removed ? ` · ${removed} obiecte eliminate` : ""}${blackened ? ` · ${blackened} înnegrite` : ""}${cut ? ` · ${cut} linii tăiate la margine` : ""}${left ? ` · ${left} doar acoperite/rămase` : ""}`, dx ? 5000 : 3200);
+      const kb = blob.size / 1024;
+      const size = kb >= 1024 ? `${fmtNum(kb / 1024, ",", 1)} MB` : `${Math.max(1, Math.round(kb))} kB`;
+      toast(`Exportat ${a.download} (${size})${dx}${removed ? ` · ${removed} obiecte eliminate` : ""}${blackened ? ` · ${blackened} înnegrite` : ""}${cut ? ` · ${cut} linii tăiate la margine` : ""}${left ? ` · ${left} doar acoperite/rămase` : ""}`, dx ? 5000 : 3200);
       if (opts.afterExport) opts.afterExport();
     } catch (e) {
       dlg.querySelector("#eMsg").textContent = e.message;
