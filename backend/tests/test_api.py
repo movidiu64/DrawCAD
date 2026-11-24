@@ -167,6 +167,35 @@ class ApiTest(unittest.TestCase):
         # the fillet center becomes a snap point
         self.assertTrue(any(abs(p[0] - 165 * MM) < 0.05 and abs(p[1] - 155 * MM) < 0.05 and p[2] == "c" for p in d["pts"]))
 
+    def test_snap_geometric_center_and_insertion(self):
+        """Closed polygons give their centroid (g), text runs their baseline origin (i)."""
+        from reportlab.pdfgen import canvas
+
+        buf = io.BytesIO()
+        c = canvas.Canvas(buf, pagesize=(400, 300))
+        c.rect(100, 100, 80, 40)  # closed rectangle: center (140, 120) in PDF coordinates
+        p = c.beginPath()  # an L-shaped closed outline: centroid off the bounding-box center
+        p.moveTo(250, 50)
+        p.lineTo(310, 50)
+        p.lineTo(310, 70)
+        p.lineTo(270, 70)
+        p.lineTo(270, 110)
+        p.lineTo(250, 110)
+        p.close()
+        c.drawPath(p)
+        c.line(20, 20, 60, 20)  # an open line: no centroid
+        c.setFont("Helvetica", 12)
+        c.drawString(30, 250, "Ø25 H7")
+        c.showPage()
+        c.save()
+        d = pdfcore.snap_points(buf.getvalue(), 0)
+        near = lambda kind, x, y: any(q[2] == kind and abs(q[0] - x) < 0.05 and abs(q[1] - y) < 0.05 for q in d["pts"])  # noqa: E731
+        self.assertTrue(near("g", 140, 300 - 120), "rectangle center")
+        # L shape: 60×20 (centroid 280, 60) and 20×40 (centroid 260, 90), areas 1200 and 800 → (272, 72)
+        self.assertTrue(near("g", 272, 300 - 72), [q for q in d["pts"] if q[2] == "g"])
+        self.assertEqual(len([q for q in d["pts"] if q[2] == "g"]), 2, "the open line has no center")
+        self.assertTrue(near("i", 30, 300 - 250), "text insertion point")
+
     def test_ink_for_print(self):
         """Colored lines and text become black; white stays; blocks and images on request."""
         import pypdfium2 as pdfium

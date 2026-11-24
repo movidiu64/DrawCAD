@@ -1001,4 +1001,7 @@ export const EN = {
   "FROM — punctul de bază": "FROM — base point",
   "M2P — al doilea punct": "M2P — second point",
   "M2P — primul punct": "M2P — first point",
+  "Centru geometric": "Geometric center",
+  "Inserție text": "Text insertion",
+  "Inserție": "Insertion",
 };

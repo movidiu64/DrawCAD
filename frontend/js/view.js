@@ -624,6 +624,23 @@ export class View {
         ctx.moveTo(x + s * 0.05, y + s * 0.5);
         ctx.lineTo(x + s * 0.55, y - s * 0.5);
         break;
+      case "g":
+        // geometric center: a polygon with a dot, as in AutoCAD
+        for (let i = 0; i <= 5; i++) {
+          const th = (i * Math.PI) / 2.5 - Math.PI / 2;
+          const px = x + s * 0.6 * Math.cos(th);
+          const py = y + s * 0.6 * Math.sin(th);
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.moveTo(x + s * 0.12, y);
+        ctx.arc(x, y, s * 0.12, 0, Math.PI * 2);
+        break;
+      case "i":
+        // insertion: two stacked squares
+        ctx.rect(x - s * 0.55, y - s * 0.55, s * 0.6, s * 0.6);
+        ctx.rect(x - s * 0.05, y - s * 0.05, s * 0.6, s * 0.6);
+        break;
       case "ext":
       case "trk":
       case "pol":

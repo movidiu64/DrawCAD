@@ -153,3 +153,13 @@ test("CEN override: the center of a hole from its edge", () => {
   const r = s.snap([59.5, 53], { tol: 2, modes: ALL });
   assert.ok(!r || r.kind !== "c", JSON.stringify(r));
 });
+
+test("geometric center and insertion: points of their own modes, also as overrides", async () => {
+  const { parseOverride } = await import("../js/osnap.js");
+  const s = new Snapper({ pts: [[50, 50, "g"], [80, 20, "i"]] });
+  assert.equal(s.snap([51, 50], { tol: 3, modes: new Set(["g"]) }).kind, "g");
+  assert.equal(s.snap([51, 50], { tol: 3, modes: ALL }), null, "off unless chosen");
+  assert.equal(parseOverride("gce"), "g");
+  assert.equal(parseOverride("INS"), "i");
+  assert.equal(s.snap([81, 21], { tol: 3, modes: new Set([parseOverride("ins")]) }).kind, "i");
+});

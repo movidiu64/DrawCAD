@@ -795,8 +795,27 @@ def _bez_as_arc(p0, c1, c2, p3):
     return cx, cy, r, a0, sw
 
 
+def _centroid(P):
+    """Area centroid of a closed polygon (PDF coordinates), or None when it has no area."""
+    Q = list(P)
+    if len(Q) > 1 and (Q[0][0] - Q[-1][0]) ** 2 + (Q[0][1] - Q[-1][1]) ** 2 < 1e-6:
+        Q = Q[:-1]
+    if len(Q) < 3:
+        return None
+    a = cx = cy = 0.0
+    for (x0, y0), (x1, y1) in zip(Q, Q[1:] + Q[:1]):
+        c = x0 * y1 - x1 * y0
+        a += c
+        cx += (x0 + x1) * c
+        cy += (y0 + y1) * c
+    if abs(a) < 1e-3:
+        return None
+    return cx / (3 * a), cy / (3 * a)
+
+
 def snap_points(pdf_bytes: bytes, page_index: int, limit: int = 60000) -> dict:
-    """Characteristic points: endpoints and midpoints of segments, circle centers.
+    """Characteristic points: endpoints (e) and midpoints (m) of segments, circle centers (c) and
+    quadrants (q), centroids of closed polygons (g, geometric center) and text origins (i, insertion).
 
     Also returns the straight segments (for snap on line / perpendicular)."""
     with PDFIUM_LOCK:
@@ -818,6 +837,11 @@ def snap_points(pdf_bytes: bytes, page_index: int, limit: int = 60000) -> dict:
                 pts.append([round(vx, 3), round(vy, 3), kind])
 
             for _oid, obj, typ, parent_total, _c, _n in _walk(page.raw):
+                if typ == R.FPDF_PAGEOBJ_TEXT:
+                    # insertion point of a text run: its baseline origin
+                    t = mat_mul(_obj_matrix(obj), parent_total)
+                    add(t[4], t[5], "i")
+                    continue
                 if typ != R.FPDF_PAGEOBJ_PATH:
                     continue
                 total = mat_mul(_obj_matrix(obj), parent_total)
@@ -883,6 +907,11 @@ def snap_points(pdf_bytes: bytes, page_index: int, limit: int = 60000) -> dict:
                                     segs.append([round(a[0], 3), round(a[1], 3), round(b[0], 3), round(b[1], 3), 1])
                             prev = end
                             j += 3
+                    if (sp["closed"] or geom_closed) and len(P) >= 3 and all(k == "L" for k in K[1:]):
+                        # closed polygon (rectangle, outline): its geometric center
+                        gc = _centroid(P)
+                        if gc:
+                            add(gc[0], gc[1], "g")
                     if sp["closed"]:
                         p = P[0]
                         if (prev[0] - p[0]) ** 2 + (prev[1] - p[1]) ** 2 > 0.01:

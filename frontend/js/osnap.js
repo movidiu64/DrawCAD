@@ -16,7 +16,10 @@ export const MODES = [
   { id: "par", name: "Paralel" },
   { id: "n", name: "Pe obiect" },
   { id: "node", name: "Nod (puncte de adnotări)" },
+  { id: "g", name: "Centru geometric" },
+  { id: "i", name: "Inserție text" },
 ];
+// geometric center and insertion are off by default, as in AutoCAD (they crowd busy drawings)
 export const DEFAULT_MODES = ["e", "m", "c", "q", "x", "ax", "ext", "p", "t", "par", "n", "node"];
 
 // typed snap overrides at a point prompt (AutoCAD's names, three letters or whole)
@@ -25,6 +28,7 @@ const OVERRIDES = {
   QUA: "q", QUADRANT: "q", INT: "x", INTERSECTION: "x", APP: "ax", APPINT: "ax", APPARENT: "ax",
   EXT: "ext", EXTENSION: "ext", PER: "p", PERPENDICULAR: "p", TAN: "t", TANGENT: "t",
   NEA: "n", NEAREST: "n", PAR: "par", PARALLEL: "par", NOD: "node", NODE: "node", NON: "none", NONE: "none",
+  GCE: "g", GCEN: "g", INS: "i", INSERT: "i", INSERTION: "i",
 };
 
 /** A typed snap override: the mode id ("none" for NON) or null. `_` and `'` prefixes allowed. */
@@ -51,12 +55,14 @@ export const LABELS = {
   t: "Tangent",
   par: "Paralel",
   n: "Pe obiect",
+  g: "Centru geometric",
+  i: "Inserție",
   trk: "Urmărire",
   pol: "Polar",
 };
 
 const TAU = Math.PI * 2;
-const PRIO = { c: 0, e: 1, a: 1, x: 1, q: 2, ax: 2, p: 2.2, t: 2.2, m: 3 };
+const PRIO = { c: 0, e: 1, a: 1, x: 1, q: 2, ax: 2, g: 2, i: 2, p: 2.2, t: 2.2, m: 3 };
 const angOf = (c, p) => Math.atan2(-(p[1] - c[1]), p[0] - c[0]);
 const polar = (c, r, th) => [c[0] + r * Math.cos(th), c[1] - r * Math.sin(th)];
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
