@@ -23,6 +23,13 @@ COPY backend/app ./app
 COPY frontend /app/frontend
 COPY docker/entrypoint.sh /entrypoint.sh
 COPY LICENSE /app/LICENSE
+COPY VERSION /app/VERSION
+
+# the version shown in Settings: the release given by CI, or VERSION + the build time for an image
+# built from source (a git stack), so every build can be told apart
+ARG DRAWCAD_VERSION=""
+RUN if [ -n "$DRAWCAD_VERSION" ]; then v="$DRAWCAD_VERSION"; else v="$(cat /app/VERSION) · $(date -u '+%Y-%m-%d %H:%M') UTC"; fi \
+ && printf '%s' "$v" > /app/frontend/version.txt
 
 LABEL org.opencontainers.image.title="DrawCAD" \
       org.opencontainers.image.description="Self-hosted PDF editor for technical drawings: dimensions, tolerances, GD&T, revisions, OCR, DXF export" \

@@ -22,6 +22,13 @@ python tools/e2e_smoke.py http://127.0.0.1:8765 e2e_out   # browser test (Playwr
 python tools/security_smoke.py http://127.0.0.1:8765      # crafted files, CSP, cross-site, isolation
 ```
 
+## Version
+
+`VERSION` holds the version being developed (`1.2.0-dev.N`). Bump `N` with every push to a development
+branch, and set it to the plain version (`1.2.0`) in the commit that is tagged for a release. Settings shows
+it: the release tag in CI images, `VERSION` + build time in images built from source (git stacks), and
+`VERSION (commit)` when run from a checkout.
+
 ## Language rules
 
 - Commits, PR texts, code comments, docs: **English**.

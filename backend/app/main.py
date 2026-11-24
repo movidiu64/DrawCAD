@@ -59,12 +59,41 @@ DOCS = DATA_DIR / "docs"
 DESKTOP = str(_env("DESKTOP", "")).strip() == "1"
 
 
-def _version() -> str:
-    """App version: written by the build into frontend/version.txt (release tag or commit)."""
+def _git_commit(root: Path) -> str:
+    """Short commit of a git checkout (read from .git, no git program needed), or ""."""
     try:
-        return (FRONTEND_DIR / "version.txt").read_text(encoding="utf-8").strip()[:40] or "dev"
+        g = root / ".git"
+        head = (g / "HEAD").read_text(encoding="utf-8").strip()
+        if not head.startswith("ref:"):
+            return head[:7]
+        ref = head[4:].strip()
+        f = g / ref
+        if f.is_file():
+            return f.read_text(encoding="utf-8").strip()[:7]
+        for line in (g / "packed-refs").read_text(encoding="utf-8").splitlines():
+            if line.endswith(" " + ref):
+                return line[:7]
+    except OSError:
+        pass
+    return ""
+
+
+def _version() -> str:
+    """App version, shown in Settings: frontend/version.txt written by the build (a release tag in CI,
+    or VERSION + build time in an image built from source); in a checkout, VERSION + the commit."""
+    try:
+        v = (FRONTEND_DIR / "version.txt").read_text(encoding="utf-8").strip()[:60]
+        if v and v != "dev":
+            return v
+    except OSError:
+        pass
+    root = FRONTEND_DIR.parent
+    try:
+        base = (root / "VERSION").read_text(encoding="utf-8").strip()[:30]
     except OSError:
         return "dev"
+    sha = _git_commit(root)
+    return f"{base} ({sha})" if sha else base or "dev"
 
 
 VERSION = _version()
