@@ -102,11 +102,14 @@ export function resolvePoint(q, ctx) {
   }
 }
 
-/** Point modifiers typed at a point prompt: FROM (base + offset), M2P / MTP (midpoint of two). */
+/** Point modifiers typed at a point prompt: FROM (base + offset), M2P / MTP (midpoint of two),
+ *  .X / .Y (point filters: one coordinate from the next pick, the other from the one after). */
 export function parsePointMod(text) {
   const q = String(text || "").trim().toUpperCase().replace(/^[_']+/, "");
   if (q === "FROM" || q === "FRO") return "from";
   if (q === "M2P" || q === "MTP") return "m2p";
+  if (q === ".X") return "fx";
+  if (q === ".Y") return "fy";
   return null;
 }
 

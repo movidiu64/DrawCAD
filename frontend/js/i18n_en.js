@@ -1032,4 +1032,12 @@ export const EN = {
   "Unghiuri față de ultimul segment": "Angles from the last segment",
   "Unghiuri suplimentare (°, despărțite prin ; )": "Additional angles (°, separated by ; )",
   "ex.: 7; 22,5": "e.g. 7; 22.5",
+  "Poligon": "Window polygon",
+  "Poligon traversare": "Crossing polygon",
+  "W · C · F · WP · CP · ALL · L · P · R · A": "W · C · F · WP · CP · ALL · L · P · R · A",
+  "poligon: click-uri": "polygon: clicks",
+  ".X — punctul care dă Y": ".X — the point that gives Y",
+  ".X — punctul care dă X": ".X — the point that gives X",
+  ".Y — punctul care dă X": ".Y — the point that gives X",
+  ".Y — punctul care dă Y": ".Y — the point that gives Y",
 };

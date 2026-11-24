@@ -36,3 +36,20 @@ export function windowSelection(sel, ids, { shift = false, pickadd = false, empt
   for (const id of ids) next.add(id);
   return next;
 }
+
+/** Is the point inside the polygon (even-odd rule)? */
+export function pointInPolygon(p, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i];
+    const [xj, yj] = poly[j];
+    if (yi > p[1] !== yj > p[1] && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/** WP: is a box (x0, y0, x1, y1) completely inside the polygon (its corners, for a convex or a
+ *  roughly convex outline)? */
+export function boxInPolygon(b, poly) {
+  return [[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]]].every((q) => pointInPolygon(q, poly));
+}

@@ -5,7 +5,7 @@ import { View, COLORS } from "./view.js";
 import { Snapper, MODES, DEFAULT_MODES, parseOverride, overrideModes, LABELS } from "./osnap.js";
 import { Panel } from "./panel.js";
 import { TOOLS, TOOL_BY_ID, finalize, promptFor, resolveOption } from "./tools.js";
-import { clickSelection, windowSelection } from "./selection.js";
+import { clickSelection, windowSelection, pointInPolygon, boxInPolygon } from "./selection.js";
 import { parsePoint, parsePointMod, resolvePoint, toUser, defaultOrigin, orthoActive, routeKey } from "./pointin.js";
 import * as dlg from "./dialogs.js";
 import { VIEW_LETTERS } from "./symbols.js";
@@ -411,6 +411,18 @@ class App {
       this.toolClick([(m.a[0] + pt[0]) / 2, (m.a[1] + pt[1]) / 2]);
       return true;
     }
+    if (m.kind === "fx" || m.kind === "fy") {
+      // .X / .Y: the first pick gives one coordinate, the next one the other
+      if (!m.first) {
+        m.first = pt;
+        this.snapOverride = null;
+        this.updateCmdPrompt();
+        return true;
+      }
+      this.pointMod = null;
+      this.toolClick(m.kind === "fx" ? [m.first[0], pt[1]] : [pt[0], m.first[1]]);
+      return true;
+    }
     if (m.kind === "pickDim") {
       this.pointMod = null;
       const tol = 6 / this.view.zoom;
@@ -505,14 +517,14 @@ class App {
       return;
     }
     if (this.selPrompt) {
-      inp.placeholder = "W · C · F · ALL · L · P · R · A";
+      inp.placeholder = "W · C · F · WP · CP · ALL · L · P · R · A";
       if (box) {
         const sp = this.selPrompt;
         const n = this.sel.size;
         const what = { erase: "Șterge adnotările", moveSel: "Mută obiectele", copySel: "Copiază obiectele" }[sp.cmd] || "";
         const then = sp.fence ? "Enter închide linia" : sp.cmd === "erase" ? "Enter șterge" : "Enter continuă";
-        const state = sp.fence ? "linie de selecție: click-uri" : sp.force === "w" ? "fereastră" : sp.force === "c" ? "traversare" : sp.remove ? "scoate din selecție" : "";
-        const opts = [["W", "Fereastră"], ["C", "Traversare"], ["F", "Linie"], ["ALL", "Tot"], ["L", "Ultimul"], ["P", "Anterior"], sp.remove ? ["A", "Adaugă"] : ["R", "Scoate"]]
+        const state = sp.fence ? (sp.fenceMode === "f" ? "linie de selecție: click-uri" : "poligon: click-uri") : sp.force === "w" ? "fereastră" : sp.force === "c" ? "traversare" : sp.remove ? "scoate din selecție" : "";
+        const opts = [["W", "Fereastră"], ["C", "Traversare"], ["F", "Linie"], ["WP", "Poligon"], ["CP", "Poligon traversare"], ["ALL", "Tot"], ["L", "Ultimul"], ["P", "Anterior"], sp.remove ? ["A", "Adaugă"] : ["R", "Scoate"]]
           .map(([k, l]) => `<button type="button" data-selopt="${k}" title="${esc(l)} (${k})">${esc(l)} <i>${k}</i></button>`).join("");
         box.innerHTML = `<b>${what} — selectează obiectele (${n} ${n === 1 ? "selectat" : "selectate"})${state ? ` · ${state}` : ""} · ${then}, Esc renunță</b> <span class="cmdopts">${opts}</span>`;
         box.hidden = false;
@@ -547,6 +559,8 @@ class App {
     if (pm && pm.kind === "from") pr.text = pm.base ? "FROM — deplasarea față de bază (@dx,dy sau @d<unghi)" : "FROM — punctul de bază";
     if (pm && pm.kind === "m2p") pr.text = pm.a ? "M2P — al doilea punct" : "M2P — primul punct";
     if (pm && pm.kind === "pickDim") pr.text = "Alege cota liniară de la care continui";
+    if (pm && pm.kind === "fx") pr.text = pm.first ? ".X — punctul care dă Y" : ".X — punctul care dă X";
+    if (pm && pm.kind === "fy") pr.text = pm.first ? ".Y — punctul care dă X" : ".Y — punctul care dă Y";
     if (pm) pr.opts = [];
     if (this.snapOverride) pr.text += this.snapOverride === "none" ? " · fără snap" : ` · snap: ${LABELS[this.snapOverride === "node" ? "a" : this.snapOverride]}`;
     return pr;
@@ -1436,6 +1450,7 @@ class App {
     const pts = cur ? [...f, cur] : f;
     const prims = [];
     for (let i = 0; i + 1 < pts.length; i++) prims.push({ t: "L", p: [...pts[i], ...pts[i + 1]], w: 0.8, c: "sel", dash: true });
+    if (this.selPrompt.fenceMode !== "f" && pts.length >= 3) prims.push({ t: "L", p: [...pts[pts.length - 1], ...pts[0]], w: 0.8, c: "sel", dash: true });
     this.view.overlay = { prims };
     this.view.redraw();
   }
@@ -1447,12 +1462,25 @@ class App {
     sp.fence = null;
     this.view.overlay = null;
     const ids = [];
-    if (f.length >= 2) {
+    const mode = sp.fenceMode || "f";
+    const poly = mode !== "f";
+    const edges = poly && f.length >= 3 ? [...f, f[0]] : f;
+    if (poly && f.length >= 3) {
+      // WP: completely inside the polygon; CP: inside or crossing its edges
+      for (const { a, built } of this.visibleBuilt()) {
+        const b = built.bbox;
+        if (!b) continue;
+        if (boxInPolygon(b, f)) ids.push(a.id);
+        else if (mode === "cp" && [[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]]].some((q) => pointInPolygon(q, f))) ids.push(a.id);
+      }
+    }
+    if ((mode === "f" && f.length >= 2) || (mode === "cp" && f.length >= 3)) {
       const tol = 4 / this.view.zoom;
       for (const { a, built } of this.visibleBuilt()) {
+        if (ids.includes(a.id)) continue;
         let crossed = false;
-        for (let i = 0; i + 1 < f.length && !crossed; i++) {
-          const [p, q] = [f[i], f[i + 1]];
+        for (let i = 0; i + 1 < edges.length && !crossed; i++) {
+          const [p, q] = [edges[i], edges[i + 1]];
           const n = Math.max(1, Math.ceil(Math.hypot(q[0] - p[0], q[1] - p[1]) / tol));
           for (let k = 0; k <= n && !crossed; k++) crossed = hit(built, a, [p[0] + ((q[0] - p[0]) * k) / n, p[1] + ((q[1] - p[1]) * k) / n], tol);
         }
@@ -1548,6 +1576,12 @@ class App {
     }
     if (q === "F" || q === "FENCE") {
       sp.fence = [];
+      sp.fenceMode = "f";
+      return done();
+    }
+    if (q === "WP" || q === "WPOLYGON" || q === "CP" || q === "CPOLYGON") {
+      sp.fence = [];
+      sp.fenceMode = q[0] === "W" ? "wp" : "cp";
       return done();
     }
     if (q === "R" || q === "REMOVE") {

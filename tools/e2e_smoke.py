@@ -455,6 +455,13 @@ def main(url, out):
         assert page.evaluate("window.cotare.cmdState.orient") == "v", page.evaluate("window.cotare.cmdState")
         page.keyboard.press("Escape")
         page.keyboard.press("Escape")
+        # 25. point filter .X: X from one point, Y from the next
+        page.keyboard.press("i")
+        page.click("#cmdIn")
+        typed(".X", "30,40", "70,80", "@5,0")
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
+        assert page.evaluate(lastln) == [[30, 80], [35, 80]], page.evaluate(lastln)
         page.keyboard.press("Escape")
         page.keyboard.press("f")
         page.wait_for_timeout(300)
@@ -466,7 +473,7 @@ def main(url, out):
         page.screenshot(path=str(out / "editor.png"))
 
         kinds = page.evaluate("window.cotare.annots.map(a => a.type)")
-        assert len(kinds) == 35, kinds
+        assert len(kinds) == 36, kinds
 
         # export
         page.click("#btnExport")
@@ -510,15 +517,15 @@ def main(url, out):
         # reopen: dimensions come back editable
         prev_id = page.evaluate("window.cotare.doc.id")
         page.set_input_files("#fileInput", str(path))
-        # wait for the new document (loading takes time), not the old one which already had 35 annotations
-        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 35")
+        # wait for the new document (loading takes time), not the old one which already had 36 annotations
+        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 36")
         # closing without changes: straight to the start page
         page.click("#btnClose")
         page.wait_for_function("window.cotare.doc === null && !document.getElementById('emptyState').hidden")
         page.wait_for_function("document.querySelectorAll('#recentList [data-doc]').length >= 1", timeout=5000)
         # reopen from Recent, one change, then close with the prompt
         page.click("#recentList [data-doc]")
-        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 35")
+        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 36")
         page.wait_for_timeout(300)
         page.keyboard.press("t")
         click(100, 30)

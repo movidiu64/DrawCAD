@@ -88,3 +88,10 @@ test("point modifiers: FROM and M2P (MTP), with the usual prefixes", async () =>
   assert.equal(parsePointMod("'MTP"), "m2p");
   assert.equal(parsePointMod("M"), null);
 });
+
+test("point filters .X / .Y", async () => {
+  const { parsePointMod } = await import("../js/pointin.js");
+  assert.equal(parsePointMod(".x"), "fx");
+  assert.equal(parsePointMod(".Y"), "fy");
+  assert.equal(parsePointMod(".z"), null);
+});

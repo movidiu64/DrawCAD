@@ -24,3 +24,12 @@ test("AutoCAD selection (PICKADD): a click or window adds, Shift removes, nothin
   assert.deepEqual(arr(windowSelection(S("a", "b", "c"), ["b", "c"], { ...o, shift: true })), ["a"]);
   assert.deepEqual(arr(windowSelection(S("a"), [], { ...o, empty: true })), ["a"]);
 });
+
+test("WP / CP polygons: point and box inside", async () => {
+  const { pointInPolygon, boxInPolygon } = await import("../js/selection.js");
+  const tri = [[0, 0], [100, 0], [0, 100]];
+  assert.ok(pointInPolygon([10, 10], tri));
+  assert.ok(!pointInPolygon([60, 60], tri));
+  assert.ok(boxInPolygon([5, 5, 20, 20], tri));
+  assert.ok(!boxInPolygon([40, 40, 70, 70], tri), "a corner outside");
+});
