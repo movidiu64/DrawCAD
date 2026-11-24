@@ -157,10 +157,13 @@ The app was originally called "Cotare": the old `COTARE_*` variables are still a
 - **Parallel** // — during a command rest on a line, then move nearly parallel to it
 - **Polar** — on the 5°…90° rays from the previous point (15° by default), with distance and angle in the tooltip; excludes Ortho
 - **Node** — the points of the annotations already drawn (dimension origins, symbol anchors)
+- **Geometric center** — the center of a closed outline from the PDF (a rectangle, a slot outline), and **Insertion** — where a PDF text starts (its baseline). Both are off by default; turn them on in the menu or type `GCE` / `INS` for one pick
 
 Modes are chosen from the arrow next to "Snap" in the bottom bar. Keys: **F3** snap, **F8** ortho, **F10** polar, **F11** tracking, **Alt** held = no snap, **Shift** held = ortho the other way round (on when it is off, off when it is on), **Esc** clears the acquired points.
 
-**One snap for the next pick:** type `END`, `MID`, `CEN`, `QUA`, `INT`, `APP`, `EXT`, `PER`, `TAN`, `NEA`, `PAR` or `NOD` in the command line (the whole names work too) and only that snap is used for the next point, even with snap off; `NON` = no snap. With `CEN`, hovering the edge of a hole is enough to take its center. In direct-keys mode, click the command line first (letters there are tools).
+**One snap for the next pick:** type `END`, `MID`, `CEN`, `QUA`, `INT`, `APP`, `EXT`, `PER`, `TAN`, `NEA`, `PAR`, `NOD`, `GCE` or `INS` in the command line (the whole names work too) and only that snap is used for the next point, even with snap off; `NON` = no snap. With `CEN`, hovering the edge of a hole is enough to take its center. In direct-keys mode, click the command line first (letters there are tools).
+
+**FROM and M2P:** at any point of a command, `FROM` asks for a base point and then takes the point as an offset from it (`@10,5`, `@20<45`); `M2P` (or `MTP`) takes the midpoint of the next two picks.
 
 **Several snaps under the cursor:** **Tab** steps through them (Shift+Tab back); the label shows which one, e.g. "Endpoint (2/3, Tab)", and a click takes it.
 
@@ -192,6 +195,7 @@ Dimensions do not change on calibration: they measure the drawing.
 **Prompts and options:** while a command runs, the command line shows what it asks for and the options it has now, as buttons. Choose one by its letter + Enter (AutoCAD's letters, in both languages) or with a click. In direct-keys mode, an option letter typed on the drawing goes to the command line by itself.
 - `DLI`: `T` text (a number sets the nominal value, other text replaces it), `H` horizontal, `V` vertical. `DAL`, `DDL`, `DDI`, `DRA`, `DAN`: `T`.
 - `DOR`: `X` / `Y` force the axis. `DOR`, `DCO`, `DBA`: `U` drops the last point.
+- `DCO`, `DBA`: `S` (before the first point) picks an existing linear dimension to continue: the chain goes on from its second extension line on the same line, a baseline series from its first one, one step further out; Enter ends it, with no placement click.
 - `L`: `U` undoes the last segment, `C` closes the chain. `PL`: `U`, `C`.
 - `C` (circle): `D` diameter. `REC`: `D` length and width. `UCS`: `W` page corner.
 - An option that needs a value asks for it in the command line; Esc or an empty Enter keeps the default.
