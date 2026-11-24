@@ -390,6 +390,7 @@ class App {
 
   /** Where the rubber band, polar and ortho start: the last tracking point during TK, else the last click. */
   pickAnchor() {
+    if (this.hotGrip) return this.hotGrip.base;
     const m = this.pointMod;
     if (m && m.kind === "tk" && m.pts.length) return m.pts[m.pts.length - 1];
     return this.clicks[this.clicks.length - 1];
@@ -527,6 +528,7 @@ class App {
   endHotGrip() {
     this.hotGrip = null;
     this.hotSet = null;
+    if (this.dyn) this.dynReset();
     this.view.overlay = null;
     this.dragTip = null;
     this.updateCmdPrompt();
@@ -539,6 +541,7 @@ class App {
     const g = this.hotGrip;
     const order = ["stretch", "move", "rotate", "scale", "mirror"];
     g.mode = order[(order.indexOf(g.mode) + 1) % order.length];
+    if (this.dyn) this.dynReset();
     if (g.mode === "scale") {
       // the cursor's distance from the base when SCALE starts is factor 1
       const c = this.lastPt || g.base;
@@ -2483,8 +2486,11 @@ class App {
       if (e.button !== 0) return;
       const t = TOOL_BY_ID[this.tool];
       if (this.hotGrip) {
-        const { pt } = this.snapPoint(raw, e, this.hotGrip.base);
-        this.applyHotGrip(pt);
+        const base = this.hotGrip.base;
+        const { pt } = this.snapPoint(raw, e, base);
+        const p = this.dynTool() ? this.dynPoint(pt, base) : pt;
+        if (this.dyn) this.dynReset();
+        this.applyHotGrip(p);
         return;
       }
       if (t.kind === "select") {
@@ -2643,12 +2649,17 @@ class App {
         return;
       }
       if (this.hotGrip && !d) {
-        const { pt, sn } = this.snapPoint(raw, e, this.hotGrip.base);
+        const base = this.hotGrip.base;
+        const { pt, sn } = this.snapPoint(raw, e, base);
         this.trackHover(sn, raw);
         this._dynPt = pt;
-        this.previewHotGrip(pt, sn);
-        this.showCoords(pt, this.hotGrip.base);
-        this.renderDyn(pt, null);
+        this._dynSn = sn;
+        // a length or angle typed at the cursor is locked: the preview follows it
+        const dt = this.dynTool();
+        const p2 = dt ? this.dynPoint(pt, base) : pt;
+        this.previewHotGrip(p2, sn);
+        this.showCoords(p2, base);
+        this.renderDyn(p2, dt ? base : null);
         return;
       }
       if (t.kind === "select" || t.kind === "pan") {
@@ -3113,6 +3124,9 @@ class App {
   /** The tool expects a point relative to the last click: values can be typed on the keyboard. */
   dynTool() {
     const t = TOOL_BY_ID[this.tool];
+    // a hot grip in Stretch or Move: length and angle from the base point, as for the next point of a line
+    const g = this.hotGrip;
+    if (g) return !!(this.doc && this.dyn.on && !g.pickBase && (g.mode === "stretch" || g.mode === "move"));
     return !!(this.doc && this.dyn.on && this.clicks.length && !this.placing && t && (t.kind === "clicks" || t.kind === "poly"));
   }
 
@@ -3193,7 +3207,8 @@ class App {
       const anchor = this.pickAnchor();
       const p = this.dynPoint(this._dynPt || this.lastPt || anchor, anchor);
       this.dynReset();
-      this.toolClick(p);
+      if (this.hotGrip) this.applyHotGrip(p);
+      else this.toolClick(p);
       this.dynRefresh();
       return true;
     }
@@ -3212,7 +3227,8 @@ class App {
       return;
     }
     const p = this.dynPoint(this._dynPt, anchor);
-    this.updateOverlay(p, this._dynSn);
+    if (this.hotGrip) this.previewHotGrip(p, this._dynSn);
+    else this.updateOverlay(p, this._dynSn);
     this.showCoords(p, anchor);
     this.renderDyn(p, anchor);
   }
@@ -3682,7 +3698,8 @@ class App {
         e.preventDefault();
         return;
       }
-      if (this.hotGrip && (e.key === " " || e.key === "Enter") && !this.dynMenu) {
+      const dynTyped = !!(this.dyn && (this.dyn.active || Object.keys(this.dyn.vals).length));
+      if (this.hotGrip && (e.key === " " || e.key === "Enter") && !this.dynMenu && !dynTyped) {
         // as in AutoCAD: Space (or Enter) on a hot grip goes Stretch → Move → Rotate → Scale → Mirror
         e.preventDefault();
         this.cycleHotGrip();

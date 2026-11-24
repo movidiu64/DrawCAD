@@ -531,6 +531,20 @@ def main(url, out):
         typed("E")
         assert page.evaluate(f"window.cotare.annots.some(a => a.id === '{new_id}')") is False
         page.keyboard.press("Escape")
+        # 30. dynamic input on a hot grip: the cursor gives the direction, 5 typed at the cursor the length
+        page.evaluate(f"window.cotare.select({lines}.slice(-1)[0].id)")
+        click(40, uy(70))
+        assert page.evaluate("window.cotare.hotGrip && window.cotare.hotGrip.mode") == "stretch"
+        page.mouse.move(*scr(55, uy(70.4)))
+        page.mouse.move(*scr(60, uy(70.2)))
+        page.keyboard.type("5")
+        assert page.evaluate("window.cotare.dynTool()") is True
+        page.keyboard.press("Tab")  # to the angle field
+        page.keyboard.type("0")
+        page.keyboard.press("Enter")
+        assert page.evaluate("window.cotare.hotGrip") is None
+        assert page.evaluate(lastln) == [[35, 65], [45, 70]], page.evaluate(lastln)
+        page.keyboard.press("Escape")
         # 29. TK tracking: two tracking points (the second only vertical), Enter, then the line from there
         page.keyboard.press("i")
         page.click("#cmdIn")

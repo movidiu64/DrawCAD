@@ -16,7 +16,7 @@ DrawCAD is not a CAD system: it annotates a fixed sheet (a PDF page or a scan). 
 behaviour only makes sense for model geometry (3D, UCS rotation, isometric snap, blocks), it is left
 out of the measure and listed as *not applicable*.
 
-**Headline (estimate): ≈ 42 % at the measured commit, ≈ 79 % on branch `v1.1`.** Snaps (11 running modes, tracking, extension, parallel, apparent
+**Headline (estimate): ≈ 42 % at the measured commit, ≈ 80 % on branch `v1.1`.** Snaps (11 running modes, tracking, extension, parallel, apparent
 intersection), polar and ortho, the alias table with AutoCAD names and the command line with
 autocomplete and history are real. Typed coordinates are missing entirely (no `x,y`, `@`, `<`, `#`),
 the command line knows only command names (no prompts, no options, no typed points), there are no
@@ -31,20 +31,20 @@ Re-measured on branch `v1.1` after phases 1–5, the same way and with the same 
 | Point entry | 15 % | 15 % | 82 % | the whole typed syntax, typed first point, origin and UCS, typed box corners, FROM, M2P, .X / .Y, TK |
 | Object snaps | 20 % | 60 % | 84 % | typed overrides, Tab cycling, Node as a mode, CEN from the edge, Geometric center, Insertion, snap on scans |
 | Tracking, polar, ortho | 10 % | 60 % | 86 % | Shift toggles ortho; additional and relative polar angles, polar step; tracking along polar angles (option); TK |
-| Dynamic input | 10 % | 35 % | 62 % | `@ # <` from anywhere, absolute points through the command line, the prompt and its options menu next to the cursor |
+| Dynamic input | 10 % | 35 % | 72 % | `@ # <` from anywhere, absolute points through the command line, the prompt and its options menu next to the cursor; length and angle at the cursor on a hot grip (Stretch, Move) |
 | Command line | 15 % | 40 % | 77 % | prompts, options by letter or click (DCO / DBA Select, TEXT H / R, DIST M too), typed points, transparent commands, F2 |
-| Grips and editing | 10 % | 30 % | 75 % | MOVE and COPY with base point and displacement; hot grips (Space: Stretch / Move / Rotate / Scale / Mirror, Base point, Copy, typed points and values); grips on up to 100 selected annotations, several hot grips with Shift |
+| Grips and editing | 10 % | 30 % | 78 % | MOVE and COPY with base point and displacement; hot grips (Space: Stretch / Move / Rotate / Scale / Mirror, Base point, Copy, typed points and values); grips on up to 100 selected annotations, several hot grips with Shift; dimensional input on hot grips |
 | Selection | 10 % | 40 % | 83 % | Select objects prompt (W, C, F, WP, CP, ALL, L, P, R, A), AutoCAD selection option, selection cycling with Tab |
 | Keys and aliases | 10 % | 55 % | 75 % | acad.pgp import, F2, E = ERASE |
-| **Total (estimate)** | 100 % | ≈ 42 % | **≈ 79 %** | |
+| **Total (estimate)** | 100 % | ≈ 42 % | **≈ 80 %** | |
 
-The total is the weighted sum of the rows (0.15 × 82 + 0.20 × 84 + 0.10 × 86 + 0.10 × 62 + 0.15 × 77 +
-0.10 × 75 + 0.10 × 83 + 0.10 × 75 = 78.75). The previous revision gave ≈ 76 % with grips at 45 %, which
+The total is the weighted sum of the rows (0.15 × 82 + 0.20 × 84 + 0.10 × 86 + 0.10 × 72 + 0.15 × 77 +
+0.10 × 78 + 0.10 × 83 + 0.10 × 75 = 80.05). The previous revision gave ≈ 76 % with grips at 45 %, which
 sums to 73.85: it was overstated by about two points.
 
-Still missing, in the order they matter: dynamic input (62 %, the weakest area: no dimension input
-fields on grips, no tooltip with distance and angle at the cursor in place of the status bar);
-multifunctional grip menus; lasso (press-drag is the rectangle here, by design).
+Still missing, in the order they matter: multifunctional grip menus; lasso (press-drag is the
+rectangle here, by design); X / Y pointer-input boxes for the first point (left out on purpose:
+typed in the command line instead).
 
 ## How this was measured
 
@@ -489,6 +489,9 @@ Ovidiu's confirmation (behaviour in his AutoCAD, or a product choice) before it 
   the resize corners are left out. Shift+click makes grips hot (red, Shift+click again drops one);
   a click on one of them starts the hot grip, and Stretch moves all hot grips by the same
   displacement. A click elsewhere or a new selection drops them.
+- Dynamic input on a hot grip in Stretch or Move: digits at the cursor give the length from the base,
+  Tab the angle (locked, as for the next point of a line); Enter applies. In Rotate and Scale the
+  digits go to the command line as the angle or factor. e2e step 30.
 - Not done: multifunctional grip menus (hover on a grip).
 - **Tests:** `frontend/tests/pages.test.js` (translate, rotate, scale, mirror about a base);
   `tools/e2e_smoke.py` step 26 (Space → Move with `@0,-10`; Enter twice → Rotate 90) and step 27
@@ -548,6 +551,7 @@ After phases 1–5 the same weights give about **≈ 65 %** (estimate).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-24 | minor | Dynamic input on hot grips on `v1.1`; dynamic input 72 %, grips 78 %; ≈ 80 % (estimate) |
 | 2026-11-24 | minor | `TK` and tracking along polar angles on `v1.1`; point entry 82 %, tracking 86 %; ≈ 79 % (estimate) |
 | 2026-11-24 | minor | Selection cycling with Tab on `v1.1`; selection 78 → 83 %; ≈ 77 % (estimate) |
 | 2026-11-24 | minor | Grips on several selected annotations and several hot grips (Shift) on `v1.1`; grips 65 → 75 %; ≈ 77 % (estimate) |
