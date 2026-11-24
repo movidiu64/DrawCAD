@@ -293,6 +293,12 @@ def _clean_prims(prims):
             q["dp"] = dp
         if p["t"] == "T":
             q["txt"] = str(p.get("txt", ""))[:2000]
+        if p.get("cap") == "round":
+            q["cap"] = "round"
+        if p.get("blend") == "multiply":
+            q["blend"] = "multiply"
+        if p["t"] != "I" and _finite(p.get("op")):
+            q["op"] = min(1.0, max(0.05, float(p["op"])))
         if p["t"] == "I":
             # an image annotation: its id only (the server finds the file); quarter turns; opacity
             if not _IMG_RE.match(str(p.get("img", ""))) or len(pts) != 4:
@@ -1142,6 +1148,21 @@ async def api_export(request: Request):
         sel = sel[:5000]
     split = bool(body.get("split"))
     rev = re.sub(r"[^\w .-]", "", str(body.get("rev") or ""))[:20] or None
+    notes = {}
+    raw_notes = body.get("notes") if isinstance(body.get("notes"), dict) else {}
+    try:
+        for k, items in list(raw_notes.items())[:5000]:
+            if not isinstance(items, list):
+                continue
+            keep = []
+            for n in items[:500]:
+                if isinstance(n, dict) and isinstance(n.get("p"), list) and len(n["p"]) == 2 and all(_finite(v) for v in n["p"]):
+                    keep.append({"p": n["p"], "text": str(n.get("text", ""))[:4000], "author": str(n.get("author", ""))[:80],
+                                 "date": str(n.get("date", ""))[:40], "done": bool(n.get("done"))})
+            if keep:
+                notes[int(k)] = keep
+    except (ValueError, TypeError):
+        notes = {}
     base = re.sub(r"\.(pdf|dxf)$", "", filename, flags=re.I)
     stats = None
     if fmt == "pdf" and body.get("ocrLayer"):
@@ -1156,7 +1177,7 @@ async def api_export(request: Request):
 
     def work():
         return pdfcore.export_pages(_original(doc_id), prims, rem, color, state if embed else None, embed, ink, sel, split, base, rev,
-                                    {k: str(v) for k, v in images.items()})
+                                    {k: str(v) for k, v in images.items()}, notes)
 
     try:
         if fmt == "dxf":

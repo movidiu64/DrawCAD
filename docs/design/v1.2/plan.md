@@ -66,9 +66,9 @@ The state embedded in an export (`drawcad.json`) already reopens as editable. Th
 - As built: command `TB` / `TITLEBLOCK`; a placed block keeps its own copy of the template; `{data}` is the
   date of the current revision (`settings.revDate`, set when a revision starts or the first block is placed).
 
-## V12-4 — Markup: revision cloud, highlighter, comments
+## V12-4 — Markup: revision cloud, highlighter, comments · built
 
-- **Revision cloud:** drawn as a rectangle or a polyline, turned into arcs (arc length from the text
+- **Revision cloud:** drawn as a rectangle (a polyline outline is left for later), turned into arcs (arc length from the text
   height); optional revision triangle on the outline, numbered from the document revision. Layer
   Revisions.
 - **Highlighter:** freehand or straight strokes, wide (3 / 6 / 10 mm) and transparent; colors green

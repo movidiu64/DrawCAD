@@ -16,6 +16,13 @@ export const COLORS = {
   gripHot: "#e53935", // hot grips, red as in AutoCAD
   gripEdge: "#1a1a1a", // grip outline: amber alone is 2:1 on the white sheet
   preview: "#2f6fd6",
+  // highlighter (multiply over the sheet) and review comments
+  hlGreen: "#5fd35f",
+  hlYellow: "#ffe14a",
+  hlPink: "#ff7eb9",
+  cmt: "#ffcf3f",
+  cmtDone: "#c3c9d1",
+  cmtInk: "#5c4400",
   // editor
   canvasBg: "#2b3038",
   inkDefault: "#111111",
@@ -87,6 +94,21 @@ function drawImagePrim(ctx, p, outline) {
 export function drawPrims(ctx, prims, zoom, color = colorOf, minPx = 0.8, opts = {}) {
   let font = null; // setting ctx.font is slow: only when the size changes
   for (const p of prims) {
+    if (p.op != null || p.blend || p.cap) {
+      // highlighter: transparent, multiplied over the drawing, round ends (only in the normal pass)
+      ctx.save();
+      if (color === colorOf) {
+        ctx.globalAlpha *= p.op ?? 1;
+        if (p.blend === "multiply") ctx.globalCompositeOperation = "multiply";
+      }
+      if (p.cap === "round") {
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+      }
+      drawPrims(ctx, [{ ...p, op: undefined, blend: undefined, cap: undefined, w: color === colorOf ? p.w : 0 }], zoom, color, minPx, opts);
+      ctx.restore();
+      continue;
+    }
     const col = color(p.c);
     ctx.strokeStyle = col;
     ctx.fillStyle = col;

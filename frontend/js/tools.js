@@ -280,6 +280,15 @@ export const TOOLS = [
     make: (pts, app) => ({ type: "balloon", target: pts[0], pos: pts[1], num: app.nextBalloon(), shape: "circle", end: "dot" }),
     preview(pts, cur, app) { return this.make([pts[0], cur], app); } },
 
+  { id: "cloud", label: "Nor de revizie", key: "", group: "Revizie", icon: "M6 8a2 2 0 0 1 4-1a2 2 0 0 1 4 0a2 2 0 0 1 4 1a2 2 0 0 1 0 4a2 2 0 0 1 0 4a2 2 0 0 1-4 1a2 2 0 0 1-4 0a2 2 0 0 1-4-1a2 2 0 0 1 0-4a2 2 0 0 1 0-4z", kind: "rect",
+    hint: "Trage un dreptunghi în jurul zonei modificate · triunghiul de revizie și mărimea arcelor din panou",
+    make: (r, app) => ({ type: "cloud", r, arc: app.cloudArc || 6, tri: true, rev: app.settings.revNo || "1", layer: "rev" }) },
+  { id: "mark", label: "Marker", key: "", group: "Revizie", icon: "M4 20h7M14.5 4.5l5 5L10 19l-5 1 1-5z", kind: "free",
+    hint: "Trage peste ce vrei să evidențiezi (Shift = linie dreaptă) · culoarea și grosimea din panou",
+    make: (pts, app) => ({ type: "mark", pts, color: (app.markStyle || {}).color || "hlGreen", w: (app.markStyle || {}).w || 6 }) },
+  { id: "comment", label: "Comentariu", key: "", group: "Revizie", icon: "M4 5h16v11H9l-5 4z", kind: "clicks", n: 1,
+    hint: "Click unde vrei comentariul · textul se scrie în panou · nu se tipărește; la export devine notă PDF",
+    make: (pts, app) => ({ type: "comment", p: pts[0], text: "", author: app.settings.author || "", date: new Date().toLocaleDateString("ro-RO", { day: "2-digit", month: "2-digit", year: "numeric" }), done: false }) },
   { id: "strike", label: "Taie cota", key: "S", group: "Revizie", icon: "M5 7h6M8 7v10M14 7h5M16.5 7v10M3 12h18", kind: "rect",
     hint: "Trage un dreptunghi peste valoarea veche → scrie valoarea nouă în panou",
     make: (r, app) => ({ type: "strike", r, newText: "", rev: app.settings.revNo, layer: "rev" }) },
@@ -451,7 +460,7 @@ export const FAMILIES = [
   { id: "notes", label: "Adnotări", tools: ["text", "lead", "note", "revtab", "bom", "balloon", "tblock", "image"] },
   { id: "draw", label: "Desen", sep: true, tools: ["line", "poly", "rect", "circle", "arc", "cross", "hatch", "break"] },
   { id: "views", label: "Vederi", tools: ["section", "detail", "viewlabel"] },
-  { id: "rev", label: "Revizie", sep: true, tools: ["strike", "white", "ink", "redact"] },
+  { id: "rev", label: "Revizie", sep: true, tools: ["strike", "cloud", "mark", "comment", "white", "ink", "redact"] },
 ];
 export const FAMILY_OF = Object.fromEntries(FAMILIES.flatMap((f) => f.tools.map((t) => [t, f.id])));
 /** Tools reached only by key, command or another button, not from the rail. */

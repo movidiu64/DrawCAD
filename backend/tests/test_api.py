@@ -175,6 +175,29 @@ class ApiTest(unittest.TestCase):
         back, _h = self.req("GET", f"/api/doc/{meta2['id']}/image/{imgs[0]['img']}", raw=True)
         self.assertTrue(back.startswith(b"\x89PNG"))
 
+    def test_highlighter_and_comment_notes(self):
+        meta = self.open_sample()
+        doc = meta["id"]
+        prims = {"0": [{"t": "P", "p": [100, 100, 200, 100, 250, 140], "w": 17, "c": "hlGreen", "op": 0.38, "cap": "round", "blend": "multiply"}]}
+        notes = {"0": [{"p": [150, 150], "text": "Verifică raza", "author": "OV", "date": "24.11.2026"},
+                       {"p": [300, 150], "text": "Gata", "done": True}]}
+        pdf, _h = self.req("POST", f"/api/doc/{doc}/export",
+                           {"filename": "rev.pdf", "pages": prims, "removals": {}, "notes": notes, "colorMode": "black"}, raw=True)
+        import pikepdf
+
+        with pikepdf.open(io.BytesIO(pdf)) as pk:
+            ann = [a for a in pk.pages[0].obj.get("/Annots", []) if a.get("/Subtype") == "/Text"]
+            self.assertEqual(len(ann), 2)
+            self.assertIn("Verifică raza", str(ann[0]["/Contents"]))
+            self.assertEqual(str(ann[0]["/T"]), "OV")
+            self.assertTrue(str(ann[1]["/Contents"]).startswith("[Rezolvat]"))
+        # the highlighter keeps its color in black mode, with transparency and multiply
+        import pypdfium2 as pdfium
+
+        img = pdfium.PdfDocument(pdf)[0].render(scale=1).to_pil().convert("RGB")
+        px = img.getpixel((int(150), int(100)))
+        self.assertTrue(px[1] > px[0] + 30 and px[1] > px[2] + 30, px)  # green, not black
+
     def test_zone_cuts_lines_at_border(self):
         import ctypes
 

@@ -648,6 +648,23 @@ def main(url, out):
         txt = page.evaluate("window.cotare.builtOf(window.cotare.annots.find(a => a.type === 'tblock')).prims.filter(p => p.t === 'T').map(p => p.txt)")
         assert "Arbore" in txt and "1:1" in txt, txt
 
+        # markup: a revision cloud around the struck 118 and a review comment (a PDF note on export)
+        page.evaluate("window.cotare.setTool('cloud')")
+        x0, y0 = scr(112, 41)
+        x1, y1 = scr(128, 52)
+        page.mouse.move(x0, y0)
+        page.mouse.down()
+        page.mouse.move(x1, y1, steps=4)
+        page.mouse.up()
+        page.wait_for_function("window.cotare.annots.length === 39 && window.cotare.selected().type === 'cloud'")
+        page.evaluate("window.cotare.setTool('comment')")
+        click(150, 40)
+        page.wait_for_selector("#cTxt")
+        page.fill("#cTxt", "De verificat cu clientul")
+        page.press("#cTxt", "Escape")
+        page.wait_for_function("window.cotare.annots.length === 40")
+        page.evaluate("window.cotare.setTool('select')")
+
         # export
         page.click("#btnExport")
         page.wait_for_selector("#eGo")
@@ -691,7 +708,7 @@ def main(url, out):
         prev_id = page.evaluate("window.cotare.doc.id")
         page.set_input_files("#fileInput", str(path))
         # wait for the new document (loading takes time), not the old one which already had 36 annotations
-        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 38")
+        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 40")
         # the export knows its revision; opening it does not change the number yet
         rev0 = page.evaluate("[window.cotare.settings.revNo, window.cotare.settings.exportedRev]")
         assert rev0[0] == rev0[1], rev0
@@ -701,7 +718,7 @@ def main(url, out):
         page.wait_for_function("document.querySelectorAll('#recentList [data-doc]').length >= 1", timeout=5000)
         # reopen from Recent, one change, then close with the prompt
         page.click("#recentList [data-doc]")
-        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 38")
+        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 40")
         page.wait_for_timeout(300)
         page.keyboard.press("t")
         click(100, 30)
@@ -725,6 +742,8 @@ def main(url, out):
     import pikepdf
     with pikepdf.open(str(path)) as pk:
         assert str(pk.docinfo.get("/DrawCADRevision", "")) == "1", dict(pk.docinfo)
+        notes = [a for pg in pk.pages for a in pg.obj.get("/Annots", []) if a.get("/Subtype") == "/Text"]
+        assert any("De verificat" in str(a.get("/Contents", "")) for a in notes), notes
     import pypdfium2 as pdfium
     doc = pdfium.PdfDocument(str(path))
     img = doc[0].render(scale=3).to_pil()

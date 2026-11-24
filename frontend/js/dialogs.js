@@ -217,6 +217,7 @@ export function exportDialog(app, opts = {}) {
         </div>
         <div id="ePdfOpts" class="dxfopts">
         <label class="chk" style="font-size:13px"><input type="checkbox" id="eEmbed" checked> Atașează stratul editabil (la redeschidere cotele rămân editabile)</label>
+        ${app.annots.some((a) => a.type === "comment") ? `<label class="chk" style="font-size:13px"><input type="checkbox" id="eNotes" checked> Comentariile ca note PDF (vizibile în Acrobat; pe desen nu se tipăresc)</label>` : ""}
         <label class="chk" style="font-size:13px"><input type="checkbox" id="eInk" ${app.settings.ink && app.settings.ink.all ? "checked" : ""}> Liniile originale negre, pentru imprimantă (culorile deschise ies palid)</label>
         <label class="chk" style="font-size:13px"><input type="checkbox" id="eOcr" ${nOcr ? "checked" : "disabled"}> Text recunoscut (OCR) invizibil, ca PDF-ul să fie căutabil${nOcr ? ` (${nOcr} ${nOcr === 1 ? "pagină" : "pagini"})` : " — rulează întâi OCR din „Text”"}</label>
         </div>
@@ -293,7 +294,7 @@ export function exportDialog(app, opts = {}) {
       const split = fmt === "pdf" && nPages > 1 && chk("#eSplit");
       const extra = fmt === "dxf"
         ? { format: "dxf", dxf: { scale: scaleMode === "real" ? realScale : 1, geom: chk("#xGeom"), text: chk("#xText"), annots: chk("#xAnn"), ocr: chk("#xOcr"), vectorize: chk("#xVec"), image: chk("#xImg") } }
-        : { ocrLayer: chk("#eOcr") };
+        : { ocrLayer: chk("#eOcr"), notes: chk("#eNotes") };
       const { blob, report, kind, stats } = await app.exportPdf(name, color, chk("#eEmbed"), sel, split, extra);
       const stem = name.replace(/\.(pdf|dxf|zip)$/i, "");
       const fileName = `${stem}.${kind === "zip" ? "zip" : kind === "dxf" ? "dxf" : "pdf"}`;

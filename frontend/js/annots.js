@@ -49,6 +49,9 @@ export const TYPE_NAMES = {
   ucs: "Originea coordonatelor",
   image: "Imagine",
   tblock: "Indicator",
+  cloud: "Nor de revizie",
+  mark: "Marcaj",
+  comment: "Comentariu",
 };
 
 export function typeName(a) {
@@ -1259,7 +1262,89 @@ export function imageRect(p, q, iw, ih, free = false) {
 // the title block needs its page's size and the number of pages (fields Format and Foaia): S.pagesWH
 const buildTb = (a, S, measure) => buildTblock(a, S, measure, { page: S.pagesWH && S.pagesWH[a.page || 0], total: S.pagesWH ? S.pagesWH.length : 0 });
 
-const BUILDERS = { tblock: buildTb, image: buildImage, ord: buildOrd, dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, ink: buildInk, shape: buildShape, section: buildSection, detail: buildDetail, balloon: buildBalloon, bom: buildBom, holes: buildHoles, ucs: buildUcs };
+/** Revision triangle with its number, base from (bx, by) along the reading direction (ang, °). */
+function revTriangle(bx, by, ang, size, S, measure, rev, c) {
+  const tu = [Math.cos((ang * Math.PI) / 180), -Math.sin((ang * Math.PI) / 180)];
+  const up = perpL(tu);
+  const p0 = [bx, by];
+  const p1 = add(p0, mul(tu, size));
+  const p2 = add(add(p0, mul(tu, size / 2)), mul(up, size * 0.866));
+  const out = [{ t: "P", p: [...p0, ...p1, ...p2], close: true, w: S.lw, c }];
+  if (rev) {
+    const s = (S.F * 0.62 * size) / (S.h * 1.9);
+    const w = measure(rev, s);
+    const o = add(add(p0, mul(tu, size / 2 - w / 2)), mul(up, size * 0.18));
+    out.push({ t: "T", p: o, s, a: ang, txt: rev, tw: w, c });
+  }
+  return out;
+}
+
+/** Revision cloud: arcs bulging outwards along the rectangle, optional revision triangle at the
+ * top-right corner. a.arc = chord of one arc in mm (paper). */
+function buildCloud(a, S, measure) {
+  const c = a.layer || "rev";
+  const [x0, y0, x1, y1] = normRect(a.r);
+  const L = Math.max(1, (a.arc || 6) * K * (a.scale || 1));
+  const corners = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+  const pts = [];
+  for (let i = 0; i < 4; i++) {
+    const A = corners[i];
+    const B = corners[(i + 1) % 4];
+    const d = sub(B, A);
+    const len = Math.hypot(d[0], d[1]);
+    if (len < 1e-6) continue;
+    const u = [d[0] / len, d[1] / len];
+    const nOut = [u[1], -u[0]]; // clockwise on screen: outwards is to the left of the direction
+    const n = Math.max(1, Math.round(len / L));
+    const chord = len / n;
+    const r = chord / 2;
+    for (let j = 0; j < n; j++) {
+      const mid = add(A, mul(u, chord * (j + 0.5)));
+      for (let k = j === 0 && i === 0 ? 0 : 1; k <= 8; k++) {
+        const t = (k / 8) * Math.PI;
+        pts.push(...add(add(mid, mul(u, -Math.cos(t) * r)), mul(nOut, Math.sin(t) * r)));
+      }
+    }
+  }
+  const prims = [{ t: "P", p: pts, close: true, w: S.lw * 1.4, c }];
+  if (a.tri) {
+    const size = S.h * 1.9 * (a.scale || 1);
+    prims.push(...revTriangle(x1 + L * 0.6, y0 - L * 0.6, 0, size, S, measure, String(a.rev || ""), c));
+  }
+  return { prims, handles: [{ k: "r0", p: [a.r[0], a.r[1]] }, { k: "r1", p: [a.r[2], a.r[3]] }] };
+}
+
+/** Highlighter: a wide, transparent stroke that leaves what is under it readable (multiply). */
+export const MARK_COLORS = ["hlGreen", "hlYellow", "hlPink"];
+function buildMark(a) {
+  const pts = (a.pts || []).flat();
+  if (pts.length < 4) return { prims: [], handles: [] };
+  const color = MARK_COLORS.includes(a.color) ? a.color : "hlGreen";
+  return { prims: [{ t: "P", p: pts, w: (a.w || 6) * K, c: color, op: 0.38, cap: "round", blend: "multiply" }], handles: [] };
+}
+
+/** Review comment: a note pin on screen only (layer Review); exported as a PDF note, not drawn. */
+function buildComment(a, S, measure) {
+  const [x, y] = a.p;
+  const k = K * 0.9;
+  const w = 5.5 * k;
+  const h = 4.2 * k;
+  const fill = a.done ? "cmtDone" : "cmt";
+  const bubble = [x, y - h - 1.6 * k, x + w, y - h - 1.6 * k, x + w, y - 1.6 * k, x + 2.2 * k, y - 1.6 * k, x, y, x + 0.9 * k, y - 1.6 * k, x, y - 1.6 * k];
+  const prims = [
+    { t: "P", p: bubble, close: true, fill: true, nostroke: true, c: fill, ed: true },
+    { t: "P", p: bubble, close: true, w: 0.8, c: "cmtInk", ed: true },
+  ];
+  const first = String(a.text || "").split("\n")[0].trim();
+  if (first) {
+    const s = 2.2 * K / CAP;
+    const txt = first.length > 40 ? `${first.slice(0, 39)}…` : first;
+    prims.push({ t: "T", p: [x + w + 1.2 * k, y - 2.4 * k], s, a: 0, txt, tw: measure(txt, s), c: "cmtInk", ed: true });
+  }
+  return { prims, handles: [{ k: "p", p: a.p, move: true }] };
+}
+
+const BUILDERS = { cloud: buildCloud, mark: buildMark, comment: buildComment, tblock: buildTb, image: buildImage, ord: buildOrd, dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, ink: buildInk, shape: buildShape, section: buildSection, detail: buildDetail, balloon: buildBalloon, bom: buildBom, holes: buildHoles, ucs: buildUcs };
 
 // characters without a glyph in osifont → existing equivalents (same on screen and in the PDF)
 const GLYPH_SUBST = { "…": "...", "„": '"', "”": '"', "“": '"', "«": '"', "»": '"', "‚": ",", "‘": "'", "\u00a0": " ", "−": "-" };
@@ -1358,6 +1443,7 @@ function inPoly(pt, xs) {
 }
 
 export function hit(built, a, pt, tol) {
+  if (a.type === "mark") tol += ((a.w || 6) * K) / 2; // a highlighter stroke is wide
   if (!built.bbox) return false;
   const [x0, y0, x1, y1] = built.bbox;
   if (pt[0] < x0 - tol || pt[0] > x1 + tol || pt[1] < y0 - tol || pt[1] > y1 + tol) return false;
@@ -1462,6 +1548,9 @@ export function exportPrims(prims) {
       if (p.r != null) q.r = round(p.r, 3);
       if (p.dp && p.dp.length) q.dp = p.dp.map((v) => round(v, 3));
       if (p.cover) q.cover = true;
+      if (p.op != null && p.t !== "I") q.op = p.op;
+      if (p.cap) q.cap = p.cap;
+      if (p.blend) q.blend = p.blend;
       if (p.t === "I") {
         q.img = p.img;
         q.rot = p.rot || 0;

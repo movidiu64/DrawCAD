@@ -22,6 +22,26 @@ const round2 = (v) => Math.round(v * 100) / 100;
 /** Today as written on drawings (dd.mm.yyyy). */
 const today = () => new Date().toLocaleDateString("ro-RO", { day: "2-digit", month: "2-digit", year: "numeric" });
 
+/** Ramer–Douglas–Peucker: the points of a freehand stroke, keeping the shape within tol. */
+function simplifyPath(pts, tol) {
+  if (pts.length < 3) return pts;
+  const [a, b] = [pts[0], pts[pts.length - 1]];
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const L = Math.hypot(dx, dy) || 1e-9;
+  let iMax = 0;
+  let dMax = 0;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const d = L > 1e-6 ? Math.abs(dy * pts[i][0] - dx * pts[i][1] + b[0] * a[1] - b[1] * a[0]) / L : Math.hypot(pts[i][0] - a[0], pts[i][1] - a[1]);
+    if (d > dMax) {
+      dMax = d;
+      iMax = i;
+    }
+  }
+  if (dMax <= tol) return [a, b];
+  return [...simplifyPath(pts.slice(0, iMax + 1), tol).slice(0, -1), ...simplifyPath(pts.slice(iMax), tol)];
+}
+
 /** Does segment [x0, y0, x1, y1] cross box [x0, y0, x1, y1]? (Liang–Barsky clipping) */
 function segHitsBox(q, b) {
   let t0 = 0;
@@ -75,6 +95,11 @@ class App {
     this.snapper = new Snapper();
     this.noSnapper = new Snapper();
     this.snapCfg = { modes: [...DEFAULT_MODES], polar: true, polarInc: 15, tracking: true, ortho: false, on: true };
+    try {
+      this.markStyle = JSON.parse(localStorage.getItem("cotare.mark") || "null") || { color: "hlGreen", w: 6 };
+    } catch (_) {
+      this.markStyle = { color: "hlGreen", w: 6 };
+    }
     try {
       const saved = JSON.parse(localStorage.getItem("cotare.snap") || "{}");
       Object.assign(this.snapCfg, saved);
@@ -421,6 +446,26 @@ class App {
       if (a.type === "strike") a.side = this.freeStrikeSide(a);
       this.addAnnot(finalize(a));
     }
+  }
+
+  // ------------------------------------------------------------ markup (V12-4)
+  /** Color and width of the next highlighter strokes (remembered in the browser). */
+  setMarkStyle(patch) {
+    this.markStyle = { ...(this.markStyle || {}), ...patch };
+    try {
+      localStorage.setItem("cotare.mark", JSON.stringify(this.markStyle));
+    } catch (_) { /* storage unavailable */ }
+  }
+
+  /** Review comments of the export, as PDF notes: page → [{ p, text, author, date, done }]. */
+  commentNotes(pages) {
+    const out = {};
+    for (const a of this.annots) {
+      if (a.type !== "comment" || !String(a.text || "").trim()) continue;
+      if (pages && !pages.includes(a.page)) continue;
+      (out[a.page] = out[a.page] || []).push({ p: a.p, text: String(a.text).slice(0, 4000), author: a.author || "", date: a.date || "", done: !!a.done });
+    }
+    return out;
   }
 
   // ------------------------------------------------------------ title blocks (V12-3)
@@ -2400,6 +2445,7 @@ class App {
 
   layerOf(a) {
     if (a.type === "white" || a.type === "redact" || a.type === "ink") return "del";
+    if (a.type === "comment") return "review";
     return a.layer === "rev" ? "rev" : "add";
   }
 
@@ -2738,7 +2784,7 @@ class App {
     this.select(a.id);
     this.changed();
     if (a.type === "tblock") this.afterTblock(a);
-    const focus = { text: "#tTxt", lead: "#lTxt", strike: "#sNew", note: "#nTxt" }[a.type];
+    const focus = { text: "#tTxt", lead: "#lTxt", strike: "#sNew", note: "#nTxt", comment: "#cTxt" }[a.type];
     if (focus) {
       const el = $("panel").querySelector(focus);
       if (el) {
@@ -2980,6 +3026,8 @@ class App {
     const ink = this.settings.ink && this.settings.ink.all ? this.settings.ink : null;
     const rev = String(this.settings.revNo || "1");
     const state = { ...this.stateJson(), settings: { ...this.settings, exportedRev: rev } };
+    if (extra.notes === true) extra = { ...extra, notes: this.commentNotes(pageSel) };
+    else if (extra.notes === false) extra = { ...extra, notes: null };
     return api.exportPdf(this.doc.id, { filename, colorMode, embed, pages, removals, ink, pageSel, split, rev, state, ...extra });
   }
 
@@ -3321,6 +3369,11 @@ class App {
       // inside a drawing or annotation tool the selection's handles are not active (as grips in a CAD
       // command): the next object often starts right where the last one ends, on its handles
       const anchor = this.pickAnchor();
+      if (t.kind === "free") {
+        // freehand (the highlighter): the points follow the cursor, without snap
+        this.drag = { kind: "free", pts: [raw] };
+        return;
+      }
       if (t.kind === "rect") {
         if (t.id === "image" && !this.pendingImage) {
           this.startImageTool();
@@ -3503,6 +3556,15 @@ class App {
         if (this.hover) this.setHover(null, raw);
         cv.style.cursor = "crosshair";
       }
+      if (d && d.kind === "free") {
+        const last = d.pts[d.pts.length - 1];
+        if (Math.hypot(raw[0] - last[0], raw[1] - last[1]) * this.view.zoom >= 2) d.pts.push(raw);
+        const pts = e.shiftKey ? [d.pts[0], raw] : d.pts;
+        const pv = t.make(pts, this);
+        this.view.overlay = { prims: build({ ...pv, id: "_pv" }, this.S(), this.measure).prims };
+        this.view.redraw();
+        return;
+      }
       const anchor = d && d.kind === "rect" ? d.start : this.pickAnchor();
       const { pt: spt, sn } = this.snapPoint(raw, e, anchor);
       this.trackHover(sn, raw);
@@ -3617,6 +3679,16 @@ class App {
         this.view.overlay = null;
         this.view.redraw();
         this.commitRect([d.start[0], d.start[1], pt[0], pt[1]], e);
+      }
+      if (d.kind === "free") {
+        const [sx, sy] = pos(e);
+        const end = this.view.toPage(sx, sy);
+        this.view.overlay = null;
+        let pts = e.shiftKey ? [d.pts[0], end] : [...d.pts, end];
+        // a click without moving: a short stroke, so the mark is visible
+        if (pts.length < 2 || Math.hypot(pts[pts.length - 1][0] - pts[0][0], pts[pts.length - 1][1] - pts[0][1]) < 1) pts = [pts[0], [pts[0][0] + 3 * K, pts[0][1]]];
+        pts = simplifyPath(pts, 0.25 * K).map((q) => [round2(q[0]), round2(q[1])]);
+        this.addAnnot(finalize(TOOL_BY_ID[this.tool].make(pts, this)));
       }
     };
     cv.addEventListener("pointerup", up);

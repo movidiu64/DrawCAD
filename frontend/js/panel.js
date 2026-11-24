@@ -263,9 +263,10 @@ export class Panel {
     const app = this.app;
     const d = app.doc;
     const S = app.settings;
-    const counts = { add: 0, rev: 0, del: 0 };
+    const counts = { add: 0, rev: 0, del: 0, review: 0 };
     for (const a of app.annots) {
       if (ORIG_EDIT.has(a.type)) counts.del++;
+      else if (a.type === "comment") counts.review++;
       else if (a.layer === "rev") counts.rev++;
       else counts.add++;
     }
@@ -284,7 +285,7 @@ export class Panel {
         <div class="sub">1 = scara 1:1 · 2 = scara 1:2 · 0,5 = scara 2:1</div>
       </div>
       <div class="sec"><div class="h">Straturi</div>
-        ${[["orig", "background:var(--layer-orig)", "Original PDF", "neatins"], ["add", "background:var(--layer-add)", "Adăugate", counts.add], ["rev", "background:var(--layer-rev)", "Revizii", counts.rev], ["del", "border:1px dashed var(--layer-del)", "Ștergeri / acoperiri", counts.del]]
+        ${[["orig", "background:var(--layer-orig)", "Original PDF", "neatins"], ["add", "background:var(--layer-add)", "Adăugate", counts.add], ["rev", "background:var(--layer-rev)", "Revizii", counts.rev], ["del", "border:1px dashed var(--layer-del)", "Ștergeri / acoperiri", counts.del], ["review", "background:var(--layer-review)", "Comentarii (nu se tipăresc)", counts.review]]
           .map(([k, st, name, n]) => {
             const off = app.hidden.has(k);
             return `<div class="layer ${off ? "off" : ""}"><i style="${st}"></i><span style="flex:1">${name}</span><span class="${k === "orig" ? "sub" : "mono sub"}">${n}</span>
@@ -647,6 +648,36 @@ export class Panel {
       <div class="sec"><div class="btns"><button class="ghost" data-act="tblib">Bibliotecă de indicatoare…</button></div></div>`;
   }
 
+  html_cloud(a) {
+    const arc = a.arc || 6;
+    return `<div class="sec"><div class="h">Nor de revizie</div>
+      <div class="field"><span class="lbl">Mărimea arcelor</span><div class="seg">
+        ${[[4, "Mici"], [6, "Medii"], [10, "Mari"]].map(([v, l]) => `<button data-act="cloudarc" data-v="${v}" class="${arc === v ? "on" : ""}">${l}</button>`).join("")}</div></div>
+      <label class="chk"><input type="checkbox" data-act-chk="cloudtri" ${a.tri ? "checked" : ""}> Triunghi de revizie</label>
+      <div class="field" style="max-width:100px"><label for="cRev">Nr. revizie</label><input type="text" class="mono" id="cRev" data-f="rev" value="${esc(a.rev || "")}"></div>
+      <div class="sub">Înconjoară zona schimbată în revizia curentă (practica ASME Y14.35). Trage de colțuri ca să-l redimensionezi.</div></div>`;
+  }
+
+  html_mark(a) {
+    const col = a.color || "hlGreen";
+    const w = a.w || 6;
+    return `<div class="sec"><div class="h">Marker</div>
+      <div class="field"><span class="lbl">Culoare</span><div class="seg">
+        ${[["hlGreen", "Verde"], ["hlYellow", "Galben"], ["hlPink", "Roz"]].map(([v, l]) => `<button data-act="markcolor" data-v="${v}" class="${col === v ? "on" : ""}">${l}</button>`).join("")}</div></div>
+      <div class="field"><span class="lbl">Grosime</span><div class="seg">
+        ${[[3, "3 mm"], [6, "6 mm"], [10, "10 mm"]].map(([v, l]) => `<button data-act="markw" data-v="${v}" class="${w === v ? "on" : ""}">${l}</button>`).join("")}</div></div>
+      <div class="sub">Se vede și la tipar, transparent: liniile și textul de sub el rămân lizibile. Următoarele marcaje pornesc cu aceeași culoare și grosime.</div></div>`;
+  }
+
+  html_comment(a) {
+    return `<div class="sec"><div class="h">Comentariu</div>
+      <div class="field"><label for="cTxt">Text</label><textarea id="cTxt" data-f="text" rows="4" spellcheck="true">${esc(a.text || "")}</textarea></div>
+      <div class="row"><div class="field"><label for="cAuth">Autor</label><input type="text" id="cAuth" data-f="author" value="${esc(a.author || "")}"></div>
+        <div class="field"><span class="lbl">Data</span><div class="mono sub" style="padding-top:8px">${esc(a.date || "")}</div></div></div>
+      <div class="btns"><button class="ghost" data-act="cmtdone">${a.done ? "Redeschide" : "Marchează rezolvat"}</button></div>
+      <div class="sub">Comentariile stau pe stratul Comentarii: nu se tipăresc; la export devin note PDF, vizibile în Acrobat și în alte programe.</div></div>`;
+  }
+
   html_image(a) {
     const op = a.op ?? 1;
     return `<div class="sec"><div class="h">Imagine</div>
@@ -868,6 +899,11 @@ export class Panel {
       inp.setSelectionRange(p0 + ch.length, p0 + ch.length);
     }));
     el.querySelectorAll("[data-act]").forEach((btn) => btn.addEventListener("click", () => this.onAct(btn.dataset.act, btn.dataset.v, btn.dataset.k)));
+    el.querySelectorAll("[data-act-chk]").forEach((cb) => cb.addEventListener("change", () => {
+      const k = cb.dataset.actChk;
+      if (k === "cloudtri") app.updateSel((a) => { a.tri = cb.checked; });
+      this.render();
+    }));
     const ss = el.querySelector("#scaleSel");
     if (ss) ss.addEventListener("change", () => this.onAct("scale", ss.value));
     el.querySelectorAll("[data-st]").forEach((btn) => btn.addEventListener("click", () => this.onStyle(btn.dataset.st, btn.dataset.v, btn.dataset.scope)));
@@ -1153,6 +1189,21 @@ export class Panel {
           const hh = Math.abs(r[2] - r[0]) / 2;
           a.r = [cx - hw, cy - hh, cx + hw, cy + hh];
         });
+        break;
+      case "cloudarc":
+        app.cloudArc = Number(v);
+        upd((a) => { a.arc = Number(v); });
+        break;
+      case "markcolor":
+        app.setMarkStyle({ color: v });
+        upd((a) => { a.color = v; });
+        break;
+      case "markw":
+        app.setMarkStyle({ w: Number(v) });
+        upd((a) => { a.w = Number(v); });
+        break;
+      case "cmtdone":
+        upd((a) => { a.done = !a.done; });
         break;
       case "tblib":
         app.openTblockLibrary();

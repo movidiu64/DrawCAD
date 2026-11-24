@@ -1389,6 +1389,8 @@ def apply_removals(pdf_bytes: bytes, removals: dict[int, list[dict]]) -> tuple[b
 
 
 COLOR_LAYERS = {"add": (0.184, 0.435, 0.839), "rev": (0.776, 0.157, 0.157)}
+# highlighter colors: a marking is meant to be seen, so it keeps its color in every mode
+COLOR_MARK = {"hlGreen": (0.373, 0.827, 0.373), "hlYellow": (1.0, 0.882, 0.29), "hlPink": (1.0, 0.494, 0.725)}
 
 
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -1397,6 +1399,8 @@ _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 def _color(key, mode):
     if key == "white":
         return (1, 1, 1)
+    if key in COLOR_MARK:
+        return COLOR_MARK[key]
     if isinstance(key, str) and _HEX.match(key):
         # explicitly chosen color (covers in the background color): stays that way in any mode
         return tuple(int(key[i:i + 2], 16) / 255 for i in (1, 3, 5))
@@ -1446,6 +1450,18 @@ def _overlay_pdf(page_specs, color_mode) -> bytes:
                     stroke = not p.get("nostroke", False)
                 if len(coords) < 4:
                     continue
+                marker = p.get("op") is not None or p.get("blend") or p.get("cap")
+                if marker:
+                    # highlighter: transparent, multiplied over the drawing, round ends
+                    c.saveState()
+                    if p.get("op") is not None:
+                        c.setStrokeAlpha(max(0.05, min(1.0, float(p["op"]))))
+                        c.setFillAlpha(max(0.05, min(1.0, float(p["op"]))))
+                    if p.get("blend") == "multiply":
+                        c.setBlendMode("Multiply")
+                    if p.get("cap") == "round":
+                        c.setLineCap(1)
+                        c.setLineJoin(1)
                 path = c.beginPath()
                 first = g.from_vis(coords[0], coords[1])
                 path.moveTo(*first)
@@ -1454,6 +1470,8 @@ def _overlay_pdf(page_specs, color_mode) -> bytes:
                 if close:
                     path.close()
                 c.drawPath(path, stroke=1 if stroke else 0, fill=1 if fill else 0)
+                if marker:
+                    c.restoreState()
             elif t == "I":
                 # image annotation: drawn in the rectangle, turned by quarter turns, with its opacity
                 src = p.get("src")
@@ -1533,6 +1551,7 @@ def export_pdf(
     state_json: bytes | None = None,
     embed_original: bool = True,
     ink: dict | None = None,
+    notes: dict | None = None,
 ) -> tuple[bytes, dict]:
     base, reports = apply_removals(original, removals) if any(removals.values()) else (original, {})
     if ink and ink.get("all"):
@@ -1554,6 +1573,8 @@ def export_pdf(
         finally:
             doc.close()
 
+    if notes:
+        _add_notes(pk, base, notes)
     if targets:
         ov_bytes = _overlay_pdf([(g, mb, prims) for _i, g, mb, prims in targets], color_mode)
         ov = pikepdf.open(io.BytesIO(ov_bytes))
@@ -1659,7 +1680,50 @@ def set_revision_meta(pk, rev: str, title: str | None = None) -> None:
         pass
 
 
-def export_pages(original, primitives, removals, color_mode, state, embed, ink, sel, split, basename="export", rev=None, images=None):
+def _add_notes(pk, pdf_bytes: bytes, notes: dict) -> None:
+    """Review comments as PDF notes (/Text annotations: the icon, author, date and text that Acrobat
+    and other readers show as comments). Not printed. notes: page index → [{p, text, author, date, done}]."""
+    from datetime import datetime
+
+    with PDFIUM_LOCK:
+        doc = pdfium.PdfDocument(pdf_bytes)
+        try:
+            geos = {}
+            for idx in notes:
+                if 0 <= int(idx) < len(doc):
+                    page = doc[int(idx)]
+                    geos[int(idx)] = PageGeo.of(page)
+                    page.close()
+        finally:
+            doc.close()
+    stamp = "D:" + datetime.now().strftime("%Y%m%d%H%M%S")
+    for idx, items in notes.items():
+        g = geos.get(int(idx))
+        if g is None:
+            continue
+        page = pk.pages[int(idx)]
+        annots = page.obj.get("/Annots")
+        if annots is None:
+            annots = pikepdf.Array()
+            page.obj["/Annots"] = annots
+        for n in items:
+            x, y = g.from_vis(*n["p"])
+            text = n["text"]
+            if n.get("done"):
+                text = "[Rezolvat] " + text
+            if n.get("date"):
+                text = f"{text}\n({n['date']})"
+            a = pikepdf.Dictionary(
+                Type=pikepdf.Name.Annot, Subtype=pikepdf.Name.Text,
+                Rect=pikepdf.Array([x, y - 18, x + 18, y]),
+                Contents=pikepdf.String(text), T=pikepdf.String(n.get("author") or "DrawCAD"),
+                M=pikepdf.String(stamp), Name=pikepdf.Name.Comment, Open=False, F=24,
+                C=pikepdf.Array([0.6, 0.6, 0.6] if n.get("done") else [1.0, 0.81, 0.25]),
+            )
+            annots.append(pk.make_indirect(a))
+
+
+def export_pages(original, primitives, removals, color_mode, state, embed, ink, sel, split, basename="export", rev=None, images=None, notes=None):
     """Export for pages `sel` (None = all): one PDF, or one PDF per page in a ZIP.
     Each file carries the editable layer for its pages, so it can be reopened."""
     import zipfile
@@ -1670,7 +1734,7 @@ def export_pages(original, primitives, removals, color_mode, state, embed, ink, 
         raise ValueError("nicio pagină aleasă")
     prims = {k: v for k, v in primitives.items() if k in idxs}
     rem = {k: v for k, v in removals.items() if k in idxs}
-    full, reports = export_pdf(original, prims, rem, color_mode, None, embed, ink)
+    full, reports = export_pdf(original, prims, rem, color_mode, None, embed, ink, {k: v for k, v in (notes or {}).items() if k in idxs})
     whole = len(idxs) == n_pages
     if not split:
         pdf = full if whole else subset_pdf(full, idxs)
