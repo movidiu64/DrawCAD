@@ -9,7 +9,7 @@ import { parsePoint, resolvePoint, toUser, defaultOrigin, orthoActive, routeKey 
 import * as dlg from "./dialogs.js";
 import { VIEW_LETTERS } from "./symbols.js";
 import { markingConfig, MM_ICONS } from "./mmenu.js";
-import { keyConfig, directKeyMap, resolveCommand, suggest, commandList, labelOf } from "./commands.js";
+import { keyConfig, directKeyMap, resolveCommand, suggest, commandList, labelOf, ACTIONS } from "./commands.js";
 import { applyPageOp } from "./pages.js";
 import { startI18n, lang as uiLang, tr } from "./i18n.js";
 
@@ -2752,6 +2752,13 @@ class App {
       this.setTool(id);
       return;
     }
+    // during a command only the transparent actions run (zoom, snap toggles), without ending it
+    const action = ACTIONS.find((a) => a.id === id);
+    const midCmd = this.cmdActive() && (this.clicks.length || this.rectStart || this.placing);
+    if (midCmd && action && !action.transparent) {
+      dlg.toast(`${tr(action.label)}: nu merge în timpul unei comenzi (Esc întâi)`);
+      return;
+    }
     const act = {
       undo: () => this.doUndo(),
       redo: () => this.doRedo(),
@@ -2775,7 +2782,8 @@ class App {
     }[id];
     if (!act) return;
     act();
-    if (id !== "keys" && id !== "settings") this.lastCmd = id;
+    // a transparent action keeps the command to repeat
+    if (id !== "keys" && id !== "settings" && !midCmd) this.lastCmd = id;
     this.recordCmd(id, this._typedCmd);
     this._typedCmd = null;
   }

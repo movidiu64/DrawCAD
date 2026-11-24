@@ -6,7 +6,7 @@ import { TOOLS } from "./tools.js";
 import { lang as uiLang, setLang, LANGS } from "./i18n.js";
 import { SHEETS } from "./pages.js";
 import { COLORS } from "./view.js";
-import { commandList, conflicts, defaultKeyConfig, keyConfig, saveKeyConfig, labelOf, RESERVED_KEYS, DEFAULT_ALIASES, ACTIONS } from "./commands.js";
+import { commandList, conflicts, defaultKeyConfig, keyConfig, saveKeyConfig, labelOf, RESERVED_KEYS, DEFAULT_ALIASES, ACTIONS, parsePgp, importPgp } from "./commands.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
@@ -792,7 +792,8 @@ export function keysDialog(app) {
     <div class="note" id="kHelp"></div>
     <div class="field" style="margin-top:8px"><label for="kQ">Caută</label><input type="search" id="kQ" placeholder="ex.: cerc, DLI, rază"></div>
     <div class="keytab"><table><thead><tr><th>Comandă</th><th>Tastă</th><th>Prescurtări (despărțite prin virgulă)</th></tr></thead><tbody id="kRows">${rowsHtml()}</tbody></table></div>
-    <div class="foot"><span class="muted" id="kMsg" style="flex:1"></span><button class="ghost" id="kReset">Revino la implicit</button><button class="ghost" data-close>Anulează</button><button class="primary" id="kSave">Aplică</button></div>`);
+    <div class="note" id="kImp" hidden></div>
+    <div class="foot"><span class="muted" id="kMsg" style="flex:1"></span><input type="file" id="kPgp" accept=".pgp,.txt,text/plain" hidden><button class="ghost" id="kImport" title="Prescurtările din AutoCAD (fișierul acad.pgp din folderul Support)">Importă acad.pgp…</button><button class="ghost" id="kReset">Revino la implicit</button><button class="ghost" data-close>Anulează</button><button class="primary" id="kSave">Aplică</button></div>`);
   const help = () => {
     dlg.querySelector("#kHelp").innerHTML = cfg.mode === "autocad"
       ? "<b>Comenzi AutoCAD:</b> scrii comanda oriunde pe desen (apare jos, în linia de comandă, cu sugestii) și o pornești cu <b>Spațiu</b> sau <b>Enter</b>. Spațiu sau Enter fără nimic scris <b>repetă ultima comandă</b>; la polilinie o termină. Spațiu ținut + tragere mută desenul, Esc renunță. Tastele directe nu se folosesc în acest mod."
@@ -852,6 +853,28 @@ export function keysDialog(app) {
     dlg.querySelectorAll("#kRows tr").forEach((tr) => {
       tr.hidden = !!q && (!tr.dataset.q || !tr.dataset.q.includes(q));
     });
+  });
+  dlg.querySelector("#kImport").addEventListener("click", () => dlg.querySelector("#kPgp").click());
+  dlg.querySelector("#kPgp").addEventListener("change", async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    if (f.size > 2 * 1024 * 1024) {
+      toast("Fișierul e prea mare pentru un acad.pgp");
+      return;
+    }
+    // read here, in the browser: nothing is uploaded
+    const entries = parsePgp(await f.text());
+    const res = importPgp(read(), entries);
+    cfg = res.cfg;
+    dlg.querySelector("#kRows").innerHTML = rowsHtml();
+    check();
+    const box = dlg.querySelector("#kImp");
+    const moved = res.moved.map((m) => `${m.alias}: ${labelOf(m.from)} → ${labelOf(m.to)}`);
+    box.innerHTML = `<b>${esc(f.name)}:</b> <span>${entries.length} prescurtări citite · ${res.added.length} adăugate · ${res.moved.length} mutate de la alte comenzi · ${res.unknown.length} comenzi fără echivalent în DrawCAD${res.invalid.length ? ` · ${res.invalid.length} nume nevalide` : ""}.</span> <span>Nimic nu se salvează până la Aplică.</span>
+      ${moved.length ? `<details><summary>Mutate</summary><div class="mono">${esc(moved.join(" · "))}</div></details>` : ""}
+      ${res.unknown.length ? `<details><summary>Fără echivalent</summary><div class="mono">${esc(res.unknown.join(", "))}</div></details>` : ""}`;
+    box.hidden = false;
   });
   dlg.querySelector("#kReset").addEventListener("click", () => {
     cfg = { ...defaultKeyConfig(), mode: cfg.mode };

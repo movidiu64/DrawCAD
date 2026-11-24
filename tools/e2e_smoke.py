@@ -348,6 +348,26 @@ def main(url, out):
         page.keyboard.press("Escape")
         cen = page.evaluate("window.cotare.annots.filter(a => a.type === 'shape' && a.kind === 'line').slice(-1)[0].pts[0].map(v => Math.round(v / (72/25.4) * 100) / 100)")
         assert cen == [145, 167.5], cen
+        # 20. acad.pgp import in the Keys dialog, then a transparent 'Z during a command
+        pgp = out / "test.pgp"
+        pgp.write_text("; test\nLI, *LINE\nCO, *COPY\n", encoding="utf-8")
+        page.evaluate("window.cotare.runCommand('keys')")
+        page.wait_for_selector("#kImport")
+        page.set_input_files("#kPgp", str(pgp))
+        page.wait_for_selector("#kImp:not([hidden])")
+        imp = page.inner_text("#kImp")
+        assert "1 adăugate" in imp and "COPY" in page.inner_html("#kImp"), imp
+        page.click("#kSave")
+        page.wait_for_timeout(200)
+        page.click("#cmdIn")
+        typed("LI")
+        assert page.evaluate("window.cotare.tool") == "line"
+        typed("10,10")
+        page.click("#cmdIn")
+        typed("'Z")
+        assert page.evaluate("[window.cotare.tool, window.cotare.clicks.length]") == ["line", 1], "'Z keeps the command"
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
         page.keyboard.press("Escape")
         page.keyboard.press("f")
         page.wait_for_timeout(300)

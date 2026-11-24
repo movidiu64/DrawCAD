@@ -53,17 +53,17 @@ export const DEFAULT_ALIASES = {
 export const ACTIONS = [
   { id: "undo", label: "Anulează acțiunea", aliases: ["U", "UNDO"] },
   { id: "redo", label: "Refă", aliases: ["REDO", "MREDO"] },
-  { id: "fit", label: "Zoom pe toată pagina", aliases: ["Z", "ZE", "ZOOM"] },
-  { id: "zoomSel", label: "Zoom pe selecție", aliases: ["ZS"] },
+  { id: "fit", label: "Zoom pe toată pagina", aliases: ["Z", "ZE", "ZOOM"], transparent: true },
+  { id: "zoomSel", label: "Zoom pe selecție", aliases: ["ZS"], transparent: true },
   { id: "find", label: "Caută text / OCR", aliases: ["FIND", "TEXTFIND", "OCR"] },
   { id: "export", label: "Exportă", aliases: ["EXP", "EXPORT", "PLOT", "SAVEAS"] },
   { id: "open", label: "Deschide desen", aliases: ["OPEN"] },
   { id: "close", label: "Închide documentul", aliases: ["CLOSE"] },
   { id: "settings", label: "Setări", aliases: ["OP", "OPTIONS"] },
   { id: "keys", label: "Taste și comenzi", aliases: ["ALIASEDIT", "KEYS", "TASTE"] },
-  { id: "osnap", label: "Snap pornit / oprit", aliases: ["OS", "OSNAP"] },
-  { id: "ortho", label: "Ortho pornit / oprit", aliases: ["OR", "ORTHO"] },
-  { id: "polar", label: "Polar pornit / oprit", aliases: ["POLAR"] },
+  { id: "osnap", label: "Snap pornit / oprit", aliases: ["OS", "OSNAP"], transparent: true },
+  { id: "ortho", label: "Ortho pornit / oprit", aliases: ["OR", "ORTHO"], transparent: true },
+  { id: "polar", label: "Polar pornit / oprit", aliases: ["POLAR"], transparent: true },
   { id: "selAll", label: "Selectează tot", aliases: ["ALL"] },
   { id: "nextPage", label: "Pagina următoare", aliases: ["PN"] },
   { id: "prevPage", label: "Pagina anterioară", aliases: ["PP"] },
@@ -111,7 +111,7 @@ export function commandList(cfg = defaultKeyConfig()) {
   }
   for (const a of ACTIONS) {
     const aliases = cfg.aliases[a.id] || a.aliases;
-    out.push({ id: a.id, kind: "action", label: a.label, group: "Comenzi", key: "", aliases: aliases.map((x) => x.toUpperCase()) });
+    out.push({ id: a.id, kind: "action", label: a.label, group: "Comenzi", key: "", aliases: aliases.map((x) => x.toUpperCase()), transparent: !!a.transparent });
   }
   return out;
 }
@@ -125,7 +125,14 @@ export function directKeyMap(cfg) {
 
 /** The typed command: exact alias first, then the tool name (without diacritics and spaces). */
 export function resolveCommand(input, cfg) {
-  const q = String(input || "").trim().toUpperCase();
+  let q = String(input || "").trim().toUpperCase();
+  // 'Z, 'OS…: a transparent command, typed during another one (CMD-D11)
+  const quoted = q.startsWith("'");
+  if (quoted) {
+    q = q.slice(1);
+    const c = resolveCommand(q, cfg);
+    return c && c.transparent ? { ...c, quoted } : null;
+  }
   if (!q) return null;
   const list = commandList(cfg);
   const byAlias = list.find((c) => c.aliases.includes(q));
@@ -178,3 +185,73 @@ export function conflicts(cfg) {
 }
 
 export const labelOf = (id) => (TOOL_BY_ID[id] && TOOL_BY_ID[id].label) || (ACTIONS.find((a) => a.id === id) || {}).label || id;
+
+// ------------------------------------------------------------------ acad.pgp import (CMD-D10)
+
+/** AutoCAD command names with a DrawCAD equivalent that are not among the default aliases. */
+const PGP_EXTRA = {
+  DTEXT: "text", DIMCENTER: "cross", LEADER: "lead", BHATCH: "hatch", RECTANGLE: "rect",
+  QSAVE: "export", SAVE: "export", PUBLISH: "export", SELECTALL: "selAll", ZOOMEXTENTS: "fit",
+};
+
+/**
+ * Reads an acad.pgp file: one `abbreviation,*COMMAND` per line. `;` starts a comment; lines
+ * without `*` (external commands) and malformed lines are skipped; the last definition of an
+ * abbreviation wins, as in AutoCAD. Returns [{ alias, command }].
+ */
+export function parsePgp(text) {
+  const out = new Map();
+  for (const raw of String(text || "").split(/\r?\n/)) {
+    const line = raw.replace(/;.*$/, "").trim();
+    if (!line) continue;
+    const m = /^([^,\s]+)\s*,\s*\*\s*([^\s,]+)\s*$/.exec(line);
+    if (!m) continue;
+    const alias = m[1].toUpperCase();
+    out.delete(alias); // keeps the order of the last definition
+    out.set(alias, m[2].toUpperCase());
+  }
+  return [...out].map(([alias, command]) => ({ alias, command }));
+}
+
+/**
+ * Merges acad.pgp aliases into a key configuration. Commands are matched by their AutoCAD names
+ * (the default aliases of every command); an alias that belongs to another command moves (the pgp
+ * file wins). Direct keys are not touched.
+ * Returns { cfg, added: [{alias, id}], moved: [{alias, from, to}], unknown: [command], invalid: [alias] }.
+ */
+export function importPgp(cfg, entries) {
+  const index = new Map();
+  for (const t of TOOLS) for (const a of DEFAULT_ALIASES[t.id] || []) index.set(a.toUpperCase(), t.id);
+  for (const a of ACTIONS) for (const x of a.aliases) index.set(x.toUpperCase(), a.id);
+  for (const [name, id] of Object.entries(PGP_EXTRA)) if (!index.has(name)) index.set(name, id);
+  const next = { mode: cfg.mode, keys: { ...cfg.keys }, aliases: {} };
+  const cur = {};
+  for (const c of commandList(cfg)) cur[c.id] = [...c.aliases];
+  const added = [];
+  const moved = [];
+  const unknown = new Set();
+  const invalid = [];
+  for (const { alias, command } of entries) {
+    const id = index.get(command.replace(/^[_.]+/, ""));
+    if (!id) {
+      unknown.add(command);
+      continue;
+    }
+    if (!/^[A-Z0-9]{1,16}$/.test(alias)) {
+      invalid.push(alias);
+      continue;
+    }
+    if (cur[id].includes(alias)) continue;
+    for (const [other, list] of Object.entries(cur)) {
+      if (other !== id && list.includes(alias)) {
+        cur[other] = list.filter((x) => x !== alias);
+        moved.push({ alias, from: other, to: id });
+      }
+    }
+    cur[id].push(alias);
+    if (!moved.some((m) => m.alias === alias)) added.push({ alias, id });
+  }
+  const defaults = (id) => (DEFAULT_ALIASES[id] || (ACTIONS.find((a) => a.id === id) || {}).aliases || []).map((x) => x.toUpperCase());
+  for (const [id, list] of Object.entries(cur)) if (list.join(",") !== defaults(id).join(",")) next.aliases[id] = list;
+  return { cfg: next, added, moved, unknown: [...unknown].sort(), invalid };
+}

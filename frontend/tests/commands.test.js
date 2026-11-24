@@ -47,3 +47,71 @@ test("direct keys: the old ones stay default; changes and duplicates are visible
   // a removed key no longer starts anything
   assert.equal(directKeyMap({ mode: "direct", keys: { lead: "" }, aliases: {} }).l, undefined);
 });
+
+// A short acad.pgp written for this test (same format as AutoCAD's file, not a copy of it).
+const PGP = `
+;  Program Parameters File — test fixture
+;  External command format: <Command name>,[<Shell request>],<Bit flag>,[*]<Prompt>,
+CATALOG,  DIR /W,  8,File specification: ,
+EDIT,     START EDIT, 9,File to edit: ,
+
+;  Command alias format: <Alias>,*<Full command name>
+L,        *LINE
+LI,       *LINE
+DLI,      *DIMLINEAR
+DIMLIN,   *DIMLINEAR
+CO,       *COPY
+-LA,      *-LAYER
+Z,        *ZOOM
+ZZ,       *ZOOM
+C,        *CIRCLE
+C,        *COPY
+CE,       *CIRCLE
+DT,       *DTEXT
+OSN,      *OSNAP   ; trailing comment
+`;
+
+test("acad.pgp: aliases parsed, comments and external commands skipped, the last definition wins", async () => {
+  const { parsePgp } = await import("../js/commands.js");
+  const e = parsePgp(PGP);
+  const m = Object.fromEntries(e.map((x) => [x.alias, x.command]));
+  assert.equal(m.L, "LINE");
+  assert.equal(m.C, "COPY", "C is defined twice: the last one");
+  assert.equal(m.OSN, "OSNAP");
+  assert.equal(m.CATALOG, undefined);
+  assert.equal(m.EDIT, undefined);
+});
+
+test("acad.pgp import: mapped by AutoCAD names, unknown commands listed, conflicts moved, keys kept", async () => {
+  const { parsePgp, importPgp, commandList, conflicts, defaultKeyConfig, resolveCommand } = await import("../js/commands.js");
+  const base = { ...defaultKeyConfig(), keys: { line: "Q" } };
+  const res = importPgp(base, parsePgp(PGP));
+  const al = (id) => commandList(res.cfg).find((c) => c.id === id).aliases;
+  assert.ok(al("line").includes("LI"));
+  assert.ok(al("dimLin").includes("DIMLIN"));
+  assert.ok(al("fit").includes("ZZ"));
+  assert.ok(al("circle").includes("CE"));
+  assert.ok(al("text").includes("DT"), "DTEXT maps to the text tool");
+  assert.ok(al("osnap").includes("OSN"));
+  // C → COPY: COPY is unknown, so C stays on the circle
+  assert.ok(al("circle").includes("C"));
+  assert.ok(res.unknown.includes("COPY"));
+  assert.ok(res.unknown.includes("-LAYER"));
+  assert.deepEqual(Object.keys(conflicts(res.cfg).aliases), [], "no alias on two commands");
+  assert.equal(res.cfg.keys.line, "Q", "direct keys are not touched");
+  assert.equal(resolveCommand("LI", res.cfg).id, "line");
+  // an alias of another command moves to the pgp's command
+  const moved = importPgp(defaultKeyConfig(), [{ alias: "DI", command: "DIMLINEAR" }]);
+  assert.deepEqual(moved.moved, [{ alias: "DI", from: "measure", to: "dimLin" }]);
+  assert.equal(resolveCommand("DI", moved.cfg).id, "dimLin");
+});
+
+test("transparent commands: 'Z and 'OS resolve, a non-transparent one does not", async () => {
+  const { resolveCommand, defaultKeyConfig } = await import("../js/commands.js");
+  const cfg = defaultKeyConfig();
+  assert.equal(resolveCommand("'Z", cfg).id, "fit");
+  assert.equal(resolveCommand("'z", cfg).quoted, true);
+  assert.equal(resolveCommand("'OS", cfg).id, "osnap");
+  assert.equal(resolveCommand("'EXPORT", cfg), null);
+  assert.equal(resolveCommand("'L", cfg), null, "tools are not transparent");
+});
