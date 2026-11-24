@@ -47,6 +47,12 @@ def main(url, out):
                 [mmx * MM, mmy * MM],
             )
 
+        def pick(tid):
+            # the tool rail (UI-D1): a right click on the family's slot opens its flyout, then the row
+            fam = page.evaluate(f"window.cotare.familyOf('{tid}')")
+            page.click(f'[data-fam="{fam}"]', button="right")
+            page.click(f'#railFly [data-tool="{tid}"]')
+
         def click(mmx, mmy):
             x, y = scr(mmx, mmy)
             page.mouse.move(x, y)
@@ -223,7 +229,7 @@ def main(url, out):
         click(40, 172)
         click(80, 172)
         page.keyboard.press("Escape")
-        page.click('[data-tool="cross"]')
+        pick("cross")
         click(240, 95)
         click(260, 95)
         page.keyboard.press("Escape")
@@ -233,12 +239,12 @@ def main(url, out):
         # 15. ordinate dimensions from the center of the Ø10 hole, a corrected value, then the hole table
         page.evaluate("() => { const v = window.cotare.view; v.zoom = 2.2; v.panX = -125*72/25.4*2.2; v.panY = -80*72/25.4*2.2; v.afterZoom(); }")
         page.wait_for_timeout(300)
-        page.click('[data-tool="dimOrd"]')
+        pick("dimOrd")
         click(145, 167.5)
         click(240, 95)
         page.keyboard.press("Enter")
         click(190, 182)  # below the points: values on X
-        page.click('[data-tool="dimOrd"]')
+        pick("dimOrd")
         click(145, 167.5)
         click(240, 95)
         page.keyboard.press("Enter")
@@ -253,7 +259,7 @@ def main(url, out):
         page.press("[data-ord='1']", "Tab")
         assert page.evaluate("window.cotare.builtOf(window.cotare.annots.find(a => a.type === 'ord')).values") == [0, 95.05]
         page.keyboard.press("Escape")
-        page.click('[data-tool="holes"]')
+        pick("holes")
         click(290, 110)
         rows = page.evaluate("window.cotare.selected().rows")
         assert [(r["tag"], r["x"], r["y"], r["d"]) for r in rows] == [("A1", "0", "0", "10"), ("B1", "95,05", "72,5", "30")], rows
@@ -264,12 +270,12 @@ def main(url, out):
         page.screenshot(path=str(out / "tabel_gauri.png"))
         # 16. chain and baseline dimensions over the same centers (+ the quadrant of the Ø40 circle)
         page.keyboard.press("Escape")
-        page.click('[data-tool="dimCont"]')
+        pick("dimCont")
         for q in [(240, 95), (145, 167.5), (260, 95)]:
             click(*q)
         page.keyboard.press("Enter")
         click(200, 192)
-        page.click('[data-tool="dimBase"]')
+        pick("dimBase")
         for q in [(145, 167.5), (260, 95), (240, 95)]:
             click(*q)
         page.keyboard.press("Enter")
@@ -292,7 +298,7 @@ def main(url, out):
             .map(a => a.pts.map(p => [Math.round(p[0] / (72/25.4) * 100) / 100, Math.round(p[1] / (72/25.4) * 100) / 100]))""")
         h = page.evaluate("window.cotare.doc.pages[0].h / (72/25.4)")
         assert lines == [[[20, round(h - 30, 2)], [60, round(h - 30, 2)]], [[60, round(h - 30, 2)], [60, round(h - 50, 2)]]], (lines, h)
-        page.click('[data-tool="ucs"]')
+        pick("ucs")
         click(145, 167.5)
         page.keyboard.press("Escape")
         page.keyboard.press("i")
@@ -310,7 +316,7 @@ def main(url, out):
             for txt in items:
                 page.keyboard.type(txt)
                 page.keyboard.press("Enter")
-        page.click('[data-tool="ucs"]')
+        pick("ucs")
         typed("w")  # World: back to the page corner
         page.keyboard.press("d")
         typed("20,40", "@30,20", "v", "t", "25", "@-15,0")

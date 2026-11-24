@@ -2,7 +2,7 @@
 import * as api from "./api.js";
 import { K, fmtNum, parseNum, DEFAULT_SETTINGS } from "./annots.js";
 import { MM_POSITIONS, MM_DEFAULT, MM_SPECIAL, markingConfig } from "./mmenu.js";
-import { TOOLS } from "./tools.js";
+import { TOOLS, FAMILIES } from "./tools.js";
 import { lang as uiLang, setLang, LANGS } from "./i18n.js";
 import { SHEETS } from "./pages.js";
 import { COLORS } from "./view.js";
@@ -667,6 +667,12 @@ export function settingsDialog(app) {
       <div class="mmgrid" id="sMm">${mmGridHtml(markingConfig())}</div>
       <div class="row"><button class="ghost" id="sMmReset">Revino la implicit</button><span class="sub">Alegi trăgând spre comandă și eliberând butonul; pe ecran tactil, apăsare lungă.</span></div>
     </div>
+    <div class="sec">
+      <div class="lbl">Bara de unelte · pentru toate documentele</div>
+      <label class="chk"><input type="checkbox" id="sRailLbl" ${app.railCfg().labels ? "checked" : ""}> Etichete sub iconițe</label>
+      <div class="railfams" id="sRailFams">${FAMILIES.map((f) => `<label class="chk"><input type="checkbox" data-fam="${f.id}" ${app.railCfg().hidden.includes(f.id) ? "" : "checked"}> ${f.label}</label>`).join("")}</div>
+      <div class="sub">O familie ascunsă rămâne la îndemână din linia de comandă și cu tastele ei.</div>
+    </div>
     <div class="cols">
       <div class="sec">
         <div class="lbl">Limba interfeței · Language</div>
@@ -722,6 +728,16 @@ export function settingsDialog(app) {
     setLang(b.dataset.uilang);
     location.reload();
   }));
+  // the rail: applied at once, for all documents
+  const railSave = () => {
+    const c = app.railCfg();
+    c.labels = dlg.querySelector("#sRailLbl").checked;
+    c.hidden = [...dlg.querySelectorAll("#sRailFams [data-fam]")].filter((x) => !x.checked).map((x) => x.dataset.fam);
+    app.saveRailCfg(c);
+    app.buildToolbar();
+  };
+  dlg.querySelector("#sRailLbl").addEventListener("change", railSave);
+  dlg.querySelectorAll("#sRailFams [data-fam]").forEach((x) => x.addEventListener("change", railSave));
   dlg.querySelector("#sMmReset").addEventListener("click", () => {
     dlg.querySelector("#sMm").innerHTML = mmGridHtml(MM_DEFAULT);
   });

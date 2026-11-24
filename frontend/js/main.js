@@ -4,7 +4,7 @@ import { build, derive, hit, holeTable, setHandle, moveAnnot, annotSnapPoints, e
 import { View, COLORS } from "./view.js";
 import { Snapper, MODES, DEFAULT_MODES, parseOverride, overrideModes, LABELS } from "./osnap.js";
 import { Panel } from "./panel.js";
-import { TOOLS, TOOL_BY_ID, finalize, promptFor, resolveOption } from "./tools.js";
+import { TOOL_BY_ID, FAMILIES, FAMILY_OF, finalize, promptFor, resolveOption } from "./tools.js";
 import { clickSelection, windowSelection, pointInPolygon, boxInPolygon } from "./selection.js";
 import { parsePoint, parsePointMod, resolvePoint, toUser, defaultOrigin, orthoActive, routeKey } from "./pointin.js";
 import * as dlg from "./dialogs.js";
@@ -103,6 +103,7 @@ class App {
    */
   escape(confirm = false) {
     const t = TOOL_BY_ID[this.tool];
+    if (this.hideFlyout) this.hideFlyout();
     if (this.gripMenu && this.gripMenu.shown) {
       this.hideGripMenu();
       return;
@@ -1079,41 +1080,187 @@ class App {
   }
 
   // ------------------------------------------------------------ interface
-  buildToolbar() {
-    const groups = [];
-    for (const t of TOOLS) {
-      if (t.hidden) continue; // commands only (MOVE, COPY)
-      let g = groups.find((x) => x.name === t.group);
-      if (!g) groups.push((g = { name: t.group, tools: [] }));
-      g.tools.push(t);
-    }
-    let collapsed = new Set();
+  /** The rail's own settings, for all documents: labels under the icons, families shown. */
+  railCfg() {
+    let c = {};
     try {
-      collapsed = new Set(JSON.parse(localStorage.getItem("cotare.toolGroups") || "[]"));
+      c = JSON.parse(localStorage.getItem("cotare.rail") || "{}") || {};
     } catch (_) { /* default */ }
-    this.collapsedGroups = collapsed;
-    $("tools").innerHTML = groups.map((g) => `<button class="grp" data-grp="${g.name}" aria-expanded="${!collapsed.has(g.name)}">
-        <span>${g.name}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
-      <div class="grid" data-grid="${g.name}" ${collapsed.has(g.name) ? "hidden" : ""}>${g.tools.map((t) => `
-      <button class="tool" data-tool="${t.id}" title="${t.label}${t.key ? ` (${t.key})` : ""}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${t.icon}"/></svg><span>${t.label}</span></button>`).join("")}</div>`).join("");
-    $("tools").querySelectorAll("[data-tool]").forEach((b) => b.addEventListener("click", () => this.setTool(b.dataset.tool)));
-    $("tools").querySelectorAll("[data-grp]").forEach((b) => b.addEventListener("click", () => this.toggleGroup(b.dataset.grp)));
+    return { labels: c.labels !== false, hidden: Array.isArray(c.hidden) ? c.hidden : [], last: c.last && typeof c.last === "object" ? c.last : {} };
   }
 
-  /** Toolbar groups collapse; the state is remembered in the browser. */
-  toggleGroup(name, open) {
-    const c = this.collapsedGroups;
-    const willOpen = open ?? c.has(name);
-    if (willOpen) c.delete(name);
-    else c.add(name);
-    const grid = $("tools").querySelector(`[data-grid="${name}"]`);
-    const btn = $("tools").querySelector(`[data-grp="${name}"]`);
-    if (grid) grid.hidden = !willOpen;
-    if (btn) btn.setAttribute("aria-expanded", String(willOpen));
+  saveRailCfg(c) {
     try {
-      localStorage.setItem("cotare.toolGroups", JSON.stringify([...c]));
+      localStorage.setItem("cotare.rail", JSON.stringify(c));
     } catch (_) { /* not remembered */ }
   }
+
+  /** The family a tool belongs to on the rail (e2e and the flyout). */
+  familyOf(id) {
+    return FAMILY_OF[id] || null;
+  }
+
+  /** The tool a family's slot shows: the member used last, or the first. */
+  familyTool(f, cfg = this.railCfg()) {
+    const id = cfg.last[f.id];
+    return f.tools.includes(id) && TOOL_BY_ID[id] ? id : f.tools[0];
+  }
+
+  /**
+   * The tool rail (UI-D1): one slot per family with an icon and a short label; a click runs the tool the
+   * slot shows, a second click on the active slot, a right click or a long press opens the family's
+   * flyout with every member. Every tool keeps a [data-tool] button (in the flyout).
+   */
+  buildToolbar() {
+    const cfg = this.railCfg();
+    const nav = $("tools");
+    nav.classList.toggle("compact", !cfg.labels);
+    const fams = FAMILIES.filter((f) => !cfg.hidden.includes(f.id));
+    nav.innerHTML = fams.map((f, i) => {
+      const t = TOOL_BY_ID[this.familyTool(f, cfg)];
+      return `${f.sep && i ? '<div class="rsep" aria-hidden="true"></div>' : ""}<button class="slot${f.tools.length > 1 ? " fly" : ""}" data-fam="${f.id}" aria-label="${f.label}"${f.tools.length > 1 ? ' aria-haspopup="menu" aria-expanded="false"' : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${t.icon}"/></svg><span>${f.label}</span></button>`;
+    }).join("");
+    // the flyout sits next to the rail (in .body: the rail itself scrolls and would clip it)
+    let fly = $("railFly");
+    if (!fly) {
+      fly = document.createElement("div");
+      fly.id = "railFly";
+      fly.className = "flyout";
+      fly.setAttribute("role", "menu");
+      nav.after(fly);
+    }
+    fly.hidden = true;
+    fly.innerHTML = `${FAMILIES.map((f) => `<div class="fgrp" data-fly="${f.id}" hidden><div class="fh">${f.label}</div>${f.tools.map((id) => {
+      const t = TOOL_BY_ID[id];
+      return `<button class="frow" role="menuitem" data-tool="${id}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${t.icon}"/></svg><span>${t.label}</span><i class="mono"></i><kbd class="mono"></kbd></button>`;
+    }).join("")}</div>`).join("")}`;
+    nav.querySelectorAll("[data-fam]").forEach((b) => {
+      const f = FAMILIES.find((x) => x.id === b.dataset.fam);
+      b.addEventListener("click", () => {
+        const id = this.familyTool(f);
+        if (f.tools.length > 1 && (this.tool === id || !$("railFly").hidden && this.flyFam === f.id)) this.toggleFlyout(f.id);
+        else {
+          this.hideFlyout();
+          this.setTool(id);
+        }
+      });
+      b.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        if (f.tools.length > 1) this.toggleFlyout(f.id, true);
+      });
+      // press and hold (touch): the flyout
+      let timer = 0;
+      b.addEventListener("pointerdown", (e) => {
+        if (e.pointerType !== "touch" || f.tools.length < 2) return;
+        timer = setTimeout(() => { timer = -1; this.toggleFlyout(f.id, true); }, 300);
+      });
+      b.addEventListener("pointerup", (e) => {
+        if (timer > 0) clearTimeout(timer);
+        if (timer === -1) e.preventDefault();
+        timer = 0;
+      });
+    });
+    fly.querySelectorAll("[data-tool]").forEach((b) => b.addEventListener("click", () => {
+      this.hideFlyout();
+      this.setTool(b.dataset.tool);
+    }));
+    if (this.railBound) {
+      this.markRail();
+      if (this.keyCfg) this.applyKeyCfg(this.keyCfg);
+      return;
+    }
+    this.railBound = true;
+    fly.addEventListener("keydown", (e) => {
+      const rows = [...$("railFly").querySelectorAll(`[data-fly="${this.flyFam}"] .frow`)];
+      const i = rows.indexOf(document.activeElement);
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const n = rows.length;
+        rows[(i + (e.key === "ArrowDown" ? 1 : n - 1) + n) % n].focus();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        const slot = nav.querySelector(`[data-fam="${this.flyFam}"]`);
+        this.hideFlyout();
+        if (slot) slot.focus();
+      }
+    });
+    document.addEventListener("pointerdown", (e) => {
+      if (!$("railFly").hidden && !e.target.closest("#railFly") && !e.target.closest("[data-fam]")) this.hideFlyout();
+    });
+    this.markRail();
+    if (this.keyCfg) this.applyKeyCfg(this.keyCfg);
+  }
+
+  /** Opens (or closes) a family's flyout next to its slot. */
+  toggleFlyout(fam, open) {
+    const fly = $("railFly");
+    const willOpen = open ?? (fly.hidden || this.flyFam !== fam);
+    if (!willOpen) {
+      this.hideFlyout();
+      return;
+    }
+    const slot = $("tools").querySelector(`[data-fam="${fam}"]`);
+    if (!slot) return;
+    this.flyFam = fam;
+    fly.querySelectorAll("[data-fly]").forEach((g) => { g.hidden = g.dataset.fly !== fam; });
+    fly.hidden = false;
+    $("tools").querySelectorAll("[data-fam]").forEach((b) => b.hasAttribute("aria-expanded") && b.setAttribute("aria-expanded", String(b === slot)));
+    // next to the slot, inside the window
+    const body = fly.parentElement.getBoundingClientRect();
+    const r = slot.getBoundingClientRect();
+    const h = fly.offsetHeight;
+    fly.style.left = `${$("tools").offsetWidth + 4}px`;
+    fly.style.top = `${Math.max(4, Math.min(r.top - body.top - 6, body.height - h - 4))}px`;
+    const cur = fly.querySelector(`[data-fly="${fam}"] .frow.on`) || fly.querySelector(`[data-fly="${fam}"] .frow`);
+    if (cur) cur.focus({ preventScroll: true });
+  }
+
+  hideFlyout() {
+    const fly = $("railFly");
+    if (!fly || fly.hidden) return;
+    fly.hidden = true;
+    $("tools").querySelectorAll("[aria-expanded]").forEach((b) => b.setAttribute("aria-expanded", "false"));
+  }
+
+  /** Slot tooltips: family, the tool the slot runs, its key and alias. */
+  slotTitles() {
+    if (!this.keyCfg) return;
+    const byId = Object.fromEntries(commandList(this.keyCfg).map((c) => [c.id, c]));
+    const cfg = this.railCfg();
+    $("tools").querySelectorAll("[data-fam]").forEach((b) => {
+      const f = FAMILIES.find((x) => x.id === b.dataset.fam);
+      const c = f && byId[this.familyTool(f, cfg)];
+      if (!c) return;
+      const bits = [c.key, c.aliases[0]].filter(Boolean);
+      b.title = `${tr(f.label)} — ${tr(c.label)}${bits.length ? ` (${[...new Set(bits)].join(" · ")})` : ""}`;
+    });
+  }
+
+  /** The active tool on the rail: its family's slot shows it and is marked; the row in the flyout too. */
+  markRail() {
+    const id = this.tool;
+    const fam = FAMILY_OF[id];
+    if (fam) {
+      const cfg = this.railCfg();
+      if (cfg.last[fam] !== id) {
+        cfg.last[fam] = id;
+        this.saveRailCfg(cfg);
+      }
+    }
+    $("tools").querySelectorAll("[data-fam]").forEach((b) => {
+      const on = b.dataset.fam === fam;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-pressed", String(on));
+      if (on) {
+        const p = b.querySelector("svg path");
+        if (p) p.setAttribute("d", TOOL_BY_ID[id].icon);
+      }
+    });
+    document.querySelectorAll("#railFly [data-tool]").forEach((b) => b.classList.toggle("on", b.dataset.tool === id));
+    this.slotTitles();
+  }
+
 
   bindUi() {
     $("btnOpen").addEventListener("click", () => dlg.openDialog(this));
@@ -1236,10 +1383,8 @@ class App {
     this.hover = null;
     this.hoverKey2 = "";
     this.clearAcq();
-    const grp = TOOL_BY_ID[id].group;
-    if (this.collapsedGroups && this.collapsedGroups.has(grp)) this.toggleGroup(grp, true);
     this.view.overlay = null;
-    $("tools").querySelectorAll("[data-tool]").forEach((b) => b.classList.toggle("on", b.dataset.tool === id));
+    this.markRail();
     this.setHint(TOOL_BY_ID[id].hint);
     this.updateCmdPrompt();
     $("canvas").style.cursor = id === "pan" ? "grab" : id === "select" ? "default" : "crosshair";
@@ -3422,12 +3567,18 @@ class App {
     this.keyCfg = cfg;
     this.keyMap = directKeyMap(cfg);
     const byId = Object.fromEntries(commandList(cfg).map((c) => [c.id, c]));
-    $("tools").querySelectorAll("[data-tool]").forEach((b) => {
+    document.querySelectorAll("#railFly [data-tool]").forEach((b) => {
       const c = byId[b.dataset.tool];
       if (!c) return;
       const bits = [c.key, c.aliases[0]].filter(Boolean);
       b.title = `${tr(c.label)}${bits.length ? ` (${[...new Set(bits)].join(" · ")})` : ""}`;
+      // flyout row: the alias and the direct key in their own columns
+      const al = b.querySelector("i");
+      const kb = b.querySelector("kbd");
+      if (al) al.textContent = c.aliases[0] || "";
+      if (kb) kb.textContent = c.key || "";
     });
+    this.slotTitles();
     this.updateCmdPrompt();
     if (this.panel) this.panel.render();
   }
@@ -3736,6 +3887,8 @@ class App {
     window.addEventListener("keydown", (e) => {
       this.frame = (this.frame || 0) + 1;
       if (dlg.isModalOpen()) return;
+      // the rail's flyout handles its own keys (arrows, Enter on a row, Esc)
+      if (e.target && e.target.closest && e.target.closest("#railFly")) return;
       if (e.key === "F12") {
         // as in AutoCAD: dynamic input on / off
         e.preventDefault();

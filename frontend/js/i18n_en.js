@@ -1078,4 +1078,9 @@ export const EN = {
   "Mutare": "Move",
   "Scalare": "Scale",
   "Oglindire": "Mirror",
+  "Adnotări": "Annotations",
+  "Pan": "Pan",
+  "Bara de unelte · pentru toate documentele": "Tool rail · for all documents",
+  "Etichete sub iconițe": "Labels under the icons",
+  "O familie ascunsă rămâne la îndemână din linia de comandă și cu tastele ei.": "A hidden family stays at hand from the command line and its keys.",
 };

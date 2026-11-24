@@ -429,6 +429,26 @@ for (const t of TOOLS) {
 }
 
 export const TOOL_BY_ID = Object.fromEntries(TOOLS.map((t) => [t.id, t]));
+
+/**
+ * The tool rail (UI v2, UI-D1 as revised in docs/design/ui-v2/research.md): one slot per family, with an
+ * icon and a short label; the other members are in a flyout. `sep` starts a new group on the rail.
+ * Every visible tool is in exactly one family, except `calib` (key K, CALIB, Straturi tab).
+ */
+export const FAMILIES = [
+  { id: "select", label: "Selecție", tools: ["select"] },
+  { id: "pan", label: "Pan", tools: ["pan"] },
+  { id: "measure", label: "Măsoară", tools: ["measure", "ucs"] },
+  { id: "dims", label: "Cote", sep: true, tools: ["dimLin", "dimAli", "dimDia", "dimDiaC", "dimRad", "dimAng", "chamfer", "dimOrd", "dimCont", "dimBase", "holes"] },
+  { id: "tol", label: "Toleranțe", tools: ["rough", "gdt", "datum"] },
+  { id: "notes", label: "Adnotări", tools: ["text", "lead", "note", "revtab", "bom", "balloon"] },
+  { id: "draw", label: "Desen", sep: true, tools: ["line", "poly", "rect", "circle", "arc", "cross", "hatch", "break"] },
+  { id: "views", label: "Vederi", tools: ["section", "detail", "viewlabel"] },
+  { id: "rev", label: "Revizie", sep: true, tools: ["strike", "white", "ink", "redact"] },
+];
+export const FAMILY_OF = Object.fromEntries(FAMILIES.flatMap((f) => f.tools.map((t) => [t, f.id])));
+/** Tools reached only by key, command or another button, not from the rail. */
+export const OFF_RAIL = ["calib"];
 export const TOOL_BY_KEY = Object.fromEntries(TOOLS.filter((t) => t.key).map((t) => [t.key.toLowerCase(), t]));
 export const DRAW_TOOLS = new Set(TOOLS.filter((t) => t.group === "Desen").map((t) => t.id));
 

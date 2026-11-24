@@ -117,3 +117,17 @@ test("transparent commands: 'Z and 'OS resolve, a non-transparent one does not",
   assert.equal(resolveCommand("'EXPORT", cfg), null);
   assert.equal(resolveCommand("'L", cfg), null, "tools are not transparent");
 });
+
+test("tool rail: every visible tool is in exactly one family (calib is off the rail)", async () => {
+  const { TOOLS, FAMILIES, OFF_RAIL } = await import("../js/tools.js");
+  const seen = new Map();
+  for (const f of FAMILIES) for (const id of f.tools) seen.set(id, (seen.get(id) || 0) + 1);
+  for (const t of TOOLS) {
+    if (t.hidden || OFF_RAIL.includes(t.id)) {
+      assert.equal(seen.get(t.id), undefined, t.id);
+      continue;
+    }
+    assert.equal(seen.get(t.id), 1, t.id);
+  }
+  for (const id of seen.keys()) assert.ok(TOOLS.some((t) => t.id === id), id);
+});
