@@ -587,6 +587,7 @@ class App {
     el.style.left = `${Math.max(4, Math.min(g.sx + 12, vp.clientWidth - w - 4))}px`;
     el.style.top = `${Math.max(4, Math.min(g.sy + 12, vp.clientHeight - h - 4))}px`;
     g.shown = true;
+    this.view.redraw(); // the hover label would sit under the menu
   }
 
   runGripMenu(id) {

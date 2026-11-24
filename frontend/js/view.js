@@ -476,7 +476,7 @@ export class View {
     if ((app.acq && app.acq.length) || app.parSeg) this.drawAcquired(app.acq || [], app.parSeg);
     // label next to the cursor: what the handle / box under the cursor does, or the value while dragging
     if (app.dragTip) this.drawTip(app.dragTip.txt, app.dragTip.p[0], app.dragTip.p[1]);
-    else if (hv && hv.label && app.hoverPt && !(ov && ov.snap)) this.drawTip(hv.label, app.hoverPt[0], app.hoverPt[1], true);
+    else if (hv && hv.label && app.hoverPt && !(ov && ov.snap) && !(app.gripMenu && app.gripMenu.shown)) this.drawTip(hv.label, app.hoverPt[0], app.hoverPt[1], true);
   }
 
   /** Recognized text (OCR): green boxes, with the read text above when it is large enough on screen. */
