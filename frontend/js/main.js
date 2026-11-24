@@ -1280,7 +1280,12 @@ class App {
       const c = f && byId[this.familyTool(f, cfg)];
       if (!c) return;
       const bits = [c.key, c.aliases[0]].filter(Boolean);
-      b.title = `${tr(f.label)} — ${tr(c.label)}${bits.length ? ` (${[...new Set(bits)].join(" · ")})` : ""}`;
+      const t = `${tr(f.label)} — ${tr(c.label)}${bits.length ? ` (${[...new Set(bits)].join(" · ")})` : ""}`;
+      // with lists on hover, the browser's tooltip would land on the list: the list shows the same
+      if (cfg.hover && f.tools.length > 1) {
+        b.removeAttribute("title");
+        b.setAttribute("aria-description", t);
+      } else b.title = t;
     });
   }
 
