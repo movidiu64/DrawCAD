@@ -1,6 +1,6 @@
 ---
 name: drawcad-ui
-description: Use when changing anything visible in the DrawCAD interface — CSS, colors, fonts, dialogs, panels, toasts, toolbar, canvas marks. Covers the color tokens, the dialog helpers, the dark style and how to check the result with a screenshot.
+description: Use when changing anything visible in the DrawCAD interface — CSS, colors, fonts, dialogs, panels, toasts, tool rail, context bar, canvas marks. Covers the color tokens, the dialog helpers, the dark style and how to check the result with a screenshot.
 ---
 
 # DrawCAD UI

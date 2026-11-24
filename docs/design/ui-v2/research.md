@@ -184,4 +184,5 @@ values and icons are illustrative; tool names come from `TOOLS`.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-24 | minor | Built on `v1.1`: labelled family rail (UI-D1), quieter accent and tabular figures (UI-D6), Minimize UI with Ctrl+0 (UI-D17); UI-D18 holds for the new panel |
 | 2026-11-24 | major | Interface research: Figma UI3, Fusion, Shapr3D, Onshape, BricsCAD, AutoCAD, CADCraft, SolidCraft, Plasticity; NN/g, Material, WCAG 2.2; findings F1–F9 and changes to UI-D1, D1a, D1b, D6, D13; new UI-D17, D18 |

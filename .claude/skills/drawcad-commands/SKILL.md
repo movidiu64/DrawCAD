@@ -31,7 +31,9 @@ Two keyboard modes (Settings → Keys and commands): **direct keys** (one key = 
    `key` is AutoCAD's English keyword letter, `en` the English keywords, `when(app)` says if it can act
    now, `run(app)` acts (use `app.cmdState` for what `make` should read, `app.askValue()` for a
    typed value). Keys must be unique per tool (`tests/prompts.test.js` checks it).
-7. A command that is not a toolbar button (MOVE, COPY) gets `hidden: true`.
+7. **Tool rail:** add the tool's id to its family in `FAMILIES` (`tools.js`); every visible tool is in
+   exactly one family (`tests/commands.test.js` checks it), or in `OFF_RAIL`. A command that is not
+   on the rail at all (MOVE, COPY) gets `hidden: true`.
 
 ## A new action (not a tool)
 

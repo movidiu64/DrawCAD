@@ -134,13 +134,13 @@ UI-D1 … D8 are in `README.md` and unchanged. New:
 | # | Decision | Status |
 |---|---|---|
 | UI-D9 | Command search at the cursor | *check* (key) |
-| UI-D10 | Selection actions in the context bar | decided |
-| UI-D11 | Rail you can trim | decided |
-| UI-D12 | One-line status bar; toasts out of the way | decided |
-| UI-D13 | Compact properties: collapsible sections | decided |
+| UI-D10 | Selection actions in the context bar | built (6f08861) |
+| UI-D11 | Rail you can trim | built (e2dad48) |
+| UI-D12 | One-line status bar; toasts out of the way | built (452f1cc) |
+| UI-D13 | Compact properties: collapsible sections | built (b49c869) |
 | UI-D14 | Shortcut sheet and first-run tips | decided |
-| UI-D15 | Motion, contrast, light theme | decided; light theme *planned* |
-| UI-D16 | Phone and tablet layout | decided |
+| UI-D15 | Motion, contrast, light theme | motion built (452f1cc); light theme *planned* |
+| UI-D16 | Phone and tablet layout | built (5f27a88) |
 
 ### UI-D9 — Command search at the cursor (*check*: the key)
 
@@ -238,4 +238,5 @@ Each phase is one PR on `v1.1`, cites the decisions it builds and has screenshot
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-24 | minor | Phases 1–5 built on `v1.1` (UI-D1 as revised, D2–D7, D10–D13, D15 motion, D16, D17); still open: D8, D9, D14, light theme |
 | 2026-11-24 | major | First UI audit on `v1.1` (≈ 50 %); references CADCraft, SolidCraft / Fusion, SolidWorks, Onshape, Shapr3D, Plasticity; decisions UI-D9 … D16 and phases with UI-D1 … D8 |

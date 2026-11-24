@@ -142,6 +142,8 @@ The app was originally called "Cotare": the old `COTARE_*` variables are still a
 
 ## Usage
 
+**The screen:** the header holds the document (name, save state, close), the text search, undo / redo, zoom, *Hide the panels*, Open, Settings and **Export ▾** (the arrow picks PDF or DXF first). On the left, the tool rail has one slot per family (Select, Pan, Measure, Dimensions, Tolerances, Annotations, Drawing, Views, Revision): a click runs the tool the slot shows (the one used last in that family); a second click on the active slot, a right click or a long press opens the family's list with every tool, its alias and its key. Above the drawing, the context bar shows the active tool, its hint and the options of the current step, or, with a selection, what is selected and its actions (Move, Copy, Zoom to selection, Erase; for a linear dimension also *Chain from here* and *Baseline from here*); the pages are on its right. The panel on the right has three tabs: **Properties** (the selection), **Layers** (document, drawing scale and Calibrate, layers, printing) and **Annotations** (the page's list with a filter and chips by kind). Panel sections open and close from their title, remembered; Size and Layer start closed. At the bottom: coordinates, the command line, the Snap / Tracking / Polar / Ortho toggles and the scale. **Ctrl+0** (or the header button) hides the rail, the context bar and the panel. In Settings → *Tool rail* you turn the labels off (icons only) or hide families you don't use; their tools stay reachable from the command line and their keys.
+
 **Workflow:**
 1. Open a PDF or an image (or drag the file onto the page).
 2. Pick a tool and click on the drawing.
@@ -248,13 +250,13 @@ Default direct keys:
 - **right click held** = radial menu with your favorite commands (chosen in **Settings**, in the 8 positions). At the top is the last command used, then Diameter, Radius, Text, Line (or Delete selection), Leader, Undo, Measure. Pick by dragging towards the command and releasing, or release in place and click the command.
 - **right click dragged** or the pressed wheel = pan the sheet
 
-**Tablet and phone:** the properties panel becomes a drawer (on a phone, a sheet sliding up from the bottom). It opens by itself when you pick an annotation or have text to type, and the slider button in the header opens it at any time. On touch screens:
+**Tablet and phone:** the properties panel becomes a drawer (on a phone, a sheet sliding up from the bottom). It opens by itself when you pick an annotation or have text to type, and the slider button in the header opens it at any time. On a phone the tool rail is a bar at the bottom and a family's list opens upwards. On touch screens:
 - **two fingers** pan and zoom
 - **the point** is placed when the finger lifts, so you can adjust it with snap
 - **long press** opens the radial menu
 
 **Original when printing:** colored drawings print pale. There are two options:
-- **The whole drawing.** In the document panel (or in the export dialog) check "Black lines and text, whole drawing". The original's lines and text become black, including those in blocks (the title block). White stays white and your dimensions do not change.
+- **The whole drawing.** In the Layers tab (or in the export dialog) check "Black lines and text, whole drawing". The original's lines and text become black, including those in blocks (the title block). White stays white and your dimensions do not change.
   - Colored filled areas can become black, gray or stay unchanged.
   - Images (and scans) can become black and white: everything that is not paper becomes black.
   - It shows on screen and is applied on export.
@@ -291,7 +293,7 @@ The diameter dimension between generatrices remains the **Diameter** tool (`DDL`
 - **The selected group** moves by dragging any of its annotations or with the arrows. It is copied, duplicated and deleted together.
 - **From the panel** you set the size and layer for the whole group.
 
-**Size:** every selected annotation (dimensions, roughness, GD&T, datum, revision table, etc.) has a white square with a diagonal in its corner. Drag it towards the anchor to shrink or away to enlarge, between 30% and 500%. The panel does the same, with the −/+ buttons or 50…200%. Text, arrows and distances scale; line widths stay. The resize handle also works with another tool active.
+**Size:** every selected annotation (dimensions, roughness, GD&T, datum, revision table, etc.) has a white square with a diagonal in its corner. Drag it towards the anchor to shrink or away to enlarge, between 30% and 500%. The panel does the same in its Size section, with the −/+ buttons or the list of sizes. Text, arrows and distances scale; line widths stay. The resize handle also works with another tool active.
 
 **Multi-line text:** the text, leader and notes fields accept Enter for a new line. For text, the height is picked directly in mm (2.5 / 3.5 / 5 / 7 / 10).
 
@@ -319,7 +321,7 @@ While dragging, the label shows the value: the Δx/Δy offset, the resize percen
 
 **The GD&T frame:** the leader has a handle at its elbow. Drag it anywhere to bend the leader at any angle; "Automatic elbow (90°)" in the panel returns to the default.
 
-**Toolbar and layers:** toolbar groups collapse from their title (the state is remembered); a tool's key opens its group. In the document panel, the eye next to each layer (Original, Added, Revisions, Deletions) hides it on screen only, for checking; the export contains everything.
+**Layers:** in the Layers tab, the eye next to each layer (Original, Added, Revisions, Deletions) hides it on screen only, for checking; the export contains everything.
 
 **Roughness (Q):** click twice at the same point for a symbol directly on the surface, or click a second time elsewhere for a symbol with a leader. A direct symbol can sit above the surface or to its left; for surfaces seen from below or from the right, ISO 1302 requires a leader.
 
@@ -377,7 +379,7 @@ Every cell can be edited in the panel. **Update from dimensions** rebuilds the t
 
 **Export by pages:** for a multi-page document, the export dialog offers all pages (default), only the current page, or a list ("1, 3-5"). The "Each page as a separate PDF" checkbox downloads a ZIP archive with one PDF per page (`name_p1.pdf`…). Each file carries the editable layer only for its own pages, so it reopens correctly.
 
-**Annotation list:** in the document panel (with nothing selected) the page's annotations are listed with their values. Click = select and center, the bin = delete. **Shift+F** zooms to the selection, **double click** on an annotation puts the cursor straight into the field to edit. In the header, next to the document name, you can see whether changes are saved on the server. On a network error, saving is retried automatically.
+**Annotation list:** the Annotations tab of the panel lists the page's annotations with their values; the field filters by type or value and the chips by kind. Click = select and center, the bin = delete. **Shift+F** zooms to the selection, **double click** on an annotation puts the cursor straight into the field to edit. In the header, next to the document name, you can see whether changes are saved on the server. On a network error, saving is retried automatically.
 
 **Closing and keeping documents on the server:**
 - **The ✕ button** next to the document name closes it and returns to the start page.
@@ -394,7 +396,7 @@ Every cell can be edited in the panel. **Update from dimensions** rebuilds the t
 
 ### Pages: rotate, reorder, delete
 
-Next to the page tabs there are two buttons, ⟲ and ⟳, that rotate the current page by 90° (the `ROTL` / `ROTR` commands). The third button (or the `PAGES` command) opens the **Pages** dialog. There you see thumbnails and, for each page:
+Next to the page tabs, in the context bar, there are two buttons, ⟲ and ⟳, that rotate the current page by 90° (the `ROTL` / `ROTR` commands). The third button (or the `PAGES` command) opens the **Pages** dialog. There you see thumbnails and, for each page:
 - rotate left / right;
 - move before / after;
 - delete (asks for confirmation if the page has annotations).
@@ -411,7 +413,7 @@ All pages can be rotated at once from there too (90° or 180°).
 Dimensions and texts have their size in mm relative to the sheet (3.5 mm text, 3 mm arrows). For an image, the sheet size comes from the DPI. Photos and screenshots often have a default of 72 or 96 DPI. That way, an A3 drawing photographed at 3300 px would end up on a 1.16 m sheet, and dimensions would look tiny.
 
 - **On opening:** if the image has a low DPI (≤ 96) and the sheet would be larger than A1, it is brought to A3. A DPI given explicitly in the open dialog takes precedence.
-- **For a document already open:** in **Pages** pick "Sheet: A4 / A3 / A2 / A1 / A0" (or 50% / 200%). The document panel warns you when an image's sheet is unusually large. Existing dimensions stay on the drawing and the calibrated scale is adjusted, so measured values do not change. The export keeps the new size.
+- **For a document already open:** in **Pages** pick "Sheet: A4 / A3 / A2 / A1 / A0" (or 50% / 200%). The Layers tab warns you when an image's sheet is unusually large. Existing dimensions stay on the drawing and the calibrated scale is adjusted, so measured values do not change. The export keeps the new size.
 
 ### Zoom
 

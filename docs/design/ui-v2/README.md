@@ -47,21 +47,22 @@ build a piece. If a board and this folder disagree, this folder wins: fix it in 
 ## Decision log
 
 **Status:** *decided* builds as drawn. *planned* is shown on purpose and comes later. *check* is
-decided in the design but needs confirming before it is built.
+decided in the design but needs confirming before it is built. *built* is on branch `v1.1`, with the
+commit that built it.
 
 | # | Decision | Status | Boards |
 |---|---|---|---|
-| UI-D1 | Icon-only tool rail, one slot per family, flyouts | decided | editor-*, states |
-| UI-D1a | A slot shows the family member used last | check | states |
-| UI-D1b | `calib` leaves the rail (K, `CALIB`, Calibrate in Straturi) | check | editor-layers |
-| UI-D2 | Context bar replaces the page-tab row; legend as a chip on the canvas | decided | editor-properties, editor-dimension-tool |
-| UI-D3 | Panel tabs Proprietăți / Straturi / Adnotări | decided | editor-properties, editor-layers, editor-annotations |
-| UI-D3a | The keys summary leaves the panel when a document is open | check | — |
-| UI-D4 | Header: search field, icon buttons, Export split button; one document | decided | editor-* |
+| UI-D1 | Tool rail, one slot per family, flyouts; **revised** by `research.md`: icon and label (72 px), icon-only as an option | built (e2dad48) | editor-*, states |
+| UI-D1a | A slot shows the family member used last | built (e2dad48) | states |
+| UI-D1b | `calib` leaves the rail (K, `CALIB`, Calibrate in Straturi) | built (e2dad48) | editor-layers |
+| UI-D2 | Context bar replaces the page-tab row; legend as a chip on the canvas | built (6f08861); tool defaults (tolerance, text height) not yet | editor-properties, editor-dimension-tool |
+| UI-D3 | Panel tabs Proprietăți / Straturi / Adnotări | built (b49c869) | editor-properties, editor-layers, editor-annotations |
+| UI-D3a | The keys summary leaves the panel when a document is open | built (b49c869); on the start screen as a link to the Keys dialog | — |
+| UI-D4 | Header: search field, icon buttons, Export split button; one document | built (5f27a88) | editor-* |
 | UI-D4a | Several documents as tabs | planned | editor-* (second chip) |
-| UI-D5 | Status bar: wide command line, toggle chips | decided | editor-*, states |
-| UI-D6 | Accent only for state; `--accent-tint`; mono for values | decided | all |
-| UI-D7 | Start screen: drop zone, quick commands, recent documents as cards | decided | start |
+| UI-D5 | Status bar: wide command line, toggle chips | built (452f1cc) | editor-*, states |
+| UI-D6 | Accent fill only for the primary action; `--accent-tint` for state; tabular figures for values (research F7) | built (452f1cc) | all |
+| UI-D7 | Start screen: drop zone, a card on layers with the Keys link, recent documents as cards | built (5f27a88) | start |
 | UI-D7a | Thumbnails of recent documents (needs a backend endpoint) | planned | start |
 | UI-D8 | Export dialog: PDF / DXF kept, one line per format, OCR stays a PDF option | decided | states |
 
@@ -69,7 +70,7 @@ decided in the design but needs confirming before it is built.
 
 ```
 ┌ header 44 px: brand · document (name, save state, close) · search field · undo/redo · zoom · settings · Export ▾ ┐
-├ rail 56 px ┬ context bar 40 px: active tool · alias · hint · tool options ········ page tabs · pages ┬ panel 320 px ┤
+├ rail 72 px ┬ context bar 40 px: active tool · alias · hint · tool options ········ page tabs · pages ┬ panel 320 px ┤
 │ icon slots │ canvas (legend chip bottom-left)                                                     │ tabs:         │
 │ + flyouts  │                                                                                      │ Proprietăți   │
 │            │                                                                                      │ Straturi      │
