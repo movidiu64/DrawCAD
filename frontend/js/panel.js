@@ -2,7 +2,7 @@
 import { typeName, newId, fmtNum, parseNum, build, derive, K, SCALABLE, SCALE_MIN, SCALE_MAX } from "./annots.js";
 import { LTYPES, LTYPE_BY_ID, WIDTHS, PRESETS, resizeShape } from "./shapes.js";
 import { fmtDev } from "./iso286.js";
-import { GDT_SYMBOLS, GDT_BY_ID, MODIFIERS, symbolPrims } from "./gdt.js";
+import { GDT_SYMBOLS, GDT_BY_ID, MODIFIERS, symbolPrims, diaAllowed } from "./gdt.js";
 import { drawPrims, COLORS } from "./view.js";
 import { TOOL_BY_ID, DRAW_TOOLS } from "./tools.js";
 import { commandList, keyConfig } from "./commands.js";
@@ -614,7 +614,7 @@ export class Panel {
     return `<div class="sec"><div class="h">Caracteristică</div><div class="symgrid">${grid}</div>
       <div class="sub"><b style="color:var(--text)">${esc(sym.name)}</b> · ${esc(note)}</div></div>
       <div class="sec"><div class="h">Zonă de toleranță</div>
-        <div class="row"><div class="pills"><button data-act="dia" class="${a.dia ? "on" : ""}" title="Zonă cilindrică">Ø</button></div>
+        <div class="row"><div class="pills"><button data-act="dia" class="${a.dia ? "on" : ""}" ${diaAllowed(sym.id) ? "" : "disabled"} title="${diaAllowed(sym.id) ? "Zonă cilindrică (axă)" : "Fără Ø pentru această caracteristică"}">Ø</button></div>
         <div class="field"><input type="text" class="mono" id="gVal" data-f="val" value="${esc(a.val)}" aria-label="Valoare toleranță"></div></div>
         <div class="lbl">Modificatori</div><div class="pills">${mods}</div></div>
       <div class="sec"><div class="h">Baze de referință</div>${datums || `<div class="sub">—</div>`}</div>
@@ -1102,10 +1102,13 @@ export class Panel {
         upd((a) => { a.angle = Number(v); });
         break;
       case "sym":
-        upd((a) => { a.sym = v; });
+        upd((a) => {
+          a.sym = v;
+          if (!diaAllowed(v)) a.dia = false;
+        });
         break;
       case "dia":
-        upd((a) => { a.dia = !a.dia; });
+        upd((a) => { a.dia = diaAllowed(a.sym) && !a.dia; });
         break;
       case "mod":
         upd((a) => {

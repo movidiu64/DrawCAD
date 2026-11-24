@@ -1,5 +1,5 @@
 // Tool definitions: icon, key, steps and the annotation they produce.
-import { newId, K, dimSeries, parseNum } from "./annots.js";
+import { newId, K, dimSeries, parseNum, gdtAnchor } from "./annots.js";
 import { trackSweep } from "./shapes.js";
 
 const shape = (app, kind, pts, extra = {}) => ({ type: "shape", kind, pts, ...app.drawStyle, ...extra });
@@ -187,10 +187,10 @@ export const TOOLS = [
     preview(pts, cur) { return this.make([pts[0], cur]); } },
   { id: "gdt", label: "Cadru GD&T", key: "G", group: "Toleranțe", icon: "M2 8h20v8H2zM9 8v8M16 8v8M3.5 12a2 2 0 1 0 4 0a2 2 0 1 0 -4 0", kind: "clicks", n: 2,
     hint: "Vârful săgeții (pe linia de cotă = axă, pe contur = suprafață) → poziția cadrului",
-    make: (pts) => ({ type: "gdt", target: pts[0], pos: pts[1], sym: "coax", dia: true, val: "0,02", mods: [], datums: ["A", "", ""] }),
-    preview(pts, cur) { return this.make([pts[0], cur]); } },
+    make: (pts, app) => ({ type: "gdt", target: pts[0], pos: pts[1], anchor: gdtAnchor(pts[0], pts[1]), ...app.gdtDefaults() }),
+    preview(pts, cur, app) { return this.make([pts[0], cur], app); } },
   { id: "datum", label: "Bază", key: "B", group: "Toleranțe", icon: "M8 4h8v8H8zM12 12v4M8.5 20h7L12 16z", kind: "clicks", n: 2,
-    hint: "Punct pe element (sau pe linia de cotă) → poziția casetei",
+    hint: "Punct pe element, pe linia de cotă sau pe marginea unui cadru GD&T → poziția casetei",
     make: (pts, app) => ({ type: "datum", target: pts[0], pos: pts[1], letter: app.nextDatumLetter() }),
     preview(pts, cur, app) { return this.make([pts[0], cur], app); } },
 

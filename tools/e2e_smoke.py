@@ -162,7 +162,9 @@ def main(url, out):
         assert rows and rows[0]["rev"] == "1" and "120" in rows[0]["desc"], rows
         page.fill("[data-row='0'][data-col='name']", "OV")
         page.press("[data-row='0'][data-col='name']", "Escape")
-        # shrink by dragging the corner handle towards the anchor (the title block corner)
+        # shrink by dragging the corner handle towards the anchor (the title block corner); handles are
+        # grabbed in Select only (inside a tool the next click starts a new object)
+        page.evaluate("window.cotare.setTool('select')")
         hx, hy, ax, ay = page.evaluate("""(() => { const app = window.cotare, a = app.selected();
             const h = app.builtOf(a).handles.find(q => q.k === 'sc'); const r = document.getElementById('canvas').getBoundingClientRect();
             const s1 = app.view.toScreen(h.p), s2 = app.view.toScreen(a.p);

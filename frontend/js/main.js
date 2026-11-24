@@ -1,6 +1,7 @@
 // The application: state, tools, events, saving, export.
 import * as api from "./api.js";
-import { build, derive, hit, holeTable, setHandle, moveAnnot, annotSnapPoints, exportPrims, K, fmtNum, newId, scaleAnchor, typeName, SCALE_MIN, SCALE_MAX } from "./annots.js";
+import { diaAllowed } from "./gdt.js";
+import { build, derive, hit, holeTable, setHandle, moveAnnot, annotSnapPoints, exportPrims, K, fmtNum, newId, scaleAnchor, typeName, SCALE_MIN, SCALE_MAX, scaledS, strikeLabelBox, onBoxEdge, annotSnapSegs, primsBBox } from "./annots.js";
 import { View, COLORS } from "./view.js";
 import { Snapper, MODES, DEFAULT_MODES, parseOverride, overrideModes, LABELS } from "./osnap.js";
 import { Panel } from "./panel.js";
@@ -14,6 +15,27 @@ import { keyConfig, directKeyMap, resolveCommand, suggest, commandList, labelOf,
 import { applyPageOp, rotateAbout, scaleAbout, mirrorAbout } from "./pages.js";
 import { hasVertices, addVertex, removeVertex, PRESETS as LINE_PRESETS } from "./shapes.js";
 import { startI18n, lang as uiLang, tr } from "./i18n.js";
+
+const round2 = (v) => Math.round(v * 100) / 100;
+
+/** Does segment [x0, y0, x1, y1] cross box [x0, y0, x1, y1]? (Liang–Barsky clipping) */
+function segHitsBox(q, b) {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = q[2] - q[0];
+  const dy = q[3] - q[1];
+  for (const [pp, qq] of [[-dx, q[0] - b[0]], [dx, b[2] - q[0]], [-dy, q[1] - b[1]], [dy, b[3] - q[1]]]) {
+    if (Math.abs(pp) < 1e-12) {
+      if (qq < 0) return false;
+    } else {
+      const r = qq / pp;
+      if (pp < 0) t0 = Math.max(t0, r);
+      else t1 = Math.min(t1, r);
+      if (t0 > t1) return false;
+    }
+  }
+  return true;
+}
 
 const esc = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
@@ -386,7 +408,118 @@ class App {
     } else if (a.type === "ink") {
       a.page = this.page;
       dlg.inkDialog(this, a, true);
-    } else this.addAnnot(finalize(a));
+    } else {
+      if (a.type === "strike") a.side = this.freeStrikeSide(a);
+      this.addAnnot(finalize(a));
+    }
+  }
+
+  /** What a new label must not cover: texts and closed shapes of the other annotations and the
+   * page's texts (boxes), lines of the annotations and of the drawing (segments, counted less). */
+  placeObstacles(exceptId) {
+    const boxes = [];
+    const segs = [];
+    for (const { a, built } of this.visibleBuilt()) {
+      if (a.id === exceptId) continue;
+      for (const q of built.prims || []) {
+        if (q.ed) continue;
+        if (q.t === "T" || (q.t === "P" && q.close) || q.t === "C" || q.t === "R") {
+          const b = primsBBox([q]);
+          if (b) boxes.push(b);
+        }
+      }
+      segs.push(...annotSnapSegs(built));
+    }
+    boxes.push(...this.pageTextBoxes());
+    return { boxes, segs };
+  }
+
+  /** Cost of putting a label in box b: area covered, plus a share for every line crossing it. */
+  placeCost(b0, obs, margin = 2) {
+    if (!b0) return 0;
+    // a little air around the label: two values must not touch
+    const b = [b0[0] - margin, b0[1] - margin, b0[2] + margin, b0[3] + margin];
+    const area = (q) => Math.max(0, Math.min(b[2], q[2]) - Math.max(b[0], q[0])) * Math.max(0, Math.min(b[3], q[3]) - Math.max(b[1], q[1]));
+    // covering text is much worse than crossing a line
+    let c = 4 * obs.boxes.reduce((sum, q) => sum + area(q), 0);
+    const own = (b[2] - b[0]) * (b[3] - b[1]);
+    // lines: only those through the label itself (a dimension line just under a value is normal)
+    const t = [b0[0] + 0.5, b0[1] + 0.5, b0[2] - 0.5, b0[3] - 0.5];
+    let n = obs.segs.filter((q) => segHitsBox(q, t)).length;
+    if (this.snapper && this.snapper.sg) n += [...this.snapper.sg.query(t[0], t[1], t[2], t[3], new Set())].filter((q) => segHitsBox(q, t)).length;
+    c += n * 0.2 * own;
+    const p = this.doc.pages[this.page];
+    if (b0[0] < 0 || b0[1] < 0 || b0[2] > p.w || b0[3] > p.h) c += 1e9;
+    return c;
+  }
+
+  /** A new linear dimension whose value does not fit between its extension lines: the value goes after
+   * or before the arrows, sliding further out if needed, where it covers no other text or line. */
+  autoPlace(a) {
+    if (a.type !== "dim" || a.textShift != null) return;
+    const S = this.S();
+    const first = build({ ...a, textOut: "r" }, S, this.measure);
+    if (!first.meta || !first.meta.out) return;
+    const textBox = (b) => primsBBox(b.prims.filter((q) => q.t === "T"));
+    const obs = this.placeObstacles(a.id);
+    const tb = textBox(first);
+    const base = first.meta.mid0 && tb ? Math.abs((tb[0] + tb[2]) / 2 - first.meta.mid0[0]) + Math.abs((tb[1] + tb[3]) / 2 - first.meta.mid0[1]) : 0;
+    const w = tb ? Math.max(tb[2] - tb[0], tb[3] - tb[1]) : 10;
+    let best = null;
+    // at most two steps further out: a value far from its dimension would be read as another one's
+    for (let k = 0; k < 3; k++) {
+      for (const sgn of [1, -1]) {
+        const shift = sgn * (base + k * w * 0.6);
+        const b = textBox(build({ ...a, textShift: shift }, S, this.measure));
+        const cost = this.placeCost(b, obs) + k * 1e-3;
+        if (!best || cost < best.cost) best = { shift, cost, k, sgn };
+      }
+      if (best && best.cost < 1) break;
+    }
+    if (!best || (best.k === 0 && best.sgn === 1)) return; // the usual place is fine
+    if (best.k === 0) a.textOut = "l";
+    else a.textShift = round2(best.shift);
+  }
+
+  /** Side of a struck value where its new value and triangle overlap nothing: after it, above, before,
+   * below (in that order); the new value is not typed yet, so it is assumed as long as the old one. */
+  freeStrikeSide(a) {
+    const S = scaledS(derive(this.settings), a.scale || 1);
+    const r = [Math.min(a.r[0], a.r[2]), Math.min(a.r[1], a.r[3]), Math.max(a.r[0], a.r[2]), Math.max(a.r[1], a.r[3])];
+    const vertical = r[3] - r[1] > (r[2] - r[0]) * 1.3;
+    const tw = Math.max(vertical ? r[3] - r[1] : r[2] - r[0], S.h);
+    const obs = this.placeObstacles(a.id);
+    // the struck value itself is not an obstacle
+    const touches = (b) => !(b[2] <= r[0] || b[0] >= r[2] || b[3] <= r[1] || b[1] >= r[3]);
+    obs.boxes = obs.boxes.filter((b) => !touches(b));
+    let best = "r";
+    let bestCost = Infinity;
+    for (const side of ["r", "t", "l", "b"]) {
+      const cost = this.placeCost(strikeLabelBox(a, S, tw, side), obs);
+      if (cost < bestCost - 1e-6) {
+        best = side;
+        bestCost = cost;
+      }
+      if (cost === 0) break;
+    }
+    return best;
+  }
+
+  /** Text boxes of the current page: PDF text and OCR lines (loaded once per page, in the background). */
+  pageTextBoxes(n = this.page) {
+    const boxes = [];
+    const key = `${this.doc.id}:${n}:${this.doc.lv || 0}`;
+    this.textBoxCache = this.textBoxCache || new Map();
+    const have = this.textBoxCache.get(key);
+    if (have === undefined) {
+      this.textBoxCache.set(key, null);
+      api.pageText(this.doc.id, n, this.doc.lv || 0).then((t) => {
+        this.textBoxCache.set(key, (t.items || []).map((it) => it.box).filter(Boolean));
+      }).catch(() => this.textBoxCache.set(key, []));
+    } else if (have) boxes.push(...have);
+    const o = this.ocr && this.ocr.get(n);
+    if (o && o.lines) for (const ln of o.lines) if (ln.box) boxes.push(ln.box);
+    return boxes;
   }
 
   // ------------------------------------------------------------ typed points (CMD-D1…D4)
@@ -1575,6 +1708,7 @@ class App {
     this.panel.render();
     this.snapper = new Snapper();
     this.clearAcq();
+    this.pageTextBoxes(n);
     api.snap(this.doc.id, n, this.doc.lv || 0).then((s) => {
       if (this.page === n) this.snapper = new Snapper(s);
       if (this.page === n && this.snapCfg.scan) this.loadScanSnap(n);
@@ -1900,11 +2034,61 @@ class App {
 
   changed() {
     this.frame = (this.frame || 0) + 1; // annotations may change: the per-frame cache is no longer valid
+    this.followFrames();
     this.unexported = true;
     this.view.redraw();
     this.view.loadImage(false); // reload only if the original's blackening changed
     this.scheduleSave();
     this.updateButtons();
+  }
+
+  /** Datum triangles placed on the border of a GD&T frame stay on it when the frame moves or grows;
+   * one moved off the border lets go. */
+  followFrames() {
+    const datums = this.annots.filter((a) => a.type === "datum");
+    if (!datums.length) return;
+    const frames = new Map();
+    for (const f of this.annots) {
+      if (f.type !== "gdt") continue;
+      const b = this.builtOf(f).frame;
+      if (b) frames.set(f.id, { f, b });
+    }
+    let moved = false;
+    for (const d of datums) {
+      const fr = d.on && frames.get(d.on);
+      if (fr && fr.f.page === d.page) {
+        if (onBoxEdge(d.target, fr.b)) {
+          d.onBox = [...fr.b];
+          continue;
+        }
+        if (d.onBox && onBoxEdge(d.target, d.onBox)) {
+          // the frame moved (or changed width): the datum keeps its place along the border
+          const ox = d.target[0] - d.onBox[0];
+          const oy = d.target[1] - d.onBox[1];
+          const wOld = d.onBox[2] - d.onBox[0];
+          const fx = wOld > 0 ? ox / wOld : 0;
+          const nx = fr.b[0] + fx * (fr.b[2] - fr.b[0]);
+          const ny = Math.abs(oy) < 0.7 ? fr.b[1] : Math.abs(d.target[1] - d.onBox[3]) < 0.7 ? fr.b[3] : fr.b[1] + oy;
+          const dx = nx - d.target[0];
+          const dy = ny - d.target[1];
+          d.target = [nx, ny];
+          d.pos = [d.pos[0] + dx, d.pos[1] + dy];
+          d.onBox = [...fr.b];
+          moved = true;
+          continue;
+        }
+      }
+      delete d.on;
+      delete d.onBox;
+      for (const { f, b } of frames.values()) {
+        if (f.page === d.page && onBoxEdge(d.target, b)) {
+          d.on = f.id;
+          d.onBox = [...b];
+          break;
+        }
+      }
+    }
+    if (moved) this.frame += 1;
   }
 
   doUndo() {
@@ -2301,7 +2485,22 @@ class App {
     this.pushHistory();
     const items = made.map((x) => ({ ...finalize(x), page: this.page }));
     if (this.hidden.has("add")) this.hidden.delete("add");
-    this.annots.push(...items);
+    // the values that fit between their lines first; then, one by one, those that do not look for room
+    // next to everything already placed
+    const S = this.S();
+    const outside = (it) => {
+      const b = build(it, S, this.measure);
+      return !!(b.meta && b.meta.out);
+    };
+    const later = [];
+    for (const it of items) {
+      if (outside(it)) later.push(it);
+      else this.annots.push(it);
+    }
+    for (const it of later) {
+      this.autoPlace(it);
+      this.annots.push(it);
+    }
     this.selectMany(items.map((a) => a.id));
     this.changed();
   }
@@ -2309,6 +2508,7 @@ class App {
   addAnnot(a) {
     this.pushHistory();
     a.page = this.page;
+    this.autoPlace(a);
     // one origin per page: a new one replaces the old
     if (a.type === "ucs") this.annots = this.annots.filter((x) => !(x.type === "ucs" && x.page === this.page));
     if (this.hidden.has(this.layerOf(a))) {
@@ -2502,6 +2702,17 @@ class App {
     return String(nums.length ? Math.max(...nums) + 1 : 1);
   }
 
+  /** A new GD&T frame starts like the last one in the document (characteristic, value, modifiers,
+   * datums); the first one is a flatness frame. Ø only where the characteristic allows it. */
+  gdtDefaults() {
+    const last = [...this.annots].reverse().find((a) => a.type === "gdt");
+    if (!last) return { sym: "flat", dia: false, val: "0,05", mods: [], datums: ["A", "", ""] };
+    return {
+      sym: last.sym, dia: !!last.dia && diaAllowed(last.sym), val: last.val || "", mods: [...(last.mods || [])],
+      datums: [...(last.datums || ["", "", ""])], ...(last.scale && last.scale !== 1 ? { scale: last.scale } : {}),
+    };
+  }
+
   nextDatumLetter() {
     const used = new Set(this.annots.filter((a) => a.type === "datum").map((a) => a.letter));
     for (const ch of DATUM_LETTERS) if (!used.has(ch)) return ch;
@@ -2576,7 +2787,10 @@ class App {
             extra.pts.push(...built.snap.pts);
             extra.segs.push(...built.snap.segs);
             if (built.snap.arcs) extra.arcs.push(...built.snap.arcs);
-          } else extra.pts.push(...annotSnapPoints(built));
+          } else {
+            extra.pts.push(...annotSnapPoints(built));
+            extra.segs.push(...annotSnapSegs(built));
+          }
         }
       }
       this._extra = extra;
@@ -2882,8 +3096,8 @@ class App {
         this.startSelectDrag(raw, sx, sy, e);
         return;
       }
-      // before the first click of a tool, the selection handles take priority
-      if (!this.clicks.length && this.tryHandleDrag(sx, sy, true)) return;
+      // inside a drawing or annotation tool the selection's handles are not active (as grips in a CAD
+      // command): the next object often starts right where the last one ends, on its handles
       const anchor = this.pickAnchor();
       if (t.kind === "rect") {
         const { pt } = this.snapPoint(raw, e, anchor);
@@ -3059,13 +3273,7 @@ class App {
         return;
       }
       if (!d && !this.clicks.length) {
-        // even with another tool, the resize corners of the selection stay grabbable
-        const hs = this.handleAt(sx, sy);
-        if (hs && hs.h.k === "sc") {
-          cv.style.cursor = this.handleCursor(hs.a, hs.h);
-          this.setHover({ kind: "handle", a: hs.a, h: hs.h, label: "Mărește / micșorează" }, raw);
-          return;
-        }
+        // inside a tool the selection's handles are not grabbed (see pointerdown): the cursor says so
         if (this.hover) this.setHover(null, raw);
         cv.style.cursor = "crosshair";
       }
@@ -3434,6 +3642,7 @@ class App {
     if (k === "pos" || (k === "p" && ["text", "note", "revtab", "bom", "holes"].includes(a.type))) return "Mută";
     if (k === "vp") return "Partea spre care privești";
     if (k === "tp") return "Mută litera";
+    if (k === "lp") return "Valoarea nouă — mut-o";
     if (k === "r0" || k === "r1") return "Colț — redimensionează";
     if (k === "p3") return a.type === "ang" ? "Poziția arcului (alege unghiul)" : "Poziția liniei de cotă";
     if (k === "c") return "Centrul";
@@ -3449,7 +3658,7 @@ class App {
       const an = scaleAnchor(a);
       return (h.p[0] - an[0]) * (h.p[1] - an[1]) >= 0 ? "nwse-resize" : "nesw-resize";
     }
-    if (h.k === "pos" || h.k === "tp" || (h.k === "p" && ["text", "note", "revtab", "bom", "holes"].includes(a.type))) return "move";
+    if (h.k === "pos" || h.k === "tp" || h.k === "lp" || (h.k === "p" && ["text", "note", "revtab", "bom", "holes"].includes(a.type))) return "move";
     return "grab";
   }
 

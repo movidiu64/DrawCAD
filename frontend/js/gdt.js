@@ -22,7 +22,7 @@ function head(x1, y1, x2, y2, len = 0.28, half = 0.11) {
 }
 
 export const GDT_SYMBOLS = [
-  { id: "str", name: "Rectitudine", group: "Formă", datum: "none", draw: () => [{ t: "L", p: [0.05, 0.5, 0.95, 0.5] }] },
+  { id: "str", dia: true, name: "Rectitudine", group: "Formă", datum: "none", draw: () => [{ t: "L", p: [0.05, 0.5, 0.95, 0.5] }] },
   { id: "flat", name: "Planitate", group: "Formă", datum: "none", draw: () => [{ t: "P", p: [0.3, 0.25, 0.97, 0.25, 0.7, 0.75, 0.03, 0.75], close: true }] },
   { id: "circ", name: "Circularitate", group: "Formă", datum: "none", draw: () => [{ t: "C", p: [0.5, 0.5], r: 0.42 }] },
   {
@@ -31,14 +31,14 @@ export const GDT_SYMBOLS = [
   },
   { id: "profL", name: "Formă dată a unei linii", group: "Profil", datum: "opt", draw: () => [{ t: "P", p: arc(0.5, 0.75, 0.45, Math.PI, 0) }] },
   { id: "profS", name: "Formă dată a unei suprafețe", group: "Profil", datum: "opt", draw: () => [{ t: "P", p: arc(0.5, 0.75, 0.45, Math.PI, 0), close: true }] },
-  { id: "par", name: "Paralelism", group: "Orientare", datum: "req", draw: () => [{ t: "L", p: [0.12, 0.95, 0.52, 0.05] }, { t: "L", p: [0.48, 0.95, 0.88, 0.05] }] },
-  { id: "perp", name: "Perpendicularitate", group: "Orientare", datum: "req", draw: () => [{ t: "L", p: [0.5, 0.05, 0.5, 0.92] }, { t: "L", p: [0.05, 0.92, 0.95, 0.92] }] },
-  { id: "ang", name: "Înclinare", group: "Orientare", datum: "req", draw: () => [{ t: "L", p: [0.05, 0.92, 0.95, 0.92] }, { t: "L", p: [0.05, 0.92, 0.85, 0.3] }] },
+  { id: "par", dia: true, name: "Paralelism", group: "Orientare", datum: "req", draw: () => [{ t: "L", p: [0.12, 0.95, 0.52, 0.05] }, { t: "L", p: [0.48, 0.95, 0.88, 0.05] }] },
+  { id: "perp", dia: true, name: "Perpendicularitate", group: "Orientare", datum: "req", draw: () => [{ t: "L", p: [0.5, 0.05, 0.5, 0.92] }, { t: "L", p: [0.05, 0.92, 0.95, 0.92] }] },
+  { id: "ang", dia: true, name: "Înclinare", group: "Orientare", datum: "req", draw: () => [{ t: "L", p: [0.05, 0.92, 0.95, 0.92] }, { t: "L", p: [0.05, 0.92, 0.85, 0.3] }] },
   {
-    id: "pos", name: "Poziție", group: "Poziție", datum: "req",
+    id: "pos", dia: true, name: "Poziție", group: "Poziție", datum: "req",
     draw: () => [{ t: "C", p: [0.5, 0.5], r: 0.32 }, { t: "L", p: [0.5, 0.0, 0.5, 1.0] }, { t: "L", p: [0.0, 0.5, 1.0, 0.5] }],
   },
-  { id: "coax", name: "Coaxialitate / concentricitate", group: "Poziție", datum: "req", draw: () => [{ t: "C", p: [0.5, 0.5], r: 0.42 }, { t: "C", p: [0.5, 0.5], r: 0.2 }] },
+  { id: "coax", dia: true, name: "Coaxialitate / concentricitate", group: "Poziție", datum: "req", draw: () => [{ t: "C", p: [0.5, 0.5], r: 0.42 }, { t: "C", p: [0.5, 0.5], r: 0.2 }] },
   {
     id: "sym", name: "Simetrie", group: "Poziție", datum: "req",
     draw: () => [{ t: "L", p: [0.05, 0.5, 0.95, 0.5] }, { t: "L", p: [0.22, 0.24, 0.78, 0.24] }, { t: "L", p: [0.22, 0.76, 0.78, 0.76] }],
@@ -53,6 +53,11 @@ export const GDT_SYMBOLS = [
     ],
   },
 ];
+
+/** The tolerance zone can be cylindrical (Ø) only for these characteristics (an axis): straightness,
+ * orientation, position and coaxiality; never for flatness, roundness, cylindricity, profile, symmetry
+ * or run-out. */
+export const diaAllowed = (id) => !!(GDT_SYMBOLS.find((s) => s.id === id) || {}).dia;
 
 export const GDT_BY_ID = Object.fromEntries(GDT_SYMBOLS.map((s) => [s.id, s]));
 

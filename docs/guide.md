@@ -295,11 +295,13 @@ The diameter dimension between generatrices remains the **Diameter** tool (`DDL`
 - **The selected group** moves by dragging any of its annotations or with the arrows. It is copied, duplicated and deleted together.
 - **From the panel** you set the size and layer for the whole group.
 
-**Size:** every selected annotation (dimensions, roughness, GD&T, datum, revision table, etc.) has a white square with a diagonal in its corner. Drag it towards the anchor to shrink or away to enlarge, between 30% and 500%. The panel does the same in its Size section, with the −/+ buttons or the list of sizes. Text, arrows and distances scale; line widths stay. The resize handle also works with another tool active.
+**Size:** every selected annotation (dimensions, roughness, GD&T, datum, revision table, etc.) has a white square with a diagonal in its corner. Drag it towards the anchor to shrink or away to enlarge, between 30% and 500%. The panel does the same in its Size section, with the −/+ buttons or the list of sizes. Text, arrows and distances scale; line widths stay. Handles are grabbed in Select only: with a drawing or annotation tool active, a click next to the last object starts a new one, even on its handles (as grips inside a CAD command).
 
 **Multi-line text:** the text, leader and notes fields accept Enter for a new line. For text, the height is picked directly in mm (2.5 / 3.5 / 5 / 7 / 10).
 
-**Dimension text:** if the label does not fit between the arrows, it moves next to an arrow automatically and the dimension line extends under the text. If you move the text manually, the "Automatic text" button restores automatic placement.
+**Dimension text:** as on ISO 129-1 drawings, the value and the arrows go between the extension lines when they fit; if only the value fits, it stays inside and the arrows go outside; if the value does not fit either, it moves next to an arrow and the dimension line extends under it. A new dimension puts that value on the side where it covers no other text or line (for chain dimensions, the values that fit are placed first, then the others around them). If you move the text manually, the "Automatic text" button restores automatic placement.
+
+**Struck dimension (S):** drag a rectangle over the old value and type the new one in the panel. The new value and the revision triangle go next to the struck value on the first free side: after it, above, before or below. To put them elsewhere, drag their square (Select). Several struck values side by side each find their own place.
 
 **Symbols in text:** below the text fields there are buttons for ⌀ ⌴ (counterbore) ⌵ (countersink) ↧ (depth) ± ° × √, for hole and thread callouts like `4× M8 ↧12`.
 
@@ -321,7 +323,9 @@ While dragging, the label shows the value: the Δx/Δy offset, the resize percen
 
 **Boxes (covers, removals, blackening, struck dimensions, drawn rectangles):** as with Windows windows, the cursor becomes a resize arrow on the edges and corners; drag an edge and the box grows or shrinks, with snap.
 
-**The GD&T frame:** the leader has a handle at its elbow. Drag it anywhere to bend the leader at any angle; "Automatic elbow (90°)" in the panel returns to the default.
+**The GD&T frame (G):** the first click is the arrow point, the second the frame position, on any side: to the right of the feature the frame starts at the click, to the left it ends there, above or below it is centred on the click; dragging the frame's square to the other side turns it round. A new frame starts like the last one on the drawing (characteristic, value, modifiers, datums); the first is a flatness frame. Ø is off by default and only available where the zone can be cylindrical (straightness, parallelism, perpendicularity, angularity, position, coaxiality). The leader has a handle at its elbow: drag it anywhere to bend the leader at any angle; "Automatic elbow (90°)" in the panel returns to the default.
+
+**Datum on a frame (B):** the frame's edges snap, so a datum triangle can sit on a GD&T frame (ISO 1101); it stays on the frame when the frame moves. Dimension lines, leaders and other lines of the annotations snap too (nearest, perpendicular, intersection), so a datum or a GD&T arrow can sit on a dimension line added in DrawCAD.
 
 **Layers:** in the Layers tab, the eye next to each layer (Original, Added, Revisions, Deletions) hides it on screen only, for checking; the export contains everything.
 

@@ -319,7 +319,13 @@ function buildDim(a, S, measure) {
   const AB = sub(B, A);
   const Ld = len(AB);
   const dir = Ld > 1e-6 ? mul(AB, 1 / Ld) : u;
-  const inside = Ld >= 2.4 * S.aw + S.h;
+  const nominal = a.nominal != null ? a.nominal : round(measured, 2);
+  const lab = labelRuns(a, S, measure, nominal, a.prefix || "");
+  // best fit (as ISO 129-1 drawings do it): value and arrows inside; if not, the value inside and the
+  // arrows outside; if the value does not fit either, it goes next to an arrow, on the free side (textOut)
+  const fitAll = lab.w + 2 * S.aw * 1.1 <= Ld;
+  const fitText = !fitAll && lab.w + 0.4 * K <= Ld;
+  const inside = fitAll || (!fitText && Ld >= 2.4 * S.aw + S.h);
   // for diameters, filled arrows like the leader, whatever terminators were chosen for dimensions
   // (the oblique stroke and the dot are not used on diameters)
   const SA = (a.prefix || "").startsWith("Ø") ? { ...S, arrow: "closed" } : S;
@@ -331,15 +337,14 @@ function buildDim(a, S, measure) {
     prims.push(...arrowP(A, dir, SA, c), ...arrowP(B, mul(dir, -1), SA, c));
   }
 
-  const nominal = a.nominal != null ? a.nominal : round(measured, 2);
-  const lab = labelRuns(a, S, measure, nominal, a.prefix || "");
   const { tu, ang, up } = textAngle(dir);
   const mid0 = mul(add(A, B), 0.5);
-  // text that does not fit between the arrows moves next to an arrow, on the extension of the dimension line
   let shift = a.textShift;
+  const out = shift == null && !fitAll && !fitText;
   if (shift == null) {
-    const fits = lab.w + 2 * S.aw * 1.1 <= Ld;
-    shift = fits ? 0 : Ld / 2 + (inside ? S.aw * 0.8 : S.aw * 2.6) + lab.w / 2;
+    shift = out ? Ld / 2 + (inside ? S.aw * 0.8 : S.aw * 2.6) + lab.w / 2 : 0;
+    // "left" / "right" as the reader sees it: along the text direction
+    if (out && a.textOut === "l") shift = -shift;
   }
   const half = Ld / 2 + (inside ? 0 : S.aw * 2.2);
   const lo = shift - lab.w / 2 - S.h * 0.3;
@@ -356,7 +361,7 @@ function buildDim(a, S, measure) {
     measured,
     nominal,
     iso: lab.iso,
-    meta: { mid0, tu },
+    meta: { mid0, tu, out },
     handles: [
       { k: "p1", p: p1 },
       { k: "p2", p: p2 },
@@ -893,9 +898,11 @@ function buildGdt(a, S, measure) {
       }
     }
   }
-  const x0 = a.pos[0];
-  const y0 = a.pos[1] - Hf / 2;
   const W = cells.reduce((s, q) => s + q.w, 0);
+  // the placed point is the frame end nearest the feature: left end, right end or the middle
+  const anc = a.anchor || "l";
+  const x0 = anc === "r" ? a.pos[0] - W : anc === "c" ? a.pos[0] - W / 2 : a.pos[0];
+  const y0 = a.pos[1] - Hf / 2;
   const prims = [{ t: "P", p: [x0, y0, x0 + W, y0, x0 + W, y0 + Hf, x0, y0 + Hf], close: true, w: S.lw, c }];
   let x = x0;
   cells.forEach((cell, i) => {
@@ -940,7 +947,36 @@ function buildGdt(a, S, measure) {
   }
   const handles = [{ k: "target", p: T }, { k: "pos", p: a.pos, move: true }];
   if (elbowH) handles.push({ k: "elbow", p: elbowH });
-  return { prims, handles };
+  // snap on the frame: corners, cell borders and edges (a datum triangle can sit on the frame)
+  const x1 = x0 + W;
+  const y1 = y0 + Hf;
+  const pts = [[x0, y0, "e"], [x1, y0, "e"], [x1, y1, "e"], [x0, y1, "e"], [(x0 + x1) / 2, y0, "m"], [(x0 + x1) / 2, y1, "m"], [x0, a.pos[1], "m"], [x1, a.pos[1], "m"]];
+  let cx = x0;
+  for (const cell of cells.slice(0, -1)) {
+    cx += cell.w;
+    pts.push([cx, y0, "e"], [cx, y1, "e"]);
+  }
+  if (T) pts.push([T[0], T[1], "e"]);
+  const segs = [[x0, y0, x1, y0], [x1, y0, x1, y1], [x1, y1, x0, y1], [x0, y1, x0, y0]];
+  return { prims, handles, snap: { pts, segs }, frame: [x0, y0, x1, y1] };
+}
+
+/** Is point p on the border of box b (within tol)? */
+export function onBoxEdge(p, b, tol = 0.6) {
+  if (!p || !b) return false;
+  const [x, y] = p;
+  const inX = x >= b[0] - tol && x <= b[2] + tol;
+  const inY = y >= b[1] - tol && y <= b[3] + tol;
+  return (inX && (Math.abs(y - b[1]) <= tol || Math.abs(y - b[3]) <= tol)) || (inY && (Math.abs(x - b[0]) <= tol || Math.abs(x - b[2]) <= tol));
+}
+
+/** Which end of a GD&T frame sits on the placed point: the one towards the feature. */
+export function gdtAnchor(target, pos) {
+  if (!target || !pos) return "l";
+  const dx = pos[0] - target[0];
+  const dy = pos[1] - target[1];
+  if (Math.abs(dy) > Math.abs(dx) * 1.5) return "c";
+  return dx >= 0 ? "l" : "r";
 }
 
 function buildDatum(a, S, measure) {
@@ -995,26 +1031,65 @@ function buildStrike(a, S, measure) {
     }
     return out;
   };
+  // the struck line
   if (!vertical) {
     const ym = (y0 + y1) / 2;
     prims.push(lineP([x0 - ext, ym], [x1 + ext, ym], { ...S, lw: S.lw * 1.4 }, c));
-    let x = x1 + 1.5 * K;
-    if (txt) {
-      prims.push({ t: "T", p: [x, y1], s: S.F, a: 0, txt, tw, c });
-      x += tw + 1 * K;
-    }
-    prims.push(...triPrims(x, y1, 0));
   } else {
     const xm = (x0 + x1) / 2;
     prims.push(lineP([xm, y1 + ext], [xm, y0 - ext], { ...S, lw: S.lw * 1.4 }, c));
-    let y = y0 - 1.5 * K;
-    if (txt) {
-      prims.push({ t: "T", p: [x1, y], s: S.F, a: 90, txt, tw, c });
-      y -= tw + 1 * K;
-    }
-    prims.push(...triPrims(x1, y, 90));
   }
-  return { prims, handles: [{ k: "r0", p: [a.r[0], a.r[1]] }, { k: "r1", p: [a.r[2], a.r[3]] }] };
+  // the new value and the revision triangle: where the user put them (lp), or on the chosen side
+  const ang = vertical ? 90 : 0;
+  const { origin, tu } = strikeLabelOrigin(a, S, tw);
+  let o = origin;
+  if (txt) {
+    prims.push({ t: "T", p: o, s: S.F, a: ang, txt, tw, c });
+    o = add(o, mul(tu, tw + 1 * K));
+  }
+  prims.push(...triPrims(o[0], o[1], ang));
+  const handles = [{ k: "r0", p: [a.r[0], a.r[1]] }, { k: "r1", p: [a.r[2], a.r[3]] }, { k: "lp", p: origin }];
+  return { prims, handles };
+}
+
+/** Width and height of a struck dimension's label (new value + triangle) along its reading direction. */
+export function strikeLabelSize(S, tw) {
+  const tri = S.h * 1.9;
+  return { w: (tw ? tw + 1 * K : 0) + tri, h: Math.max(S.h, tri * 0.866) };
+}
+
+/** Baseline origin of the label of a struck dimension: a.lp if dragged there, otherwise on side a.side
+ * (r after the old value, t above it, l before it, b below it, in its reading direction). */
+export function strikeLabelOrigin(a, S, tw, side = a.side || "r") {
+  const [x0, y0, x1, y1] = normRect(a.r);
+  const vertical = y1 - y0 > (x1 - x0) * 1.3;
+  const tu = vertical ? [0, -1] : [1, 0];
+  const up = perpL(tu);
+  if (a.lp) return { origin: [...a.lp], tu, up };
+  const g = 1.5 * K;
+  const { w, h } = strikeLabelSize(S, tw);
+  const us = [[x0, y0], [x1, y1]].map((q) => dot(q, tu));
+  const vs = [[x0, y0], [x1, y1]].map((q) => dot(q, up));
+  const [uMin, uMax] = [Math.min(...us), Math.max(...us)];
+  const [vMin, vMax] = [Math.min(...vs), Math.max(...vs)];
+  const uc = (uMin + uMax) / 2;
+  const [u, v] = {
+    r: [uMax + g, vMin],
+    l: [uMin - g - w, vMin],
+    t: [uc - w / 2, vMax + g],
+    b: [uc - w / 2, vMin - g - h],
+  }[side] || [uMax + g, vMin];
+  return { origin: add(mul(tu, u), mul(up, v)), tu, up };
+}
+
+/** Page box of the label of a struck dimension placed on a side (for choosing a free side). */
+export function strikeLabelBox(a, S, tw, side) {
+  const { origin, tu, up } = strikeLabelOrigin({ ...a, lp: null }, S, tw, side);
+  const { w, h } = strikeLabelSize(S, tw);
+  const q = [origin, add(origin, mul(tu, w)), add(add(origin, mul(tu, w)), mul(up, h)), add(origin, mul(up, h))];
+  const xs = q.map((p) => p[0]);
+  const ys = q.map((p) => p[1]);
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
 }
 
 function normRect(r) {
@@ -1312,6 +1387,7 @@ export function setHandle(a, k, pt, built) {
     return;
   }
   a[k] = [...pt];
+  if (a.type === "gdt" && (k === "pos" || k === "target") && !a.elbow) a.anchor = gdtAnchor(a.target, a.pos);
 }
 
 export function moveAnnot(a, dx, dy) {
@@ -1321,15 +1397,32 @@ export function moveAnnot(a, dx, dy) {
     a.p = mv(a.p);
     return;
   }
-  for (const k of ["p1", "p2", "p3", "c", "p", "v", "target", "pos", "vp", "tp", "elbow", "base"]) if (a[k]) a[k] = mv(a[k]);
+  for (const k of ["p1", "p2", "p3", "c", "p", "v", "target", "pos", "vp", "tp", "elbow", "base", "lp"]) if (a[k]) a[k] = mv(a[k]);
   if (a.type === "ord" && typeof a.row === "number") a.row += a.axis === "y" ? dx : dy;
   if (a.pts) a.pts = a.pts.map(mv);
   if (a.r) a.r = [a.r[0] + dx, a.r[1] + dy, a.r[2] + dx, a.r[3] + dy];
 }
 
 /** Annotation points, offered as snap targets. */
+/** Straight pieces of an annotation's lines, for snap on line / nearest / perpendicular (dimension and
+ * extension lines, leaders, cutting lines…); arrowheads, text and filled shapes are left out. */
+export function annotSnapSegs(built) {
+  if (built._segs) return built._segs;
+  const out = [];
+  for (const p of built.prims || []) {
+    if (p.ed || p.cover) continue;
+    if (p.t === "L") out.push([p.p[0], p.p[1], p.p[2], p.p[3]]);
+    else if (p.t === "P" && !p.fill && p.p.length >= 4 && (!p.close || p.p.length > 6)) {
+      for (let i = 2; i < p.p.length; i += 2) out.push([p.p[i - 2], p.p[i - 1], p.p[i], p.p[i + 1]]);
+      if (p.close) out.push([p.p[p.p.length - 2], p.p[p.p.length - 1], p.p[0], p.p[1]]);
+    }
+  }
+  built._segs = out.filter((q) => Math.hypot(q[2] - q[0], q[3] - q[1]) > 0.5);
+  return built._segs;
+}
+
 export function annotSnapPoints(built) {
-  return (built.handles || []).filter((h) => h.p && h.k !== "tx" && h.k !== "sc" && h.k !== "row").map((h) => h.p);
+  return (built.handles || []).filter((h) => h.p && h.k !== "tx" && h.k !== "sc" && h.k !== "row" && h.k !== "lp").map((h) => h.p);
 }
 
 /** Primitives for export: without elements that exist only in the editor. */

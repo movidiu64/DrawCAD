@@ -438,7 +438,6 @@ export const EN = {
   "Punct de cotă — trage pe alt punct": "Dimension point — drag to another point",
   "Punct de start → capăt, sau scrie lungimea (Tab → unghiul) și Enter · linia următoare pornește din capăt · Shift ortho · Esc termină": "Start point → end point, or type the length (Tab → angle) and Enter · the next line starts at the end · Shift ortho · Esc ends",
   "Punct pe arc": "Point on arc",
-  "Punct pe element (sau pe linia de cotă) → poziția casetei": "Point on the feature (or on the dimension line) → box position",
   "Punct pe piesă → poziția cercului; numărul crește automat": "Point on the part → balloon position; the number increments automatically",
   "Punct pe suprafață → al doilea click în același loc = simbol direct, în altă parte = cu linie de indicație": "Point on the surface → a second click on the same spot = symbol directly, elsewhere = with a leader",
   "Punct — trage (cu snap)": "Point — drag (with snap)",
@@ -601,7 +600,6 @@ export const EN = {
   "Vârful unghiului": "Angle vertex",
   "Vârful → un punct pe prima latură → un punct pe a doua → poziția arcului (alege sectorul)": "Vertex → a point on the first side → a point on the second → arc position (chooses the sector)",
   "X — · Y — mm": "X — · Y — mm",
-  "Zonă cilindrică": "Cylindrical zone",
   "Zonă comună": "Common zone",
   "Zonă de toleranță": "Tolerance zone",
   "Zonă de toleranță proiectată": "Projected tolerance zone",
@@ -1145,4 +1143,9 @@ export const EN = {
   "Toate documentele · se salvează imediat, în acest browser": "All documents · saved at once, in this browser",
   "legat de acest browser": "tied to this browser",
   "Taste și linia de comandă": "Keys and command line",
+  // GD&T, struck dimensions
+  "Fără Ø pentru această caracteristică": "No Ø for this characteristic",
+  "Zonă cilindrică (axă)": "Cylindrical zone (axis)",
+  "Punct pe element, pe linia de cotă sau pe marginea unui cadru GD&T → poziția casetei": "Point on the feature, on the dimension line or on the edge of a GD&T frame → box position",
+  "Valoarea nouă — mut-o": "New value — move it",
 };

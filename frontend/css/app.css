@@ -274,6 +274,7 @@ textarea { width: 100%; min-height: 120px; padding: 8px 9px; border: 1px solid v
 .pills button { height: 32px; min-width: 40px; padding: 0 10px; border: 1px solid var(--line2); border-radius: 16px; background: transparent; font-size: 14px; }
 .pills.sym button { font-family: "osifont", var(--sans); font-size: 17px; min-width: 34px; padding: 0 6px; }
 .pills button.on { background: var(--accent-tint); color: var(--accent); border-color: var(--accent); }
+.pills button:disabled { opacity: 0.4; cursor: not-allowed; }
 .symgrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .symgrid button { aspect-ratio: 1; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); display: grid; place-items: center; padding: 0; }
 .symgrid button.on { background: var(--accent-tint); border-color: var(--accent); }
