@@ -1281,6 +1281,8 @@ export const EN = {
   "Compară": "Compare",
   "Compară cu altă revizie": "Compare with another revision",
   "Compară cu altă revizie…": "Compare with another revision…",
+  "Compară revizii": "Compare revisions",
+  "Pune peste pagină o revizie mai veche: roșu = scos, verde = adăugat": "Overlay an older revision on the page: red = removed, green = added",
   "Nicio diferență de desen între cele două pagini.": "No drawing differences between the two pages.",
   "Niciun alt document pe server. Încarcă revizia veche (PDF sau scan).": "No other document on the server. Upload the older revision (PDF or scan).",
   "Pune peste pagina aceasta o pagină dintr-o revizie mai veche: roșu = doar în cea veche, verde = doar în cea deschisă.": "Lays a page of an older revision over this page: red = only in the older one, green = only in the one open.",

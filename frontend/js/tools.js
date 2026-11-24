@@ -295,6 +295,8 @@ export const TOOLS = [
     hint: "Click pe colțurile zonei modificate · Enter, click dreapta sau click pe primul punct închide norul",
     make: (pts, app) => ({ type: "cloud", pts: pts.map((q) => [...q]), arc: app.cloudArc || 6, tri: true, rev: app.settings.revNo || "1", layer: "rev" }),
     preview(pts, cur, app) { return pts.length >= 2 ? this.make([...pts, cur], app) : { line: [pts[0], cur] }; } },
+  { id: "compare", label: "Compară revizii", key: "", group: "Revizie", icon: "M4 5h7v14H4zM13 5h7v14h-7zM7.5 9v6M16.5 9v6", kind: "action",
+    hint: "Pune peste pagină o revizie mai veche: roșu = scos, verde = adăugat" },
   { id: "mark", label: "Marker", key: "", group: "Revizie", icon: "M4 20h7M14.5 4.5l5 5L10 19l-5 1 1-5z", kind: "free",
     hint: "Trage peste ce vrei să evidențiezi (Shift = linie dreaptă) · culoarea și grosimea din panou",
     make: (pts, app) => ({ type: "mark", pts, color: (app.markStyle || {}).color || "hlGreen", w: (app.markStyle || {}).w || 6 }) },
@@ -472,7 +474,7 @@ export const FAMILIES = [
   { id: "notes", label: "Adnotări", tools: ["text", "lead", "note", "revtab", "bom", "balloon", "tblock", "stamp", "qr", "image"] },
   { id: "draw", label: "Desen", sep: true, tools: ["line", "poly", "rect", "circle", "arc", "cross", "hatch", "break"] },
   { id: "views", label: "Vederi", tools: ["section", "detail", "viewlabel"] },
-  { id: "rev", label: "Revizie", sep: true, tools: ["strike", "cloud", "cloudp", "mark", "comment", "white", "ink", "redact"] },
+  { id: "rev", label: "Revizie", sep: true, tools: ["strike", "cloud", "cloudp", "mark", "comment", "compare", "white", "ink", "redact"] },
 ];
 export const FAMILY_OF = Object.fromEntries(FAMILIES.flatMap((f) => f.tools.map((t) => [t, f.id])));
 /** Tools reached only by key, command or another button, not from the rail. */

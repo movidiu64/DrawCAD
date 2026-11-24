@@ -1961,6 +1961,11 @@ class App {
 
   setTool(id) {
     if (!TOOL_BY_ID[id]) return;
+    // an action in a family's list (Compare revisions): it opens its window, the active tool stays
+    if (TOOL_BY_ID[id].kind === "action") {
+      if (id === "compare" && this.doc) dlg.compareDialog(this);
+      return;
+    }
     if (id !== "select" && id !== "pan") {
       this.lastTool = id;
       this.lastCmd = id; // Enter / Space (in AutoCAD mode) restarts it
@@ -4719,7 +4724,6 @@ class App {
       close: () => this.doc && this.closeDoc(),
       settings: () => needDoc() && dlg.settingsDialog(this),
       keys: () => dlg.keysDialog(this),
-      compare: () => needDoc() && dlg.compareDialog(this),
       osnap: () => this.toggleSnapFlag("on"),
       ortho: () => this.toggleSnapFlag("ortho"),
       polar: () => this.toggleSnapFlag("polar"),
