@@ -155,7 +155,7 @@ The app was originally called "Cotare": the old `COTARE_*` variables are still a
 - **Tracking** — also from acquired points: horizontal and vertical alignment, including the point that has the X of one and the Y of another
 - **Perpendicular** ⊥ and **Tangent** relative to the command's previous point
 - **Parallel** // — during a command rest on a line, then move nearly parallel to it
-- **Polar** — on the 5°…90° rays from the previous point (15° by default), with distance and angle in the tooltip; excludes Ortho
+- **Polar** — on the 5°…90° rays from the previous point (15° by default), with distance and angle in the tooltip; excludes Ortho. In the snap menu: **additional angles** (e.g. `7; 22,5`), angles measured **from the last segment** instead of from the horizontal, and a **step** along the polar direction (real mm: the point jumps 10, 20, 30… along the ray)
 - **Node** — the points of the annotations already drawn (dimension origins, symbol anchors)
 - **Geometric center** — the center of a closed outline from the PDF (a rectangle, a slot outline), and **Insertion** — where a PDF text starts (its baseline). Both are off by default; turn them on in the menu or type `GCE` / `INS` for one pick
 
@@ -163,9 +163,11 @@ Modes are chosen from the arrow next to "Snap" in the bottom bar. Keys: **F3** s
 
 **One snap for the next pick:** type `END`, `MID`, `CEN`, `QUA`, `INT`, `APP`, `EXT`, `PER`, `TAN`, `NEA`, `PAR`, `NOD`, `GCE` or `INS` in the command line (the whole names work too) and only that snap is used for the next point, even with snap off; `NON` = no snap. With `CEN`, hovering the edge of a hole is enough to take its center. In direct-keys mode, click the command line first (letters there are tools).
 
-**FROM and M2P:** at any point of a command, `FROM` asks for a base point and then takes the point as an offset from it (`@10,5`, `@20<45`); `M2P` (or `MTP`) takes the midpoint of the next two picks.
+**FROM, M2P and point filters:** at any point of a command, `FROM` asks for a base point and then takes the point as an offset from it (`@10,5`, `@20<45`); `M2P` (or `MTP`) takes the midpoint of the next two picks; `.X` takes X from the next pick and Y from the one after (`.Y` the other way round).
 
 **Several snaps under the cursor:** **Tab** steps through them (Shift+Tab back); the label shows which one, e.g. "Endpoint (2/3, Tab)", and a click takes it.
+
+**Snap on scans:** a scan has no lines for the snap. Tick **Snap și pe scanări** in the snap menu and the page is vectorized on the server (the first time takes from seconds to a minute; then it is cached): endpoints, midpoints, centers, quadrants and intersections work on the scanned drawing too. Text read by OCR (if you ran it) is left out. The vectorization is approximate, so check the points that matter.
 
 **Scans:** after opening, use **Calibrate (K)**. Click the ends of a known dimension and enter its real value.
 
@@ -205,7 +207,7 @@ Dimensions do not change on calibration: they measure the drawing.
 
 **F2** opens the session history: commands, typed points, options and answers.
 
-**Erase, move, copy:** `E` deletes the selection; with nothing selected it asks to select objects, and Enter deletes them. At that prompt: click and window as usual, `W` / `C` force a window or a crossing for the next rectangle, `F` draws a fence line (clicks, then Enter) that takes what it crosses, `ALL`, `L` the last one, `P` the previous selection, `R` removes from the selection and `A` adds again; they are also buttons in the command line. `M` (MOVE) and `CO` (COPY) work on the selection (or ask for one): a base point, then a second point or `@dx,dy`; COPY goes on placing copies from the same base point until Enter or Esc. The removal tool on the original is `X` / `STERGE`.
+**Erase, move, copy:** `E` deletes the selection; with nothing selected it asks to select objects, and Enter deletes them. At that prompt: click and window as usual, `W` / `C` force a window or a crossing for the next rectangle, `F` draws a fence line (clicks, then Enter) that takes what it crosses, `WP` / `CP` a polygon that takes what is inside it (or, for CP, also what it crosses), `ALL`, `L` the last one, `P` the previous selection, `R` removes from the selection and `A` adds again; they are also buttons in the command line. `M` (MOVE) and `CO` (COPY) work on the selection (or ask for one): a base point, then a second point or `@dx,dy`; COPY goes on placing copies from the same base point until Enter or Esc. The removal tool on the original is `X` / `STERGE`.
 
 **Transparent commands:** `'Z` (or `Z`), `'ZS`, `'OS`, `'OR`, `'POLAR` work in the middle of a command without ending it. Other commands wait until the current one ends (Esc).
 

@@ -16,7 +16,7 @@ DrawCAD is not a CAD system: it annotates a fixed sheet (a PDF page or a scan). 
 behaviour only makes sense for model geometry (3D, UCS rotation, isometric snap, blocks), it is left
 out of the measure and listed as *not applicable*.
 
-**Headline (estimate): ≈ 42 % at the measured commit, ≈ 71 % on branch `v1.1`.** Snaps (11 running modes, tracking, extension, parallel, apparent
+**Headline (estimate): ≈ 42 % at the measured commit, ≈ 76 % on branch `v1.1`.** Snaps (11 running modes, tracking, extension, parallel, apparent
 intersection), polar and ortho, the alias table with AutoCAD names and the command line with
 autocomplete and history are real. Typed coordinates are missing entirely (no `x,y`, `@`, `<`, `#`),
 the command line knows only command names (no prompts, no options, no typed points), there are no
@@ -28,19 +28,19 @@ Re-measured on branch `v1.1` after phases 1–5, the same way and with the same 
 
 | Area | Weight | Before | v1.1 | What changed |
 |---|---:|---:|---:|---|
-| Point entry | 15 % | 15 % | 72 % | the whole typed syntax, typed first point, origin and UCS, typed box corners, FROM, M2P |
-| Object snaps | 20 % | 60 % | 78 % | typed overrides, Tab cycling, Node as a mode, CEN from the edge, Geometric center, Insertion |
-| Tracking, polar, ortho | 10 % | 60 % | 63 % | Shift toggles ortho |
+| Point entry | 15 % | 15 % | 78 % | the whole typed syntax, typed first point, origin and UCS, typed box corners, FROM, M2P, .X / .Y |
+| Object snaps | 20 % | 60 % | 84 % | typed overrides, Tab cycling, Node as a mode, CEN from the edge, Geometric center, Insertion, snap on scans |
+| Tracking, polar, ortho | 10 % | 60 % | 78 % | Shift toggles ortho; additional and relative polar angles, polar step |
 | Dynamic input | 10 % | 35 % | 62 % | `@ # <` from anywhere, absolute points through the command line, the prompt and its options menu next to the cursor |
 | Command line | 15 % | 40 % | 77 % | prompts, options by letter or click (DCO / DBA Select, TEXT H / R, DIST M too), typed points, transparent commands, F2 |
 | Grips and editing | 10 % | 30 % | 45 % | MOVE and COPY with base point and displacement |
-| Selection | 10 % | 40 % | 72 % | Select objects prompt (W, C, F, ALL, L, P, R, A), AutoCAD selection option |
+| Selection | 10 % | 40 % | 78 % | Select objects prompt (W, C, F, WP, CP, ALL, L, P, R, A), AutoCAD selection option |
 | Keys and aliases | 10 % | 55 % | 75 % | acad.pgp import, F2, E = ERASE |
-| **Total (estimate)** | 100 % | ≈ 42 % | **≈ 71 %** | |
+| **Total (estimate)** | 100 % | ≈ 42 % | **≈ 76 %** | |
 
-Still missing, in the order they matter: snaps on scans; hot-grip modes and grips on several objects;
-lasso and selection cycling, WP / CP; point filters (`.x`, `.y`) and `TK`; additional and relative polar
-angles, PolarSnap.
+Still missing, in the order they matter: hot-grip modes (Space: Stretch / Move / Rotate / Scale / Mirror)
+and grips on several objects; lasso (press-drag is the rectangle here, by design) and selection cycling;
+`TK` tracking points; tracking paths along polar angles.
 
 ## How this was measured
 
@@ -308,14 +308,14 @@ Ovidiu's confirmation (behaviour in his AutoCAD, or a product choice) before it 
 | CMD-D6 | Typed snap overrides (`END`, `MID` … `NON`), then `FROM`, `M2P` | done (v1.1) | 3 |
 | CMD-D7 | Tab cycles snap candidates when nothing is being typed | done (v1.1) | 3 |
 | CMD-D8 | Shift toggles ortho while held | done (v1.1) | 1 |
-| CMD-D9 | Node as a mode; Geometric center and Insertion; snaps on scans | Node, GCE, INS done (v1.1) · scans planned | 3 / 6 |
+| CMD-D9 | Node as a mode; Geometric center and Insertion; snaps on scans | done (v1.1); scans as an option | 3 / 6 |
 | CMD-D10 | Import `acad.pgp` in the Keys dialog | done (v1.1) | 4 |
 | CMD-D11 | Transparent commands with `'` | done (v1.1) | 4 |
 | CMD-D12 | `E` without a selection asks "Select objects:"; PICKADD option | done (v1.1) | 5 |
 | CMD-D13 | MOVE / COPY with base point and typed displacement | done (v1.1) | 5 |
 | CMD-D14 | Hot-grip modes, grips on several objects, grip input | planned | 6 |
 | CMD-D15 | F2 history window with prompts and messages | done (v1.1) | 2 |
-| CMD-D16 | Additional and relative polar angles, PolarSnap | planned | 6 |
+| CMD-D16 | Additional and relative polar angles, PolarSnap | done (v1.1) | 6 |
 
 ### CMD-D1 — Point syntax parser
 
@@ -514,6 +514,7 @@ After phases 1–5 the same weights give about **≈ 65 %** (estimate).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-24 | minor | Polar extras, WP / CP, .X / .Y, snap on scans on `v1.1`; ≈ 76 % (estimate) |
 | 2026-11-24 | minor | Select objects keywords, TEXT H / R, DIST M, prompt next to the cursor on `v1.1`; ≈ 71 % (estimate) |
 | 2026-11-24 | minor | FROM, M2P, DCO / DBA Select, Geometric center and Insertion added on `v1.1`; ≈ 67 % (estimate) |
 | 2026-11-24 | minor | Phases 1–5 built on branch `v1.1`; re-measured ≈ 64 % (estimate); D1–D8, D9 Node, D10–D13, D15 done |
