@@ -12,6 +12,7 @@ import { VIEW_LETTERS } from "./symbols.js";
 import { markingConfig, MM_ICONS } from "./mmenu.js";
 import { keyConfig, directKeyMap, resolveCommand, suggest, commandList, labelOf, ACTIONS } from "./commands.js";
 import { applyPageOp, rotateAbout, scaleAbout, mirrorAbout } from "./pages.js";
+import { hasVertices, addVertex, removeVertex } from "./shapes.js";
 import { startI18n, lang as uiLang, tr } from "./i18n.js";
 
 const esc = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -102,6 +103,10 @@ class App {
    */
   escape(confirm = false) {
     const t = TOOL_BY_ID[this.tool];
+    if (this.gripMenu && this.gripMenu.shown) {
+      this.hideGripMenu();
+      return;
+    }
     if (this.hotGrip) {
       // Enter / right click goes to the next mode, as Space; Esc ends
       if (confirm) this.cycleHotGrip();
@@ -508,6 +513,112 @@ class App {
       return true;
     }
     return false;
+  }
+
+  // ------------------------------------------------------------ grip menu (CMD-D14)
+  /** Resting on a grip for a moment opens its menu (AutoCAD's multifunctional grips). */
+  gripMenuHover(hv, sx, sy) {
+    const m = this.gripMenu;
+    const on = hv && hv.kind === "handle" && hv.h.k !== "sc" && hv.h.k !== "tx" && !this.hotGrip && !this.drag;
+    if (m && m.shown) {
+      // it stays while the cursor is near its grip (on the way to the menu)
+      if (Math.hypot(sx - m.sx, sy - m.sy) > 40) this.hideGripMenu();
+      return;
+    }
+    const key = on ? `${hv.a.id}:${hv.h.k}` : "";
+    if (m && m.key === key) return;
+    this.hideGripMenu();
+    if (!on) return;
+    const [gx, gy] = this.view.toScreen(hv.h.p);
+    const g = { key, id: hv.a.id, k: hv.h.k, p: [...hv.h.p], sx: gx, sy: gy, shown: false };
+    g.timer = setTimeout(() => this.showGripMenu(g), 600);
+    this.gripMenu = g;
+  }
+
+  hideGripMenu() {
+    const m = this.gripMenu;
+    if (!m) return;
+    clearTimeout(m.timer);
+    this.gripMenu = null;
+    const el = $("gripMenu");
+    if (el) el.hidden = true;
+  }
+
+  /** The items of a grip's menu: the hot-grip modes, and vertices for polylines and hatches. */
+  gripMenuItems(a, k) {
+    const items = [
+      { id: "stretch", label: "Întindere" },
+      { id: "move", label: "Mutare" },
+      { id: "rotate", label: "Rotire" },
+      { id: "scale", label: "Scalare" },
+      { id: "mirror", label: "Oglindire" },
+    ];
+    if (hasVertices(a) && k.startsWith("pts.")) {
+      items.push({ id: "addVertex", label: "Adaugă vârf", sep: true });
+      const tmp = { ...a, pts: [...a.pts] };
+      if (removeVertex(tmp, Number(k.slice(4)))) items.push({ id: "removeVertex", label: "Șterge vârful" });
+    }
+    return items;
+  }
+
+  showGripMenu(g) {
+    const a = this.annots.find((x) => x.id === g.id);
+    if (!a || this.gripMenu !== g) return;
+    let el = $("gripMenu");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "gripMenu";
+      el.className = "gripmenu";
+      el.setAttribute("translate", "no");
+      $("viewport").appendChild(el);
+      el.addEventListener("pointerleave", (e) => {
+        if (!(e.relatedTarget && e.relatedTarget === this.view.canvas)) this.hideGripMenu();
+      });
+      el.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-gm]");
+        if (b) this.runGripMenu(b.dataset.gm);
+      });
+    }
+    el.innerHTML = this.gripMenuItems(a, g.k).map((it) => `<button type="button" data-gm="${it.id}"${it.sep ? ' class="sep"' : ""}>${esc(tr(it.label))}</button>`).join("");
+    const vp = $("viewport");
+    el.hidden = false;
+    const w = el.offsetWidth || 140;
+    const h = el.offsetHeight || 160;
+    el.style.left = `${Math.max(4, Math.min(g.sx + 12, vp.clientWidth - w - 4))}px`;
+    el.style.top = `${Math.max(4, Math.min(g.sy + 12, vp.clientHeight - h - 4))}px`;
+    g.shown = true;
+  }
+
+  runGripMenu(id) {
+    const g = this.gripMenu;
+    this.hideGripMenu();
+    if (!g) return;
+    const a = this.annots.find((x) => x.id === g.id);
+    if (!a) return;
+    if (id === "addVertex" || id === "removeVertex") {
+      const i = Number(g.k.slice(4));
+      this.pushHistory();
+      if (id === "removeVertex") {
+        removeVertex(a, i);
+        this.frame++;
+        this.changed();
+        return;
+      }
+      // as in AutoCAD: the new vertex follows the cursor until it is placed
+      const j = addVertex(a, i);
+      this.frame++;
+      this.changed();
+      if (j >= 0) this.startHotGrip({ id: a.id, k: `pts.${j}`, p: [...a.pts[j]] });
+      return;
+    }
+    this.startHotGrip({ id: g.id, k: g.k, p: g.p });
+    const hg = this.hotGrip;
+    if (hg && id !== "stretch") {
+      hg.mode = id;
+      if (id === "scale") hg.ref = 10 * K;
+      this.logCmd(`  ** ${this.hotGripName()} **`);
+      this.updateCmdPrompt();
+    }
   }
 
   // ------------------------------------------------------------ hot grips (CMD-D14)
@@ -2431,6 +2542,7 @@ class App {
 
     cv.addEventListener("pointerdown", (e) => {
       this.frame = (this.frame || 0) + 1;
+      this.hideGripMenu();
       if (!this.doc) return;
       // tool keys must not end up in a panel field that is still focused
       if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
@@ -2669,6 +2781,7 @@ class App {
           const hv = e.pointerType === "touch" ? null : this.hoverAt(sx, sy, raw, false);
           cv.style.cursor = hv ? hv.cursor : "default";
           this.setHover(hv, raw);
+          this.gripMenuHover(hv, sx, sy);
         }
         return;
       }
@@ -2819,7 +2932,9 @@ class App {
     document.addEventListener("contextmenu", (e) => {
       if (this.mmenu || this.mmenuClosedAt > performance.now() - 400) e.preventDefault();
     });
-    cv.addEventListener("pointerleave", () => {
+    cv.addEventListener("pointerleave", (e) => {
+      // towards the grip menu: it stays; anywhere else it goes
+      if (!(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest("#gripMenu"))) this.hideGripMenu();
       if (this.hover) this.setHover(null, null);
       if (!this.drag && this.view.overlay && this.view.overlay.snap) {
         this.view.overlay.snap = null;

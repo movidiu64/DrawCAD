@@ -545,6 +545,37 @@ def main(url, out):
         assert page.evaluate("window.cotare.hotGrip") is None
         assert page.evaluate(lastln) == [[35, 65], [45, 70]], page.evaluate(lastln)
         page.keyboard.press("Escape")
+        # 31. grip menu: resting on a polyline vertex opens it; Add vertex places a new one, Remove vertex deletes it
+        page.click("#cmdIn")
+        typed("PL", "20,150", "@20,0", "@0,10", "")
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
+        plq = "window.cotare.annots.filter(a => a.type === 'shape' && a.kind === 'poly').slice(-1)[0]"
+        plpts = f"(a => a.pts.map(p => [Math.round(p[0] / (72/25.4) * 100) / 100, Math.round((window.cotare.doc.pages[0].h - p[1]) / (72/25.4) * 100) / 100]))({plq})"
+        assert page.evaluate(plpts) == [[20, 150], [40, 150], [40, 160]], page.evaluate(plpts)
+        page.keyboard.press("v")
+        page.evaluate(f"() => {{ const v = window.cotare.view; v.zoom = 2.2; v.panX = 0; v.panY = -({uy(160)} - 30)*72/25.4*2.2; v.afterZoom(); }}")
+        page.wait_for_timeout(300)
+        page.evaluate(f"window.cotare.select({plq}.id)")
+        gx, gy = scr(40, uy(150))
+        page.mouse.move(gx + 2, gy)
+        page.mouse.move(gx, gy)
+        page.wait_for_selector("#gripMenu:not([hidden]) [data-gm=addVertex]", timeout=3000)
+        page.click("#gripMenu [data-gm=addVertex]")
+        assert page.evaluate("window.cotare.hotGrip && window.cotare.hotGrip.k") == "pts.2"
+        page.click("#cmdIn")
+        typed("@5,0")
+        assert page.evaluate(plpts) == [[20, 150], [40, 150], [45, 155], [40, 160]], page.evaluate(plpts)
+        gx, gy = scr(45, uy(155))
+        page.mouse.move(gx + 2, gy)
+        page.mouse.move(gx, gy)
+        page.wait_for_selector("#gripMenu:not([hidden]) [data-gm=removeVertex]", timeout=3000)
+        page.click("#gripMenu [data-gm=removeVertex]")
+        assert page.evaluate(plpts) == [[20, 150], [40, 150], [40, 160]], page.evaluate(plpts)
+        page.click("#cmdIn")
+        typed("E")
+        assert page.evaluate("window.cotare.annots.filter(a => a.type === 'shape' && a.kind === 'poly').length") == 0
+        page.keyboard.press("Escape")
         # 29. TK tracking: two tracking points (the second only vertical), Enter, then the line from there
         page.keyboard.press("i")
         page.click("#cmdIn")

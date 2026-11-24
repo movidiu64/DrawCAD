@@ -93,3 +93,24 @@ test("the export keeps the line pattern, and editor helpers do not reach the PDF
   assert.equal(ex.length, 2);
   assert.ok(ex.every((p) => Array.isArray(p.dp) && p.dp.length === 4));
 });
+
+test("grip menu: add and remove polyline vertices", async () => {
+  const { addVertex, removeVertex, hasVertices } = await import("../js/shapes.js");
+  const p = { type: "shape", kind: "poly", pts: [[0, 0], [10, 0], [10, 10]] };
+  assert.ok(hasVertices(p));
+  assert.equal(addVertex(p, 0), 1);
+  assert.deepEqual(p.pts[1], [5, 0]);
+  // after the last vertex of an open polyline: half a segment further on
+  assert.equal(addVertex(p, 3), 4);
+  assert.deepEqual(p.pts[4], [10, 15]);
+  assert.ok(removeVertex(p, 4));
+  assert.ok(removeVertex(p, 1));
+  assert.ok(removeVertex(p, 2));
+  assert.equal(removeVertex(p, 0), false); // an open polyline keeps 2 vertices
+  const h = { type: "shape", kind: "hatch", pts: [[0, 0], [10, 0], [10, 10]] };
+  assert.equal(addVertex(h, 2), 3); // closed: between the last and the first
+  assert.deepEqual(h.pts[3], [5, 5]);
+  assert.ok(removeVertex(h, 3));
+  assert.equal(removeVertex(h, 0), false); // a hatch keeps 3
+  assert.equal(hasVertices({ type: "shape", kind: "line", pts: [[0, 0], [1, 1]] }), false);
+});

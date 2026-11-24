@@ -350,3 +350,39 @@ export function trackSweep(state, c, start, cur) {
   state.last = a;
   return state.acc >= 0;
 }
+
+// ---- vertices of polylines and hatches (grip menu: Add vertex / Remove vertex, CMD-D14)
+
+/** Can vertices be added to or removed from this shape? (polylines and hatch outlines) */
+export function hasVertices(a) {
+  return !!(a && a.type === "shape" && (a.kind === "poly" || a.kind === "hatch") && Array.isArray(a.pts));
+}
+
+const minVertices = (a) => (a.kind === "hatch" || a.closed ? 3 : 2);
+
+/**
+ * Adds a vertex after vertex i: halfway to the next one, or, after the last vertex of an open
+ * polyline, half a segment further on. Returns the new vertex's index, or -1.
+ */
+export function addVertex(a, i) {
+  if (!hasVertices(a) || i < 0 || i >= a.pts.length) return -1;
+  const P = a.pts;
+  const closedRing = a.kind === "hatch" || a.closed;
+  let q;
+  if (i < P.length - 1 || closedRing) {
+    const n = P[(i + 1) % P.length];
+    q = [(P[i][0] + n[0]) / 2, (P[i][1] + n[1]) / 2];
+  } else {
+    const p = P[i - 1] || P[i];
+    q = [P[i][0] + (P[i][0] - p[0]) / 2, P[i][1] + (P[i][1] - p[1]) / 2];
+  }
+  P.splice(i + 1, 0, q);
+  return i + 1;
+}
+
+/** Removes vertex i, if the shape keeps enough of them. Returns true when removed. */
+export function removeVertex(a, i) {
+  if (!hasVertices(a) || i < 0 || i >= a.pts.length || a.pts.length <= minVertices(a)) return false;
+  a.pts.splice(i, 1);
+  return true;
+}
