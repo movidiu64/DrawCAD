@@ -276,7 +276,8 @@ export class Snapper {
    * o: { tol, modes (Set), anchor, extra: {pts, segs, arcs}, acq: [{p, dirs}], parDir,
    *      polarInc (degrees, 0 = off), polarExtra (additional angles, degrees), polarBase (degrees
    *      the polar angles are measured from: 0, or the last segment), polarStep (distance step along
-   *      a polar ray, page points; 0 = off), tracking (bool) }.
+   *      a polar ray, page points; 0 = off), tracking (bool), trackPolar (bool: tracking lines also
+   *      along the polar angles, not only horizontal and vertical) }.
    * Returns { p, kind, guides: [{ o, p }], from } or null.
    */
   snap(cur, o) {
@@ -433,6 +434,12 @@ export class Snapper {
       if (o.tracking) {
         guides.push({ o: q.p, d: [1, 0], line: true, kind: "trk" });
         guides.push({ o: q.p, d: [0, 1], line: true, kind: "trk" });
+        if (o.trackPolar) {
+          // "track using all polar angle settings": also the polar angle nearest the cursor's direction
+          const th = polarAngle(angOf(q.p, cur), { ...o, polarBase: 0 });
+          const d = th == null ? null : [Math.cos(th), -Math.sin(th)];
+          if (d && Math.abs(d[0]) > 1e-9 && Math.abs(d[1]) > 1e-9) guides.push({ o: q.p, d, line: true, kind: "trk" });
+        }
       }
       if (M.has("ext")) for (const d of q.dirs || []) guides.push({ o: q.p, d, ray: true, kind: "ext" });
     }

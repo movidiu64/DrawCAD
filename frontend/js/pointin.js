@@ -110,6 +110,7 @@ export function parsePointMod(text) {
   if (q === "M2P" || q === "MTP") return "m2p";
   if (q === ".X") return "fx";
   if (q === ".Y") return "fy";
+  if (q === "TK" || q === "TRACKING" || q === "TRACK" || q === "TRA") return "tk";
   return null;
 }
 

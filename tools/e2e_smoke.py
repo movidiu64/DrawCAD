@@ -531,6 +531,17 @@ def main(url, out):
         typed("E")
         assert page.evaluate(f"window.cotare.annots.some(a => a.id === '{new_id}')") is False
         page.keyboard.press("Escape")
+        # 29. TK tracking: two tracking points (the second only vertical), Enter, then the line from there
+        page.keyboard.press("i")
+        page.click("#cmdIn")
+        typed("TK", "50,100", "@20,0", "@3,15", "", "@10,0")
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
+        assert page.evaluate(lastln) == [[70, 115], [80, 115]], page.evaluate(lastln)
+        page.evaluate(f"window.cotare.select({lines}.slice(-1)[0].id)")
+        page.click("#cmdIn")
+        typed("E")
+        page.keyboard.press("Escape")
         page.keyboard.press("f")
         page.wait_for_timeout(300)
 

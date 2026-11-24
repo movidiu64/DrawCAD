@@ -125,6 +125,10 @@ class App {
       }
       return;
     }
+    if (confirm && this.pointMod && this.pointMod.kind === "tk" && this.pointMod.pts.length) {
+      this.finishTracking();
+      return;
+    }
     if (this.snapOverride || this.pointMod) {
       this.snapOverride = null;
       this.pointMod = null;
@@ -384,10 +388,18 @@ class App {
     return defaultOrigin(pg ? pg.h : 0);
   }
 
+  /** Where the rubber band, polar and ortho start: the last tracking point during TK, else the last click. */
+  pickAnchor() {
+    const m = this.pointMod;
+    if (m && m.kind === "tk" && m.pts.length) return m.pts[m.pts.length - 1];
+    return this.clicks[this.clicks.length - 1];
+  }
+
   /** The point @ and a lone distance are measured from. */
   lastPoint() {
     if (this.hotGrip) return this.hotGrip.base;
     if (this.pointMod && this.pointMod.kind === "from" && this.pointMod.base) return this.pointMod.base;
+    if (this.pointMod && this.pointMod.kind === "tk" && this.pointMod.pts.length) return this.pickAnchor();
     if (this.rectStart) return this.rectStart;
     if (this.clicks.length) return this.clicks[this.clicks.length - 1];
     return this.lastPick || null;
@@ -397,6 +409,21 @@ class App {
    * FROM, M2P and option S of DCO / DBA take the next picks before the tool does.
    * Returns true when the pick was used here.
    */
+  /** TK: the end of tracking (Enter); the last tracking point goes to the command. */
+  finishTracking() {
+    const m = this.pointMod;
+    this.pointMod = null;
+    this.updateCmdPrompt();
+    if (m && m.pts.length) this.toolClick(m.pts[m.pts.length - 1]);
+  }
+
+  /** TK: the tracking path drawn so far stays on screen. */
+  updateTkOverlay() {
+    const m = this.pointMod;
+    if (!m || m.kind !== "tk") return;
+    this.view.redraw(); // view.js draws the path from pointMod.pts
+  }
+
   consumePointMod(pt) {
     const m = this.pointMod;
     if (m.kind === "from") {
@@ -409,6 +436,20 @@ class App {
       }
       this.pointMod = null; // the offset point (typed @ from the base, or picked) goes to the tool
       return false;
+    }
+    if (m.kind === "tk") {
+      // TK (tracking): each point is taken horizontally or vertically from the previous one;
+      // Enter ends and the last one goes to the command
+      if (m.pts.length) {
+        const q = m.pts[m.pts.length - 1];
+        pt = Math.abs(pt[0] - q[0]) >= Math.abs(pt[1] - q[1]) ? [pt[0], q[1]] : [q[0], pt[1]];
+      }
+      m.pts.push(pt);
+      this.lastPick = pt;
+      this.snapOverride = null;
+      this.updateCmdPrompt();
+      this.updateTkOverlay();
+      return true;
     }
     if (m.kind === "m2p") {
       if (!m.a) {
@@ -732,6 +773,7 @@ class App {
     if (pm && pm.kind === "pickDim") pr.text = "Alege cota liniară de la care continui";
     if (pm && pm.kind === "fx") pr.text = pm.first ? ".X — punctul care dă Y" : ".X — punctul care dă X";
     if (pm && pm.kind === "fy") pr.text = pm.first ? ".Y — punctul care dă X" : ".Y — punctul care dă Y";
+    if (pm && pm.kind === "tk") pr.text = pm.pts.length ? "TK — punctul următor (orizontal sau vertical; Enter încheie urmărirea)" : "TK — primul punct de urmărire";
     if (pm) pr.opts = [];
     if (this.snapOverride) pr.text += this.snapOverride === "none" ? " · fără snap" : ` · snap: ${LABELS[this.snapOverride === "node" ? "a" : this.snapOverride]}`;
     return pr;
@@ -2125,7 +2167,9 @@ class App {
   snapPoint(raw, e, anchor) {
     const v = this.view;
     const cfg = this.snapCfg;
-    const ortho = orthoActive(cfg.ortho, e.shiftKey);
+    // TK: every tracking point goes horizontally or vertically from the previous one
+    const tk = this.pointMod && this.pointMod.kind === "tk" && this.pointMod.pts.length;
+    const ortho = tk || orthoActive(cfg.ortho, e.shiftKey);
     // a candidate chosen with Tab stays while the cursor stays
     if (this.snapPick) {
       if (Math.hypot(raw[0] - this.snapPick.raw[0], raw[1] - this.snapPick.raw[1]) * v.zoom < 3) return { pt: this.snapPick.p, sn: this.snapPick.sn };
@@ -2163,6 +2207,7 @@ class App {
         polarBase: cfg.polarRel ? this.lastSegAngle() : 0,
         polarStep: cfg.polarStep > 0 ? (cfg.polarStep / (Number(this.settings.scale) || 1)) * K : 0,
         tracking: on && cfg.tracking,
+        trackPolar: on && cfg.tracking && !!cfg.trackPolar,
       });
       if (sn) {
         pt = sn.p;
@@ -2319,6 +2364,7 @@ class App {
       <div class="h">Polar</div>
       <label class="fld">Unghiuri suplimentare (°, despărțite prin ; ) <input type="text" id="snPolarExtra" class="mono" placeholder="ex.: 7; 22,5" value="${esc((c.polarExtra || []).join("; "))}"></label>
       <label class="chk wide"><input type="checkbox" id="snPolarRel" ${c.polarRel ? "checked" : ""}> Unghiuri față de ultimul segment</label>
+      <label class="chk wide"><input type="checkbox" id="snTrackPolar" ${c.trackPolar ? "checked" : ""}> Urmărirea și pe unghiurile polare (nu doar orizontal / vertical)</label>
       <label class="fld">Pas pe direcția polară (mm reali, 0 = fără) <input type="text" id="snPolarStep" class="mono" value="${esc(String(c.polarStep || 0))}"></label>
       <div class="sub">Urmărire: oprește cursorul o clipă pe un punct (apare o cruciuliță verde), apoi mișcă-te pe orizontală, verticală sau în prelungirea liniei. Încă o oprire pe punct îl scoate.<br>Paralel: în timpul unei comenzi, oprește-te pe o linie, apoi mișcă-te aproape paralel cu ea.<br>F3 snap · F8 ortho · F10 polar · F11 urmărire · Alt = fără snap</div>`;
     $("snapMenu").querySelectorAll("[data-mode]").forEach((cb) => cb.addEventListener("change", () => {
@@ -2334,6 +2380,7 @@ class App {
       this.saveSnapCfg();
     });
     $("snPolarRel").addEventListener("change", (e) => { c.polarRel = e.target.checked; this.saveSnapCfg(); });
+    $("snTrackPolar").addEventListener("change", (e) => { c.trackPolar = e.target.checked; this.saveSnapCfg(); });
     $("snScan").addEventListener("change", (e) => {
       c.scan = e.target.checked;
       this.saveSnapCfg();
@@ -2446,7 +2493,7 @@ class App {
       }
       // before the first click of a tool, the selection handles take priority
       if (!this.clicks.length && this.tryHandleDrag(sx, sy, true)) return;
-      const anchor = this.clicks[this.clicks.length - 1];
+      const anchor = this.pickAnchor();
       if (t.kind === "rect") {
         const { pt } = this.snapPoint(raw, e, anchor);
         this.drag = { kind: "rect", start: pt };
@@ -2625,7 +2672,7 @@ class App {
         if (this.hover) this.setHover(null, raw);
         cv.style.cursor = "crosshair";
       }
-      const anchor = d && d.kind === "rect" ? d.start : this.clicks[this.clicks.length - 1];
+      const anchor = d && d.kind === "rect" ? d.start : this.pickAnchor();
       const { pt: spt, sn } = this.snapPoint(raw, e, anchor);
       this.trackHover(sn, raw);
       this._dynPt = spt;
@@ -2665,7 +2712,7 @@ class App {
       if (d.kind === "tap") {
         const [ux, uy] = pos(e);
         const raw = this.view.toPage(ux, uy);
-        const an = this.clicks[this.clicks.length - 1];
+        const an = this.pickAnchor();
         this.toolClick(this.dynPoint(this.snapPoint(raw, e, an).pt, an));
         return;
       }
@@ -3143,7 +3190,7 @@ class App {
       return true;
     }
     if ((k === "Enter" || k === " ") && has) {
-      const anchor = this.clicks[this.clicks.length - 1];
+      const anchor = this.pickAnchor();
       const p = this.dynPoint(this._dynPt || this.lastPt || anchor, anchor);
       this.dynReset();
       this.toolClick(p);
@@ -3159,7 +3206,7 @@ class App {
   }
 
   dynRefresh() {
-    const anchor = this.clicks[this.clicks.length - 1];
+    const anchor = this.pickAnchor();
     if (!anchor || !this._dynPt) {
       this.renderDyn(null, null);
       return;
@@ -3367,6 +3414,7 @@ class App {
           if (e.key === "Tab") return;
           // during a command: finish it (polyline, series) or stop; otherwise repeat the last one
           if (this.hotGrip) this.cycleHotGrip();
+          else if (this.pointMod && this.pointMod.kind === "tk") this.escape(true);
           else if (this.cmdActive() && (this.clicks.length || this.rectStart)) this.escape(true);
           else this.repeatCmd();
           return;
@@ -3390,7 +3438,7 @@ class App {
         }
         const pmod = this.cmdActive() && e.key !== "Tab" && TOOL_BY_ID[this.tool].kind !== "rect" ? parsePointMod(v) : null;
         if (pmod) {
-          this.pointMod = { kind: pmod };
+          this.pointMod = pmod === "tk" ? { kind: "tk", pts: [] } : { kind: pmod };
           this.logCmd(`  ${v.toUpperCase()}`);
           inp.value = "";
           box.hidden = true;

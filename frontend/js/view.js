@@ -466,6 +466,13 @@ export class View {
       }
       if (ov.snap) this.drawSnap(ov.snap);
     }
+    const tk = app.pointMod && app.pointMod.kind === "tk" ? app.pointMod.pts : null;
+    if (tk && tk.length) {
+      // TK: the tracking path so far, with its points
+      const prims = tk.slice(1).map((p, i) => ({ t: "L", p: [...tk[i], ...p], w: 0.6, c: "preview", dash: true }));
+      for (const p of tk) prims.push({ t: "C", p: [...p], r: 4 / z, w: 0.6, c: "preview" });
+      drawPrims(ctx, prims, z);
+    }
     if ((app.acq && app.acq.length) || app.parSeg) this.drawAcquired(app.acq || [], app.parSeg);
     // label next to the cursor: what the handle / box under the cursor does, or the value while dragging
     if (app.dragTip) this.drawTip(app.dragTip.txt, app.dragTip.p[0], app.dragTip.p[1]);

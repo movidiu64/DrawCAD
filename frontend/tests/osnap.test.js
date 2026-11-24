@@ -49,6 +49,18 @@ test("tracking: X from one point, Y from another", () => {
   assert.equal(r.guides.length, 2);
 });
 
+test("tracking along polar angles: only with trackPolar, at the angle nearest the cursor", () => {
+  const s = new Snapper();
+  const acq = [{ p: [0, 0], dirs: [] }];
+  // the cursor is near the 45° line from the acquired point (y down on the page)
+  const cur = [50.5, -49.5];
+  const off = s.snap(cur, { tol: 3, modes: new Set(), acq, tracking: true, polarInc: 45 });
+  assert.equal(off, null);
+  const r = s.snap(cur, { tol: 3, modes: new Set(), acq, tracking: true, trackPolar: true, polarInc: 45 });
+  assert.equal(r.kind, "trk");
+  assert.ok(near(r.p, [50, -50]));
+});
+
 test("polar: the cursor snaps to the 30° ray from the previous point", () => {
   const s = new Snapper();
   const A = [0, 0];

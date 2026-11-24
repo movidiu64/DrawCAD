@@ -87,6 +87,8 @@ test("point modifiers: FROM and M2P (MTP), with the usual prefixes", async () =>
   assert.equal(parsePointMod("m2p"), "m2p");
   assert.equal(parsePointMod("'MTP"), "m2p");
   assert.equal(parsePointMod("M"), null);
+  assert.equal(parsePointMod("tk"), "tk");
+  assert.equal(parsePointMod("'TRACKING"), "tk");
 });
 
 test("point filters .X / .Y", async () => {

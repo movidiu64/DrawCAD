@@ -1070,4 +1070,7 @@ export const EN = {
   "** GRIP ** ({})": "** GRIP ** ({})",
   "{}/{} — Tab: următorul": "{}/{} — Tab: next",
   " · {}/{} — Tab: următorul": " · {}/{} — Tab: next",
+  "Urmărirea și pe unghiurile polare (nu doar orizontal / vertical)": "Tracking along the polar angles too (not only horizontal / vertical)",
+  "TK — punctul următor (orizontal sau vertical; Enter încheie urmărirea)": "TK — next point (horizontal or vertical; Enter ends tracking)",
+  "TK — primul punct de urmărire": "TK — first tracking point",
 };

@@ -16,7 +16,7 @@ DrawCAD is not a CAD system: it annotates a fixed sheet (a PDF page or a scan). 
 behaviour only makes sense for model geometry (3D, UCS rotation, isometric snap, blocks), it is left
 out of the measure and listed as *not applicable*.
 
-**Headline (estimate): ≈ 42 % at the measured commit, ≈ 77 % on branch `v1.1`.** Snaps (11 running modes, tracking, extension, parallel, apparent
+**Headline (estimate): ≈ 42 % at the measured commit, ≈ 79 % on branch `v1.1`.** Snaps (11 running modes, tracking, extension, parallel, apparent
 intersection), polar and ortho, the alias table with AutoCAD names and the command line with
 autocomplete and history are real. Typed coordinates are missing entirely (no `x,y`, `@`, `<`, `#`),
 the command line knows only command names (no prompts, no options, no typed points), there are no
@@ -28,22 +28,23 @@ Re-measured on branch `v1.1` after phases 1–5, the same way and with the same 
 
 | Area | Weight | Before | v1.1 | What changed |
 |---|---:|---:|---:|---|
-| Point entry | 15 % | 15 % | 78 % | the whole typed syntax, typed first point, origin and UCS, typed box corners, FROM, M2P, .X / .Y |
+| Point entry | 15 % | 15 % | 82 % | the whole typed syntax, typed first point, origin and UCS, typed box corners, FROM, M2P, .X / .Y, TK |
 | Object snaps | 20 % | 60 % | 84 % | typed overrides, Tab cycling, Node as a mode, CEN from the edge, Geometric center, Insertion, snap on scans |
-| Tracking, polar, ortho | 10 % | 60 % | 78 % | Shift toggles ortho; additional and relative polar angles, polar step |
+| Tracking, polar, ortho | 10 % | 60 % | 86 % | Shift toggles ortho; additional and relative polar angles, polar step; tracking along polar angles (option); TK |
 | Dynamic input | 10 % | 35 % | 62 % | `@ # <` from anywhere, absolute points through the command line, the prompt and its options menu next to the cursor |
 | Command line | 15 % | 40 % | 77 % | prompts, options by letter or click (DCO / DBA Select, TEXT H / R, DIST M too), typed points, transparent commands, F2 |
 | Grips and editing | 10 % | 30 % | 75 % | MOVE and COPY with base point and displacement; hot grips (Space: Stretch / Move / Rotate / Scale / Mirror, Base point, Copy, typed points and values); grips on up to 100 selected annotations, several hot grips with Shift |
 | Selection | 10 % | 40 % | 83 % | Select objects prompt (W, C, F, WP, CP, ALL, L, P, R, A), AutoCAD selection option, selection cycling with Tab |
 | Keys and aliases | 10 % | 55 % | 75 % | acad.pgp import, F2, E = ERASE |
-| **Total (estimate)** | 100 % | ≈ 42 % | **≈ 77 %** | |
+| **Total (estimate)** | 100 % | ≈ 42 % | **≈ 79 %** | |
 
-The total is the weighted sum of the rows (0.15 × 78 + 0.20 × 84 + 0.10 × 78 + 0.10 × 62 + 0.15 × 77 +
-0.10 × 75 + 0.10 × 83 + 0.10 × 75 = 77.35). The previous revision gave ≈ 76 % with grips at 45 %, which
+The total is the weighted sum of the rows (0.15 × 82 + 0.20 × 84 + 0.10 × 86 + 0.10 × 62 + 0.15 × 77 +
+0.10 × 75 + 0.10 × 83 + 0.10 × 75 = 78.75). The previous revision gave ≈ 76 % with grips at 45 %, which
 sums to 73.85: it was overstated by about two points.
 
-Still missing, in the order they matter: multifunctional grip menus; lasso (press-drag is the rectangle here, by design);
-`TK` tracking points; tracking paths along polar angles.
+Still missing, in the order they matter: dynamic input (62 %, the weakest area: no dimension input
+fields on grips, no tooltip with distance and angle at the cursor in place of the status bar);
+multifunctional grip menus; lasso (press-drag is the rectangle here, by design).
 
 ## How this was measured
 
@@ -498,10 +499,18 @@ Ovidiu's confirmation (behaviour in his AutoCAD, or a product choice) before it 
 - F2 opens a panel with the commands, prompts, options chosen and messages of the session (the toasts
   that belong to commands), newest at the bottom.
 
-### CMD-D16 — Polar extras (planned)
+### CMD-D16 — Polar extras (done on `v1.1`)
 
 - Additional polar angles (a list in the snap menu), angles relative to the last segment, PolarSnap
   distance; tracking paths along polar angles.
+- Tracking along polar angles is an option in the snap menu, off by default as in AutoCAD ("Track
+  orthogonally only"). With it on, each acquired point also gets the polar angle nearest the
+  cursor's direction (measured from 0°, not from the last segment), when polar is on.
+- **`TK` (tracking)**, typed at any point prompt: the first tracking point, then each next one only
+  horizontal or vertical from the previous (ortho is forced, picked or typed `@dx,dy` alike); Enter
+  ends and the last one goes to the command. The path stays on screen while tracking.
+- **Tests:** `tests/osnap.test.js` (tracking along 45° only with the option), `tests/pointin.test.js`
+  (`TK`, `'TRACKING`), e2e step 29 (`TK 50,100 @20,0 @3,15 Enter @10,0` draws 70,115 → 80,115).
 
 ## Phases
 
@@ -539,6 +548,7 @@ After phases 1–5 the same weights give about **≈ 65 %** (estimate).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-24 | minor | `TK` and tracking along polar angles on `v1.1`; point entry 82 %, tracking 86 %; ≈ 79 % (estimate) |
 | 2026-11-24 | minor | Selection cycling with Tab on `v1.1`; selection 78 → 83 %; ≈ 77 % (estimate) |
 | 2026-11-24 | minor | Grips on several selected annotations and several hot grips (Shift) on `v1.1`; grips 65 → 75 %; ≈ 77 % (estimate) |
 | 2026-11-24 | minor | Hot grips (CMD-D14, partly) on `v1.1`; grips 45 → 65 %; total corrected to the weighted sum, ≈ 76 % (estimate) |

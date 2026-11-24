@@ -152,7 +152,7 @@ The app was originally called "Cotare": the old `COTARE_*` variables are still a
 - **Endpoint** □, **Midpoint** △, **Center** ○ (circles, and the centers of fillets too), **Quadrant** ◇, **Intersection** ⊠ (lines, circles, arcs), **Nearest** ⧗
 - **Apparent intersection** ⊠… — the point where the extensions of two lines would meet: the theoretical corner of a chamfer or fillet, which is what gets dimensioned
 - **Extension** — rest the cursor for a moment on the end of a line (a green cross appears), then move along its extension; the tooltip shows the distance from the end
-- **Tracking** — also from acquired points: horizontal and vertical alignment, including the point that has the X of one and the Y of another
+- **Tracking** — also from acquired points: horizontal and vertical alignment, including the point that has the X of one and the Y of another; with "Tracking along the polar angles too" in the snap menu (and polar on) also along the polar angle nearest the cursor
 - **Perpendicular** ⊥ and **Tangent** relative to the command's previous point
 - **Parallel** // — during a command rest on a line, then move nearly parallel to it
 - **Polar** — on the 5°…90° rays from the previous point (15° by default), with distance and angle in the tooltip; excludes Ortho. In the snap menu: **additional angles** (e.g. `7; 22,5`), angles measured **from the last segment** instead of from the horizontal, and a **step** along the polar direction (real mm: the point jumps 10, 20, 30… along the ray)
@@ -163,7 +163,7 @@ Modes are chosen from the arrow next to "Snap" in the bottom bar. Keys: **F3** s
 
 **One snap for the next pick:** type `END`, `MID`, `CEN`, `QUA`, `INT`, `APP`, `EXT`, `PER`, `TAN`, `NEA`, `PAR`, `NOD`, `GCE` or `INS` in the command line (the whole names work too) and only that snap is used for the next point, even with snap off; `NON` = no snap. With `CEN`, hovering the edge of a hole is enough to take its center. In direct-keys mode, click the command line first (letters there are tools).
 
-**FROM, M2P and point filters:** at any point of a command, `FROM` asks for a base point and then takes the point as an offset from it (`@10,5`, `@20<45`); `M2P` (or `MTP`) takes the midpoint of the next two picks; `.X` takes X from the next pick and Y from the one after (`.Y` the other way round).
+**FROM, M2P and point filters:** at any point of a command, `FROM` asks for a base point and then takes the point as an offset from it (`@10,5`, `@20<45`); `M2P` (or `MTP`) takes the midpoint of the next two picks; `.X` takes X from the next pick and Y from the one after (`.Y` the other way round). `TK` (tracking) takes a first tracking point, then each next one only horizontally or vertically from the previous (`@20,0`, a click); Enter ends tracking and the last point goes to the command.
 
 **Several snaps under the cursor:** **Tab** steps through them (Shift+Tab back); the label shows which one, e.g. "Endpoint (2/3, Tab)", and a click takes it.
 
