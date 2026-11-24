@@ -6,6 +6,7 @@ the library hang, eat all the memory or crash, only this process stops,
 and the server answers "file rejected". The result (the cleaned PDF) is written to the given folder.
 
 Usage: python -m app.ingest <input> <output_folder> [dpi]
+       python -m app.ingest --image <input> <output_folder>   (an image to place on a drawing)
 Output on stdout: a single JSON object.
 """
 from __future__ import annotations
@@ -59,6 +60,52 @@ def _clean_state(state):
     return out
 
 
+def _restore_images(exported: bytes, state: dict, out_dir: str) -> None:
+    """Images of image annotations, attached by the export: each one decoded and written again
+    (images.clean_image) into out_dir/images; the annotations get the new ids, the rest go."""
+    from . import pdfcore
+    from .images import BadImage, clean_image, image_id
+
+    found = pdfcore.extract_embedded_images(exported)
+    ids = {}
+    if found:
+        os.makedirs(os.path.join(out_dir, "images"), exist_ok=True)
+    for old, raw in found.items():
+        try:
+            data, ext, _w, _h = clean_image(raw, min(MAX_IMAGE_MPX, 100))
+        except BadImage:
+            continue
+        new = image_id(data)
+        with open(os.path.join(out_dir, "images", f"{new}.{ext}"), "wb") as f:
+            f.write(data)
+        ids[old] = new
+    keep = []
+    for a in state["annots"]:
+        if a.get("type") == "image":
+            if a.get("img") not in ids:
+                continue
+            a["img"] = ids[a["img"]]
+        keep.append(a)
+    state["annots"] = keep
+
+
+def clean_upload_image(path: str, out_dir: str) -> dict:
+    from .images import BadImage, clean_image, image_id
+
+    with open(path, "rb") as f:
+        raw = f.read()
+    if not raw:
+        raise Rejected("Fișier gol")
+    try:
+        data, ext, w, h = clean_image(raw, min(MAX_IMAGE_MPX, 100))
+    except BadImage as e:
+        raise Rejected(f"Imagine respinsă: {e}") from e
+    iid = image_id(data)
+    with open(os.path.join(out_dir, f"{iid}.{ext}"), "wb") as f:
+        f.write(data)
+    return {"id": iid, "ext": ext, "w": w, "h": h}
+
+
 def process(path: str, out_dir: str, dpi: float | None) -> dict:
     from PIL import Image
 
@@ -97,12 +144,15 @@ def process(path: str, out_dir: str, dpi: float | None) -> dict:
             data = data[data.find(b"%PDF-"):]
         emb = pdfcore.extract_embedded(data)
         if emb:
+            exported = data
             data, js = emb
             if len(js) <= MAX_STATE:
                 try:
                     state = _clean_state(json.loads(js.decode("utf-8")))
                 except Exception:  # noqa: BLE001
                     state = None
+            if state is not None:
+                _restore_images(exported, state, out_dir)
         data, removed = sanitize_pdf(data)
     info = pdfcore.open_info(data)
     pages = info["pages"]
@@ -143,8 +193,15 @@ def _emit(out_dir, obj):
 
 def main(argv):
     _limit_self()
+    image = len(argv) > 1 and argv[1] == "--image"
+    if image:
+        argv = argv[1:]
     out_dir = argv[2] if len(argv) > 2 else "."
     try:
+        if image:
+            res = clean_upload_image(argv[1], out_dir)
+            _emit(out_dir, {"ok": True, **res})
+            return 0
         dpi = float(argv[3]) if len(argv) > 3 and argv[3] else None
         res = process(argv[1], out_dir, dpi)
         _emit(out_dir, {"ok": True, **res})

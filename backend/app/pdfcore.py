@@ -255,6 +255,26 @@ def extract_embedded(pdf_bytes: bytes):
     return None
 
 
+IMG_ATTACH = re.compile(r"^drawcad-img-([a-f0-9]{8,64})\.(png|jpg)$")
+
+
+def extract_embedded_images(pdf_bytes: bytes, limit: int = 300, max_bytes: int = 30 * 1024 * 1024) -> dict:
+    """Images of image annotations attached by an export: {old id: bytes} (cleaned again by the caller)."""
+    out = {}
+    try:
+        with pikepdf.open(io.BytesIO(pdf_bytes)) as pk:
+            for name in list(pk.attachments.keys())[: limit * 2]:
+                m = IMG_ATTACH.match(str(name))
+                if not m or len(out) >= limit:
+                    continue
+                data = pk.attachments[name].get_file().read_bytes()
+                if len(data) <= max_bytes:
+                    out[m.group(1)] = data
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
 def image_to_pdf(data: bytes, dpi: float | None) -> tuple[bytes, float]:
     """Converts an image (PNG/JPG/TIFF) to a PDF page at the given DPI or the one read from the file."""
     import img2pdf
@@ -1397,7 +1417,7 @@ def _overlay_pdf(page_specs, color_mode) -> bytes:
         c.setLineJoin(1)
         c.setLineCap(0)
         # white covers first, so they do not hide the new dimensions
-        ordered = sorted(prims, key=lambda p: 0 if p.get("c") == "white" or p.get("cover") else 1)
+        ordered = sorted(prims, key=lambda p: 0 if p.get("c") == "white" or p.get("cover") else 1 if p.get("t") == "I" else 2)
         for p in ordered:
             t = p.get("t")
             col = _color(p.get("c", "add"), color_mode)
@@ -1434,6 +1454,24 @@ def _overlay_pdf(page_specs, color_mode) -> bytes:
                 if close:
                     path.close()
                 c.drawPath(path, stroke=1 if stroke else 0, fill=1 if fill else 0)
+            elif t == "I":
+                # image annotation: drawn in the rectangle, turned by quarter turns, with its opacity
+                src = p.get("src")
+                if not src:
+                    continue
+                x0, y0, x1, y1 = p["p"]
+                w, h = abs(x1 - x0), abs(y1 - y0)
+                rot = int(p.get("rot", 0) or 0) % 360
+                iw, ih = (h, w) if rot in (90, 270) else (w, h)
+                cx, cy = g.from_vis((x0 + x1) / 2, (y0 + y1) / 2)
+                c.saveState()
+                c.translate(cx, cy)
+                c.rotate(g.rotation - rot)
+                op = float(p.get("op", 1) or 1)
+                if op < 1:
+                    c.setFillAlpha(max(0.05, op))
+                c.drawImage(src, -iw / 2, -ih / 2, iw, ih, mask="auto")
+                c.restoreState()
             elif t == "C":
                 cx, cy = g.from_vis(*p["p"])
                 c.circle(cx, cy, float(p["r"]), stroke=0 if p.get("fill") and p.get("nostroke") else 1,
@@ -1566,8 +1604,10 @@ def _remap_state(state: dict | None, idxs: list[int]) -> dict | None:
     return {**state, "annots": annots}
 
 
-def _attach(pdf_bytes: bytes, state: dict | None, original: bytes | None, rev: str | None = None, title: str | None = None) -> bytes:
-    """Adds the editable layer (state + original) and the revision metadata to an exported PDF."""
+def _attach(pdf_bytes: bytes, state: dict | None, original: bytes | None, rev: str | None = None, title: str | None = None,
+            images: dict | None = None) -> bytes:
+    """Adds the editable layer (state + original + the images of image annotations) and the revision
+    metadata to an exported PDF. images: {id: path} of the images the state uses."""
     import json as _json
 
     if state is None and not rev:
@@ -1577,6 +1617,13 @@ def _attach(pdf_bytes: bytes, state: dict | None, original: bytes | None, rev: s
         pk.attachments[ATTACH_JSON] = pikepdf.AttachedFileSpec(pk, _json.dumps(state, ensure_ascii=False).encode("utf-8"), mime_type="application/json")
         if original is not None:
             pk.attachments[ATTACH_ORIGINAL] = pikepdf.AttachedFileSpec(pk, original, mime_type="application/pdf")
+            used = {a.get("img") for a in state.get("annots", []) if isinstance(a, dict) and a.get("type") == "image"}
+            for iid, path in (images or {}).items():
+                if iid in used:
+                    ext = "jpg" if str(path).endswith(".jpg") else "png"
+                    mime = "image/jpeg" if ext == "jpg" else "image/png"
+                    with open(path, "rb") as f:
+                        pk.attachments[f"drawcad-img-{iid}.{ext}"] = pikepdf.AttachedFileSpec(pk, f.read(), mime_type=mime)
     if rev:
         set_revision_meta(pk, rev, title)
     out = io.BytesIO()
@@ -1607,7 +1654,7 @@ def set_revision_meta(pk, rev: str, title: str | None = None) -> None:
         pass
 
 
-def export_pages(original, primitives, removals, color_mode, state, embed, ink, sel, split, basename="export", rev=None):
+def export_pages(original, primitives, removals, color_mode, state, embed, ink, sel, split, basename="export", rev=None, images=None):
     """Export for pages `sel` (None = all): one PDF, or one PDF per page in a ZIP.
     Each file carries the editable layer for its pages, so it can be reopened."""
     import zipfile
@@ -1624,7 +1671,7 @@ def export_pages(original, primitives, removals, color_mode, state, embed, ink, 
         pdf = full if whole else subset_pdf(full, idxs)
         if state is not None:
             orig = original if whole else subset_pdf(original, idxs)
-            pdf = _attach(pdf, state if whole else _remap_state(state, idxs), orig if embed else None, rev, basename)
+            pdf = _attach(pdf, state if whole else _remap_state(state, idxs), orig if embed else None, rev, basename, images)
         elif rev:
             pdf = _attach(pdf, None, None, rev, basename)
         return pdf, reports, "pdf"
@@ -1632,6 +1679,7 @@ def export_pages(original, primitives, removals, color_mode, state, embed, ink, 
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for i in idxs:
             one = subset_pdf(full, [i])
-            one = _attach(one, _remap_state(state, [i]) if state is not None else None, subset_pdf(original, [i]) if embed and state is not None else None, rev, f"{basename}_p{i + 1}")
+            one = _attach(one, _remap_state(state, [i]) if state is not None else None, subset_pdf(original, [i]) if embed and state is not None else None,
+                          rev, f"{basename}_p{i + 1}", images)
             z.writestr(f"{basename}_p{i + 1}.pdf", one)
     return buf.getvalue(), reports, "zip"

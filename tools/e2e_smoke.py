@@ -616,6 +616,23 @@ def main(url, out):
         kinds = page.evaluate("window.cotare.annots.map(a => a.type)")
         assert len(kinds) == 36, kinds
 
+        # an image (a logo): the tool asks for the file, a drag places it with its proportions
+        from PIL import Image as _Image
+        _Image.new("RGB", (300, 100), (30, 80, 160)).save(out / "logo.png")
+        with page.expect_file_chooser() as fc:
+            page.evaluate("window.cotare.setTool('image')")
+        fc.value.set_files(str(out / "logo.png"))
+        page.wait_for_function("!!window.cotare.pendingImage", timeout=20000)
+        x0, y0 = scr(200, 15)
+        x1, y1 = scr(230, 20)
+        page.mouse.move(x0, y0)
+        page.mouse.down()
+        page.mouse.move(x1, y1, steps=4)
+        page.mouse.up()
+        page.wait_for_function("window.cotare.annots.length === 37 && window.cotare.selected().type === 'image'")
+        r = page.evaluate("window.cotare.selected().r")
+        assert abs((r[2] - r[0]) / (r[3] - r[1]) - 3) < 0.05, r  # 300 × 100 px → 3:1
+
         # export
         page.click("#btnExport")
         page.wait_for_selector("#eGo")
@@ -659,7 +676,7 @@ def main(url, out):
         prev_id = page.evaluate("window.cotare.doc.id")
         page.set_input_files("#fileInput", str(path))
         # wait for the new document (loading takes time), not the old one which already had 36 annotations
-        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 36")
+        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 37")
         # the export knows its revision; opening it does not change the number yet
         rev0 = page.evaluate("[window.cotare.settings.revNo, window.cotare.settings.exportedRev]")
         assert rev0[0] == rev0[1], rev0
@@ -669,7 +686,7 @@ def main(url, out):
         page.wait_for_function("document.querySelectorAll('#recentList [data-doc]').length >= 1", timeout=5000)
         # reopen from Recent, one change, then close with the prompt
         page.click("#recentList [data-doc]")
-        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 36")
+        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 37")
         page.wait_for_timeout(300)
         page.keyboard.press("t")
         click(100, 30)

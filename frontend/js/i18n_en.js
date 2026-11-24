@@ -1154,4 +1154,14 @@ export const EN = {
   "Revizie nouă: rev {} (rev {} era deja exportată). O schimbi în Setări → Foaie și revizii.": "New revision: rev {} (rev {} was already exported). Change it in Settings → Sheet and revisions.",
   "Ultimul export: rev {}.": "Last export: rev {}.",
   "Numărul intră în numele fișierului (_rev{}), în metadatele PDF, la cotele tăiate și în tabelul de revizii.": "The number goes into the file name (_rev{}), the PDF metadata, struck values and the revision table.",
+  // images on the drawing
+  "Imagine {} × {} px": "Image {} × {} px",
+  "Imaginea nu a putut fi adăugată: {}": "The image could not be added: {}",
+  "Imaginea nu a putut fi lipită: {}": "The image could not be pasted: {}",
+  "Opacitate": "Opacity",
+  "Proporțiile imaginii": "Image proportions",
+  "Se încarcă imaginea…": "Uploading the image…",
+  "Trage de colțuri sau de margini ca s-o redimensionezi, de interior ca s-o muți. La export intră în PDF la rezoluția ei; în DXF imaginile nu se exportă.": "Drag the corners or edges to resize it, the inside to move it. Exported to PDF at its own resolution; images are not exported to DXF.",
+  "Trage dreptunghiul imaginii (proporțiile se păstrează; Shift = liber) · click = 50 mm lățime · Ctrl+V lipește o imagine copiată": "Drag the image rectangle (proportions kept; Shift = free) · click = 50 mm wide · Ctrl+V pastes a copied image",
+  "Înlocuiește imaginea…": "Replace image…",
 };

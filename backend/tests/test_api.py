@@ -136,6 +136,45 @@ class ApiTest(unittest.TestCase):
                 with pk.open_metadata() as m:
                     self.assertIn("rev 3x", m.get("pdf:Keywords", ""))
 
+    def test_image_annotation_roundtrip(self):
+        from PIL import Image
+
+        meta = self.open_sample()
+        doc = meta["id"]
+        buf = io.BytesIO()
+        im = Image.new("RGBA", (120, 60), (200, 30, 30, 255))
+        im.info["comment"] = "secret"
+        im.save(buf, "PNG")
+        res = self.req("POST", f"/api/doc/{doc}/images", buf.getvalue() + b"trailing payload")
+        self.assertEqual((res["w"], res["h"]), (120, 60))
+        png, h = self.req("GET", f"/api/doc/{doc}/image/{res['img']}", raw=True)
+        self.assertTrue(png.startswith(b"\x89PNG"))
+        self.assertNotIn(b"trailing payload", png)
+        # SVG and garbage are refused
+        for bad in (b"<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>", b"\x89PNG\r\n\x1a\nnot really"):
+            with self.assertRaises(urllib.error.HTTPError):
+                self.req("POST", f"/api/doc/{doc}/images", bad)
+        # export with the image, then reopen: the image annotation comes back, with its file
+        ann = {"id": "i1", "type": "image", "r": [100, 100, 220, 160], "img": res["img"], "page": 0}
+        prims = {"0": [{"t": "I", "p": [100, 100, 220, 160], "img": res["img"], "rot": 90, "op": 0.5, "c": "add"}]}
+        pdf, _h = self.req("POST", f"/api/doc/{doc}/export",
+                           {"filename": "img.pdf", "pages": prims, "removals": {}, "state": {"v": 1, "annots": [ann]}, "embed": True},
+                           raw=True)
+        import pypdfium2 as pdfium
+
+        d = pdfium.PdfDocument(pdf)
+        kinds = [o.type for o in d[0].get_objects(max_depth=3)]
+        self.assertIn(pdfium.raw.FPDF_PAGEOBJ_IMAGE, kinds)
+        # DXF cannot hold images: they are left out, the rest is exported
+        dxf, _h = self.req("POST", f"/api/doc/{doc}/export",
+                           {"filename": "img.dxf", "format": "dxf", "pages": prims, "removals": {}, "pageSel": [0]}, raw=True)
+        self.assertIn(b"SECTION", dxf[:200])
+        meta2 = self.req("POST", "/api/open", pdf, {"X-Filename": "img.pdf"})
+        imgs = [a for a in meta2["state"]["annots"] if a["type"] == "image"]
+        self.assertEqual(len(imgs), 1)
+        back, _h = self.req("GET", f"/api/doc/{meta2['id']}/image/{imgs[0]['img']}", raw=True)
+        self.assertTrue(back.startswith(b"\x89PNG"))
+
     def test_zone_cuts_lines_at_border(self):
         import ctypes
 

@@ -44,6 +44,7 @@ export const DEFAULT_ALIASES = {
   detail: ["DET", "DETAIL", "VIEWDETAIL"],
   viewlabel: ["VL", "ETI"],
   balloon: ["BAL", "BALLOON"],
+  image: ["IAT", "IMAGEATTACH", "IMG"],
   strike: ["STR", "TAIE"],
   white: ["WO", "WIPEOUT"],
   ink: ["INK"],

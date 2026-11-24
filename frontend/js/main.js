@@ -2,7 +2,7 @@
 import * as api from "./api.js";
 import { diaAllowed } from "./gdt.js";
 import { nextRev } from "./revision.js";
-import { build, derive, hit, holeTable, setHandle, moveAnnot, annotSnapPoints, exportPrims, K, fmtNum, newId, scaleAnchor, typeName, SCALE_MIN, SCALE_MAX, scaledS, strikeLabelBox, onBoxEdge, annotSnapSegs, primsBBox } from "./annots.js";
+import { build, derive, hit, holeTable, setHandle, moveAnnot, annotSnapPoints, exportPrims, K, fmtNum, newId, scaleAnchor, typeName, SCALE_MIN, SCALE_MAX, scaledS, strikeLabelBox, onBoxEdge, annotSnapSegs, primsBBox, imageRect } from "./annots.js";
 import { View, COLORS } from "./view.js";
 import { Snapper, MODES, DEFAULT_MODES, parseOverride, overrideModes, LABELS } from "./osnap.js";
 import { Panel } from "./panel.js";
@@ -397,8 +397,13 @@ class App {
   }
 
   /** A rectangle of a drag tool (strike, cover, remove, blacken), dragged or typed. */
-  commitRect(r) {
+  commitRect(r, e = null) {
     this.snapOverride = null;
+    const t0 = TOOL_BY_ID[this.tool];
+    if (t0.id === "image") {
+      this.commitImage(r, !!(e && e.shiftKey));
+      return;
+    }
     if (Math.abs(r[2] - r[0]) < 2 || Math.abs(r[3] - r[1]) < 2) return;
     this.lastPick = [r[2], r[3]];
     const t = TOOL_BY_ID[this.tool];
@@ -412,6 +417,79 @@ class App {
     } else {
       if (a.type === "strike") a.side = this.freeStrikeSide(a);
       this.addAnnot(finalize(a));
+    }
+  }
+
+  // ------------------------------------------------------------ images (V12-2)
+  /** Asks for an image file, sends it to the server (which keeps a clean copy) and gives back
+   * { img, w, h }; onCancel when the file dialog is closed without a file. */
+  pickImage(onDone, onCancel = null) {
+    const inp = $("imgInput");
+    inp.value = "";
+    inp.onchange = async () => {
+      const f = inp.files && inp.files[0];
+      if (!f) return;
+      try {
+        onDone(await this.uploadImage(f));
+      } catch (err) {
+        dlg.toast(`Imaginea nu a putut fi adăugată: ${err.message}`, 6000);
+        if (onCancel) onCancel();
+      }
+    };
+    inp.oncancel = () => onCancel && onCancel();
+    inp.click();
+  }
+
+  async uploadImage(blob) {
+    dlg.toast("Se încarcă imaginea…", 15000);
+    const res = await api.uploadImage(this.doc.id, blob);
+    dlg.toast(`Imagine ${res.w} × ${res.h} px`, 1500);
+    return res;
+  }
+
+  /** The Image tool: first the file, then the rectangle. */
+  startImageTool() {
+    this.pendingImage = null;
+    this.pickImage((res) => {
+      if (this.tool !== "image") return;
+      this.pendingImage = res;
+      this.setHint(TOOL_BY_ID.image.hint);
+    }, () => {
+      if (this.tool === "image" && !this.pendingImage) this.setTool("select");
+    });
+  }
+
+  /** Default size of an image without a dragged rectangle: 50 mm wide (or high, if it is tall). */
+  imageDefaultRect(at, iw, ih, side = 50 * K) {
+    const k = side / Math.max(iw, ih);
+    return [at[0], at[1], at[0] + iw * k, at[1] + ih * k];
+  }
+
+  commitImage(r, free) {
+    const im = this.pendingImage;
+    if (!im) return;
+    const tiny = Math.abs(r[2] - r[0]) < 2 && Math.abs(r[3] - r[1]) < 2;
+    const rr = tiny ? this.imageDefaultRect([r[0], r[1]], im.w, im.h) : imageRect([r[0], r[1]], [r[2], r[3]], im.w, im.h, free);
+    const box = [Math.min(rr[0], rr[2]), Math.min(rr[1], rr[3]), Math.max(rr[0], rr[2]), Math.max(rr[1], rr[3])];
+    this.addAnnot(finalize(TOOL_BY_ID.image.make(box, this)));
+    this.pendingImage = null;
+    const id = this.selectedId;
+    this.setTool("select");
+    if (id) this.select(id);
+  }
+
+  /** Ctrl+V with an image in the clipboard: placed at the cursor, at 150 dpi (at most 120 mm wide). */
+  async pasteImage(file) {
+    try {
+      const res = await this.uploadImage(file);
+      const wmm = Math.min(120, (res.w / 150) * 25.4);
+      const w = wmm * K;
+      const h = (w * res.h) / res.w;
+      const p = this.lastPt || this.view.toPage(this.view.cw / 2, this.view.ch / 2);
+      const r = [p[0] - w / 2, p[1] - h / 2, p[0] + w / 2, p[1] + h / 2];
+      this.addAnnot(finalize({ type: "image", r, img: res.img, iw: res.w, ih: res.h, rot: 0, op: 1 }));
+    } catch (err) {
+      dlg.toast(`Imaginea nu a putut fi lipită: ${err.message}`, 6000);
     }
   }
 
@@ -1541,6 +1619,16 @@ class App {
       vp.classList.add("drag");
     });
     vp.addEventListener("dragleave", () => vp.classList.remove("drag"));
+    // Ctrl+V with an image copied (screenshot, logo): it goes on the drawing at the cursor
+    document.addEventListener("paste", (e) => {
+      if (!this.doc || dlg.isModalOpen()) return;
+      const el = e.target;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      const item = [...((e.clipboardData && e.clipboardData.items) || [])].find((it) => it.kind === "file" && /^image\/(png|jpeg|webp)$/.test(it.type));
+      if (!item) return;
+      e.preventDefault();
+      this.pasteImage(item.getAsFile());
+    });
     vp.addEventListener("drop", (e) => {
       e.preventDefault();
       vp.classList.remove("drag");
@@ -1647,6 +1735,8 @@ class App {
     $("canvas").style.cursor = id === "pan" ? "grab" : id === "select" ? "default" : "crosshair";
     if (!this.selectedId) this.panel.render();
     this.view.redraw();
+    if (id === "image" && this.doc) this.startImageTool();
+    else if (id !== "image") this.pendingImage = null;
   }
 
   // ------------------------------------------------------------ documents
@@ -3126,6 +3216,10 @@ class App {
       // command): the next object often starts right where the last one ends, on its handles
       const anchor = this.pickAnchor();
       if (t.kind === "rect") {
+        if (t.id === "image" && !this.pendingImage) {
+          this.startImageTool();
+          return;
+        }
         const { pt } = this.snapPoint(raw, e, anchor);
         this.drag = { kind: "rect", start: pt };
         return;
@@ -3312,7 +3406,9 @@ class App {
       const pt = d && d.kind === "rect" ? spt : this.dynPoint(spt, anchor);
       this.showCoords(pt, anchor);
       if (d && d.kind === "rect") {
-        this.view.overlay = { rect: [d.start[0], d.start[1], pt[0], pt[1]], rectColor: t.id === "redact" ? COLORS.edred : COLORS.sel, snap: sn };
+        const im = t.id === "image" && this.pendingImage;
+        const rr = im ? imageRect(d.start, pt, im.w, im.h, e.shiftKey) : [d.start[0], d.start[1], pt[0], pt[1]];
+        this.view.overlay = { rect: rr, rectColor: t.id === "redact" ? COLORS.edred : COLORS.sel, snap: sn };
         this.view.redraw();
         return;
       }
@@ -3414,7 +3510,7 @@ class App {
         const { pt } = this.snapPoint(raw, e, d.start);
         this.view.overlay = null;
         this.view.redraw();
-        this.commitRect([d.start[0], d.start[1], pt[0], pt[1]]);
+        this.commitRect([d.start[0], d.start[1], pt[0], pt[1]], e);
       }
     };
     cv.addEventListener("pointerup", up);
@@ -3453,7 +3549,7 @@ class App {
   /** Editable rectangle of a box (cover, removal, blackening, struck dimension, drawn rectangle). */
   boxOf(a) {
     let r = null;
-    if (a.r && ["white", "redact", "ink", "strike"].includes(a.type)) r = a.r;
+    if (a.r && ["white", "redact", "ink", "strike", "image"].includes(a.type)) r = a.r;
     else if (a.type === "shape" && a.kind === "rect" && a.pts && a.pts.length >= 2) r = [...a.pts[0], ...a.pts[1]];
     if (!r) return null;
     return [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.max(r[0], r[2]), Math.max(r[1], r[3])];

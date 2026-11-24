@@ -33,7 +33,7 @@ The state embedded in an export (`drawcad.json`) already reopens as editable. Th
   increment off.
 - Tests: name suffix parsing (unit), increment once per session (e2e), metadata present (backend).
 
-## V12-2 — Images
+## V12-2 — Images · built
 
 - New annotation `image`: placed by dragging a rectangle (aspect kept; Shift = free), or pasted with
   **Ctrl+V** at the cursor. Move, resize from the corners, rotate 90°, opacity (100 / 70 / 40 %).
@@ -43,7 +43,8 @@ The state embedded in an export (`drawcad.json`) already reopens as editable. Th
 - **PDF export:** an image XObject at full resolution, with the opacity as an ExtGState.
 - **Stays editable:** the image bytes go into the embedded state of the export, so the next revision
   reopens it as an image annotation, not as part of the original.
-- **DXF export:** images are not exported (DXF cannot embed them); the export report says so.
+- **DXF export:** images are not exported (DXF cannot embed them).
+- As built: command `IAT` / `IMAGEATTACH`; the server limit is `DRAWCAD_MAX_IMAGE_MB` (40) and 100 MP.
 - Security: `security_smoke.py` gets crafted images (decompression bomb, wrong extension, SVG renamed).
 
 ## V12-3 — Custom title block (browser library)

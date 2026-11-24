@@ -43,6 +43,18 @@ st, _h, _ = call("POST", "/api/open", b"%PDF-1.7\n" + os.urandom(20000), {"X-Fil
 assert st == 400, st
 st, _h, _ = call("POST", "/api/open", malicious_pdf(), {"X-Filename": "a.pdf", "Origin": "http://rau.example"})
 assert st == 403, st
+# images placed on a drawing: SVG (active content), a decompression bomb and a renamed executable are refused
+_bomb = io.BytesIO()
+from PIL import Image  # noqa: E402
+
+Image.new("1", (40000, 40000)).save(_bomb, "PNG")
+for bad in (b"<svg xmlns='http://www.w3.org/2000/svg' onload='alert(1)'/>", _bomb.getvalue(), b"MZ" + os.urandom(3000)):
+    st, _h, _ = call("POST", f"/api/doc/{meta['id']}/images", bad)
+    assert st == 400, f"image accepted: {st}"
+st, _h, _ = call("POST", f"/api/doc/{meta['id']}/images", b"\x89PNG\r\n\x1a\n", {"Origin": "http://rau.example"})
+assert st == 403, st
+st, _h, _ = call("GET", f"/api/doc/{meta['id']}/image/../../meta.json")
+assert st == 404, st
 st, _h, _ = call("GET", "/api/health")
 assert st == 200, "the server must keep working"
 mode = json.loads(call("GET", "/api/health")[2]).get("mode")

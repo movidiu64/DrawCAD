@@ -630,6 +630,17 @@ export class Panel {
       <div class="sub">Triunghiul pe linia de cotă = axa; pe contur, decalat = suprafața.</div></div>`;
   }
 
+  html_image(a) {
+    const op = a.op ?? 1;
+    return `<div class="sec"><div class="h">Imagine</div>
+      <div class="field"><span class="lbl">Rotire</span><div class="btns">
+        <button class="ghost" data-act="imgrot" data-v="-90">↺ 90°</button><button class="ghost" data-act="imgrot" data-v="90">↻ 90°</button></div></div>
+      <div class="field"><span class="lbl">Opacitate</span><div class="seg">
+        ${[[1, "100 %"], [0.7, "70 %"], [0.4, "40 %"]].map(([v, l]) => `<button data-act="imgop" data-v="${v}" class="${Math.abs(op - v) < 0.01 ? "on" : ""}">${l}</button>`).join("")}</div></div>
+      <div class="btns"><button class="ghost" data-act="imgaspect">Proporțiile imaginii</button><button class="ghost" data-act="imgreplace">Înlocuiește imaginea…</button></div>
+      <div class="sub">Trage de colțuri sau de margini ca s-o redimensionezi, de interior ca s-o muți. La export intră în PDF la rezoluția ei; în DXF imaginile nu se exportă.</div></div>`;
+  }
+
   html_strike(a) {
     return `<div class="sec"><div class="h">Revizie</div>
       <div class="field"><label for="sNew">Valoare nouă (gol = doar tăiere)</label><input type="text" class="mono" id="sNew" data-f="newText" value="${esc(a.newText)}" placeholder="120"></div>
@@ -1100,6 +1111,36 @@ export class Panel {
         break;
       case "tangle":
         upd((a) => { a.angle = Number(v); });
+        break;
+      case "imgrot":
+        upd((a) => {
+          a.rot = (((a.rot || 0) + Number(v)) % 360 + 360) % 360;
+          // a quarter turn keeps the center and swaps width and height
+          const r = a.r;
+          const cx = (r[0] + r[2]) / 2;
+          const cy = (r[1] + r[3]) / 2;
+          const hw = Math.abs(r[3] - r[1]) / 2;
+          const hh = Math.abs(r[2] - r[0]) / 2;
+          a.r = [cx - hw, cy - hh, cx + hw, cy + hh];
+        });
+        break;
+      case "imgop":
+        upd((a) => { a.op = Number(v); });
+        break;
+      case "imgaspect":
+        upd((a) => {
+          if (!(a.iw > 0 && a.ih > 0)) return;
+          const [iw, ih] = (a.rot || 0) % 180 ? [a.ih, a.iw] : [a.iw, a.ih];
+          const r = [Math.min(a.r[0], a.r[2]), Math.min(a.r[1], a.r[3]), Math.max(a.r[0], a.r[2]), Math.max(a.r[1], a.r[3])];
+          a.r = [r[0], r[1], r[2], r[1] + ((r[2] - r[0]) * ih) / iw];
+        });
+        break;
+      case "imgreplace":
+        app.pickImage((res) => upd((a) => {
+          a.img = res.img;
+          a.iw = res.w;
+          a.ih = res.h;
+        }));
         break;
       case "sym":
         upd((a) => {

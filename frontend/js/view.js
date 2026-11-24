@@ -46,6 +46,44 @@ const release = (x) => {
 };
 const DETAIL_MAX_PX = 22e6; // detail area (the server accepts up to 24 MP)
 
+// images of image annotations, loaded once (the id is the hash of the content)
+const IMAGES = new Map();
+let imgDoc = null;
+let imgRedraw = null;
+
+function imageOf(img) {
+  if (!imgDoc || !img) return null;
+  const key = `${imgDoc}/${img}`;
+  let im = IMAGES.get(key);
+  if (!im) {
+    im = new Image();
+    im.onload = () => imgRedraw && imgRedraw();
+    im.src = api.imageUrl(imgDoc, img);
+    IMAGES.set(key, im);
+  }
+  return im.complete && im.naturalWidth ? im : null;
+}
+
+function drawImagePrim(ctx, p, outline) {
+  const [x0, y0, x1, y1] = p.p;
+  const w = Math.abs(x1 - x0);
+  const h = Math.abs(y1 - y0);
+  const im = outline ? null : imageOf(p.img);
+  if (!im) {
+    // selection outline, or the image still loading
+    ctx.strokeRect(Math.min(x0, x1), Math.min(y0, y1), w, h);
+    return;
+  }
+  const rot = (p.rot || 0) % 360;
+  const [iw, ih] = rot === 90 || rot === 270 ? [h, w] : [w, h];
+  ctx.save();
+  ctx.translate((x0 + x1) / 2, (y0 + y1) / 2);
+  ctx.rotate((rot * Math.PI) / 180);
+  ctx.globalAlpha *= p.op ?? 1;
+  ctx.drawImage(im, -iw / 2, -ih / 2, iw, ih);
+  ctx.restore();
+}
+
 export function drawPrims(ctx, prims, zoom, color = colorOf, minPx = 0.8, opts = {}) {
   let font = null; // setting ctx.font is slow: only when the size changes
   for (const p of prims) {
@@ -68,6 +106,8 @@ export function drawPrims(ctx, prims, zoom, color = colorOf, minPx = 0.8, opts =
       if (!p.nostroke) ctx.stroke();
     } else if (p.t === "R") {
       ctx.fillRect(p.p[0], p.p[1], p.p[2] - p.p[0], p.p[3] - p.p[1]);
+    } else if (p.t === "I") {
+      drawImagePrim(ctx, p, color !== colorOf);
     } else if (p.t === "C") {
       ctx.beginPath();
       ctx.arc(p.p[0], p.p[1], p.r, 0, Math.PI * 2);
@@ -141,6 +181,8 @@ export class View {
 
   setPage(docId, n, w, h, keepView = false) {
     this.docId = docId;
+    imgDoc = docId;
+    imgRedraw = () => this.redraw();
     this.pageN = n;
     this.pageW = w;
     this.pageH = h;

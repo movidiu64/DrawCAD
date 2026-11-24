@@ -2,7 +2,7 @@
 // stay on the drawing. Coordinates are visual (points, y down); rotation is clockwise, like /Rotate.
 import { build, moveAnnot, SCALABLE, SCALE_MIN, SCALE_MAX } from "./annots.js";
 
-const POINT_KEYS = ["p1", "p2", "p3", "c", "p", "v", "target", "pos", "vp", "tp", "elbow", "base"];
+const POINT_KEYS = ["p1", "p2", "p3", "c", "p", "v", "target", "pos", "vp", "tp", "elbow", "base", "lp"];
 // annotations that always stay horizontal (tables): moved whole, not rotated point by point
 const UPRIGHT = new Set(["revtab", "bom"]);
 
@@ -72,6 +72,7 @@ export function rotateAnnot(a, deg, W, H, S = null, measure = null) {
   if (quarter && (a.orient === "h" || a.orient === "v")) a.orient = a.orient === "h" ? "v" : "h";
   else if (quarter && a.type === "dim" && a.kind !== "ali" && !a.orient) a.orient = "v";
   if (quarter && a.type === "rough" && !a.pos) a.rot = a.rot ? 0 : 90;
+  if (a.type === "image") a.rot = ((a.rot || 0) + deg) % 360;
   return a;
 }
 

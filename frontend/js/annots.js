@@ -46,6 +46,7 @@ export const TYPE_NAMES = {
   ord: "Cote ordonate",
   holes: "Tabel de găuri",
   ucs: "Originea coordonatelor",
+  image: "Imagine",
 };
 
 export function typeName(a) {
@@ -1235,7 +1236,25 @@ function buildOrd(a, S, measure) {
   };
 }
 
-const BUILDERS = { ord: buildOrd, dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, ink: buildInk, shape: buildShape, section: buildSection, detail: buildDetail, balloon: buildBalloon, bom: buildBom, holes: buildHoles, ucs: buildUcs };
+function buildImage(a) {
+  const r = normRect(a.r);
+  return {
+    prims: [{ t: "I", p: r, img: a.img, rot: a.rot || 0, op: a.op ?? 1 }],
+    handles: [{ k: "r0", p: [a.r[0], a.r[1]] }, { k: "r1", p: [a.r[2], a.r[3]] }],
+  };
+}
+
+/** Rectangle of an image placed from corner `p` towards `q` with the image's proportions (iw × ih,
+ * already turned by rot): the longer of the two drag directions decides the size. */
+export function imageRect(p, q, iw, ih, free = false) {
+  if (free || !(iw > 0 && ih > 0)) return [p[0], p[1], q[0], q[1]];
+  const dx = q[0] - p[0];
+  const dy = q[1] - p[1];
+  const k = Math.max(Math.abs(dx) / iw, Math.abs(dy) / ih);
+  return [p[0], p[1], p[0] + Math.sign(dx || 1) * iw * k, p[1] + Math.sign(dy || 1) * ih * k];
+}
+
+const BUILDERS = { image: buildImage, ord: buildOrd, dim: buildDim, rad: buildRad, ang: buildAng, rough: buildRough, note: buildNote, revtab: buildRevtab, lead: buildLead, text: buildText, gdt: buildGdt, datum: buildDatum, strike: buildStrike, white: buildWhite, redact: buildRedact, ink: buildInk, shape: buildShape, section: buildSection, detail: buildDetail, balloon: buildBalloon, bom: buildBom, holes: buildHoles, ucs: buildUcs };
 
 // characters without a glyph in osifont → existing equivalents (same on screen and in the PDF)
 const GLYPH_SUBST = { "…": "...", "„": '"', "”": '"', "“": '"', "«": '"', "»": '"', "‚": ",", "‘": "'", "\u00a0": " ", "−": "-" };
@@ -1337,7 +1356,7 @@ export function hit(built, a, pt, tol) {
   if (!built.bbox) return false;
   const [x0, y0, x1, y1] = built.bbox;
   if (pt[0] < x0 - tol || pt[0] > x1 + tol || pt[1] < y0 - tol || pt[1] > y1 + tol) return false;
-  if (a.type === "white" || a.type === "redact" || a.type === "ink") {
+  if (a.type === "white" || a.type === "redact" || a.type === "ink" || a.type === "image") {
     const r = normRect(a.r);
     return pt[0] >= r[0] - tol && pt[0] <= r[2] + tol && pt[1] >= r[1] - tol && pt[1] <= r[3] + tol;
   }
@@ -1438,6 +1457,11 @@ export function exportPrims(prims) {
       if (p.r != null) q.r = round(p.r, 3);
       if (p.dp && p.dp.length) q.dp = p.dp.map((v) => round(v, 3));
       if (p.cover) q.cover = true;
+      if (p.t === "I") {
+        q.img = p.img;
+        q.rot = p.rot || 0;
+        q.op = p.op ?? 1;
+      }
       if (p.t === "T") {
         q.s = round(p.s, 3);
         q.a = round(p.a || 0, 3);

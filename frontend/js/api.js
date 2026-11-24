@@ -19,6 +19,14 @@ export async function openFile(file, dpi) {
   return jsonOrThrow(r);
 }
 
+/** An image to place on the drawing (PNG / JPG / WebP): the server keeps a clean copy → { img, w, h }. */
+export async function uploadImage(id, blob) {
+  const r = await fetch(`api/doc/${id}/images`, { method: "POST", body: blob });
+  return jsonOrThrow(r);
+}
+
+export const imageUrl = (id, img) => `api/doc/${id}/image/${img}`;
+
 export const listDocs = () => fetch("api/docs").then(jsonOrThrow);
 export const getDoc = (id) => fetch(`api/doc/${id}`).then(jsonOrThrow);
 export const deleteDoc = (id) => fetch(`api/doc/${id}`, { method: "DELETE" }).then(jsonOrThrow);

@@ -36,6 +36,7 @@ def _env(name, default):
 DATA_DIR = Path(_env("DATA", "/data"))
 FRONTEND_DIR = Path(_env("FRONTEND", Path(__file__).resolve().parents[2] / "frontend"))
 MAX_UPLOAD = int(_env("MAX_UPLOAD_MB", "200")) * 1024 * 1024
+MAX_IMAGE_UPLOAD = int(_env("MAX_IMAGE_MB", "40")) * 1024 * 1024  # an image placed on a drawing
 MAX_RENDER_PX = int(_env("MAX_RENDER_PX", "12000"))
 # a whole-page render: at most this many megapixels (the bitmap has 3 bytes per pixel);
 # the interface asks for at most ~20 MP, high-zoom details come separately, as tiles
@@ -235,7 +236,9 @@ def _finite(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool) and abs(v) < 1e7
 
 
-PRIM_TYPES = {"L", "P", "R", "C", "T"}
+PRIM_TYPES = {"L", "P", "R", "C", "T", "I"}
+_IMG_RE = re.compile(r"^[a-f0-9]{24}$")
+_IMG_FILE_RE = re.compile(r"^[a-f0-9]{24}\.(png|jpg)$")
 
 
 def _clean_prims(prims):
@@ -261,6 +264,13 @@ def _clean_prims(prims):
             q["dp"] = dp
         if p["t"] == "T":
             q["txt"] = str(p.get("txt", ""))[:2000]
+        if p["t"] == "I":
+            # an image annotation: its id only (the server finds the file); quarter turns; opacity
+            if not _IMG_RE.match(str(p.get("img", ""))) or len(pts) != 4:
+                continue
+            q["img"] = p["img"]
+            q["rot"] = int(p.get("rot", 0)) % 360 if _finite(p.get("rot", 0)) and int(p.get("rot", 0)) % 90 == 0 else 0
+            q["op"] = min(1.0, max(0.05, float(p["op"]))) if _finite(p.get("op")) else 1.0
         out.append(q)
     return out
 
@@ -374,6 +384,11 @@ async def api_open(request: Request):
         d = DOCS / doc_id
         d.mkdir(parents=True)
         (out_dir / "original.pdf").replace(d / "original.pdf")
+        if (out_dir / "images").is_dir():
+            (d / "images").mkdir(exist_ok=True)
+            for f in (out_dir / "images").iterdir():
+                if _IMG_FILE_RE.match(f.name):
+                    f.replace(d / "images" / f.name)
         state = res.get("state")
         meta = {
             "id": doc_id,
@@ -462,6 +477,84 @@ async def api_doc(request: Request):
     pub = {k: v for k, v in meta.items() if k != "owner"}
     ocr_pages = _ocr_pages(doc_id, meta)
     return JSONResponse({**pub, "expires": _expires(meta), "state": _read_json(d / "state.json"), "ocrPages": ocr_pages})
+
+
+def _doc_images(d: Path) -> dict:
+    """{id: path} of the images placed on a document."""
+    out = {}
+    if (d / "images").is_dir():
+        for f in (d / "images").iterdir():
+            if _IMG_FILE_RE.match(f.name):
+                out[f.name.split(".")[0]] = f
+    return out
+
+
+async def api_image_add(request: Request):
+    """An image to place on the drawing: read and written again in the limited process (ingest.py
+    --image), then kept next to the document."""
+    doc_id = request.path_params["doc_id"]
+    try:
+        d = _doc_dir(doc_id)
+    except (ValueError, FileNotFoundError):
+        return _err("Document inexistent", 404)
+    INCOMING.mkdir(parents=True, exist_ok=True)
+    tmp_id = uuid.uuid4().hex
+    upload = INCOMING / f"{tmp_id}.img"
+    out_dir = INCOMING / tmp_id
+    try:
+        try:
+            size = await _read_limited(request, MAX_IMAGE_UPLOAD, upload)
+        except OverflowError:
+            return _err(f"Imagine prea mare (limita e {MAX_IMAGE_UPLOAD // (1024 * 1024)} MB)", 413)
+        if not size:
+            return _err("Fișier gol")
+        out_dir.mkdir()
+        proc = await asyncio.create_subprocess_exec(
+            *_child_cmd("app.ingest", "--image", upload, out_dir),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+            cwd=str(Path(__file__).resolve().parents[1]), **_child_kw(),
+        )
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), INGEST_TIMEOUT)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            return _err("Imagine respinsă: citirea a durat prea mult")
+        try:
+            res = json.loads(out.decode("utf-8") or "{}")
+        except Exception:  # noqa: BLE001
+            res = {}
+        if not res:
+            res = _read_json(out_dir / "result.json", {}) or {}
+        if not res.get("ok"):
+            return _err(res.get("error") or "Imagine respinsă")
+        iid, ext = str(res.get("id", "")), str(res.get("ext", ""))
+        src = out_dir / f"{iid}.{ext}"
+        if not _IMG_FILE_RE.match(src.name) or not src.is_file():
+            return _err("Imagine respinsă")
+        (d / "images").mkdir(exist_ok=True)
+        src.replace(d / "images" / src.name)
+        return JSONResponse({"img": iid, "w": int(res.get("w") or 0), "h": int(res.get("h") or 0)})
+    finally:
+        upload.unlink(missing_ok=True)
+        shutil.rmtree(out_dir, ignore_errors=True)
+
+
+async def api_image_get(request: Request):
+    doc_id = request.path_params["doc_id"]
+    iid = request.path_params["img"]
+    try:
+        d = _doc_dir(doc_id)
+    except (ValueError, FileNotFoundError):
+        return _err("Document inexistent", 404)
+    if not _IMG_RE.match(iid):
+        return _err("Imagine inexistentă", 404)
+    path = _doc_images(d).get(iid)
+    if not path:
+        return _err("Imagine inexistentă", 404)
+    mime = "image/jpeg" if path.suffix == ".jpg" else "image/png"
+    # the id is the hash of the content: the browser may keep it
+    return Response(path.read_bytes(), media_type=mime, headers={"Cache-Control": "private, max-age=86400, immutable"})
 
 
 async def api_state(request: Request):
@@ -1000,6 +1093,16 @@ async def api_export(request: Request):
     state = body.get("state")
     if state is not None and not isinstance(state, dict):
         state = None
+    images = _doc_images(d)
+    for k in list(prims):
+        keep = []
+        for p in prims[k]:
+            if p["t"] == "I":
+                if p["img"] not in images:
+                    continue
+                p["src"] = str(images[p["img"]])
+            keep.append(p)
+        prims[k] = keep
     embed = bool(body.get("embed", True))
     color = body.get("colorMode", "black")
     ink = body.get("ink") if isinstance(body.get("ink"), dict) else None
@@ -1023,7 +1126,8 @@ async def api_export(request: Request):
                                                 **{k: ln[k] for k in ("cap", "base", "org", "ang", "len") if k in ln}})
 
     def work():
-        return pdfcore.export_pages(_original(doc_id), prims, rem, color, state if embed else None, embed, ink, sel, split, base, rev)
+        return pdfcore.export_pages(_original(doc_id), prims, rem, color, state if embed else None, embed, ink, sel, split, base, rev,
+                                    {k: str(v) for k, v in images.items()})
 
     try:
         if fmt == "dxf":
@@ -1119,6 +1223,8 @@ routes = [
     Route("/api/doc/{doc_id}/page/{n:int}/text", api_text),
     Route("/api/doc/{doc_id}/pages", api_pages, methods=["POST"]),
     Route("/api/doc/{doc_id}/export", api_export, methods=["POST"]),
+    Route("/api/doc/{doc_id}/images", api_image_add, methods=["POST"]),
+    Route("/api/doc/{doc_id}/image/{img}", api_image_get),
     Mount("/", app=StaticFiles(directory=str(FRONTEND_DIR), html=True), name="static"),
 ]
 

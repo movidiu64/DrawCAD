@@ -132,7 +132,8 @@ The app was originally called "Cotare": the old `COTARE_*` variables are still a
 | `DRAWCAD_MAX_RENDER_MP` | `40` | maximum megapixels of a whole-page render (high zoom is rendered in tiles) |
 | `DRAWCAD_MODE` | `private` | `personal`, `private` or `session` (see [Modes](#modes-personal-or-for-work)) |
 | `DRAWCAD_MAX_PAGES` | `300` | maximum number of pages per document |
-| `DRAWCAD_MAX_IMAGE_MPX` | `400` | maximum megapixels of an uploaded image |
+| `DRAWCAD_MAX_IMAGE_MPX` | `400` | maximum megapixels of an uploaded image (a scan opened as a document; images placed on a drawing are limited to 100) |
+| `DRAWCAD_MAX_IMAGE_MB` | `40` | maximum size of an image placed on a drawing (logo, photo) |
 | `DRAWCAD_PASSWORD` | empty | HTTP Basic password (user `drawcad`); empty = no password |
 | `DRAWCAD_CACHE_MB` | `256` | maximum memory of the in-RAM caches (PDFs, renders); only used as needed |
 | `DRAWCAD_RETENTION_DAYS` | `30` | days after which an unused document is deleted from the server; `0` = never |
@@ -306,6 +307,8 @@ The diameter dimension between generatrices remains the **Diameter** tool (`DDL`
 **Symbols in text:** below the text fields there are buttons for ⌀ ⌴ (counterbore) ⌵ (countersink) ↧ (depth) ± ° × √, for hole and thread callouts like `4× M8 ↧12`.
 
 **Notes (N):** click the top-left corner of the block and type the notes in the panel, one per line. Numbering is automatic and empty lines are skipped. Common notes can be added with one click: chamfers, radii, ISO 2768, heat treatment.
+
+**Images:** the **Image** tool (Annotations family, command `IAT`) asks for a PNG, JPG or WebP file, then you drag its rectangle: the proportions are kept (Shift: free), a single click places it 50 mm wide. **Ctrl+V** pastes an image copied to the clipboard (a screenshot, a logo) at the cursor. Move it by dragging its inside, resize it from the corners and edges; the panel turns it by 90°, sets its opacity (100 / 70 / 40 %), restores its proportions or replaces the file. The server keeps a clean copy (decoded and written again, metadata removed, at most 4000 px on the long side). The image goes into the exported PDF at its resolution and stays editable when the export is reopened; DXF has no images.
 
 **Revision number:** every document has a current revision (Settings → Sheet and revisions), rev 1 at the start. The export writes it into the file name (`_rev1`; a name that already ends in `_rev2`, `-Rev 2`, `_rev.2` keeps its style and gets the new number), into the PDF metadata (Keywords `rev 1`, `/DrawCADRevision`, XMP) and into the editable layer. When you open an exported revision again (the PDF itself, or the document from Recent after an export), the **first change** starts the next revision: rev 2, with a short message; further changes and exports in the same session keep rev 2. Struck values, new revision table rows and the title block use the same number. The number can be set by hand, and the automatic step turned off, in Settings.
 
