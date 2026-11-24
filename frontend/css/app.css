@@ -140,7 +140,7 @@ button.danger { height: 34px; padding: 0 12px; border: 1px solid var(--bad-line)
 .tools.compact { width: 56px; flex-basis: 56px; }
 .tools.compact .slot { height: 44px; }
 .tools.compact .slot span { display: none; }
-.flyout { position: absolute; left: 76px; z-index: 25; width: 280px; padding: 6px; background: var(--panel2); border: 1px solid var(--line2); border-radius: 8px; box-shadow: 0 12px 28px rgba(0,0,0,0.5); }
+.flyout { position: absolute; left: 72px; z-index: 25; width: 280px; padding: 6px; background: var(--panel2); border: 1px solid var(--line2); border-radius: 8px; box-shadow: 0 12px 28px rgba(0,0,0,0.5); }
 .flyout .fh { padding: 4px 8px 6px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .frow { display: flex; align-items: center; gap: 10px; width: 100%; height: 28px; padding: 0 8px; border: 0; border-radius: 5px; background: transparent; color: var(--text); font-size: 13px; text-align: left; }
 .frow svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }

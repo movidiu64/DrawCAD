@@ -1150,13 +1150,16 @@ class App {
     }).join("")}</div>`).join("")}`;
     nav.querySelectorAll("[data-fam]").forEach((b) => {
       const f = FAMILIES.find((x) => x.id === b.dataset.fam);
-      b.addEventListener("click", () => {
+      b.addEventListener("click", (e) => {
+        // one click: the family's tool runs AND its list opens next to the slot; moving on to the
+        // drawing closes the list, so the tool is ready for the first point (a second click closes it)
+        const open = !$("railFly").hidden && this.flyFam === f.id;
         const id = this.familyTool(f);
-        if (f.tools.length > 1 && (this.tool === id || !$("railFly").hidden && this.flyFam === f.id)) this.toggleFlyout(f.id);
-        else {
-          this.hideFlyout();
-          this.setTool(id);
-        }
+        if (this.tool !== id) this.setTool(id);
+        if (f.tools.length < 2 || open) this.hideFlyout();
+        else this.toggleFlyout(f.id, true, e.detail === 0);
+        // a mouse click leaves no focus on the slot: Space and Enter belong to the command line
+        if (e.detail > 0) b.blur();
       });
       b.addEventListener("contextmenu", (e) => {
         e.preventDefault();
@@ -1202,12 +1205,15 @@ class App {
     document.addEventListener("pointerdown", (e) => {
       if (!$("railFly").hidden && !e.target.closest("#railFly") && !e.target.closest("[data-fam]")) this.hideFlyout();
     });
+    $("viewport").addEventListener("pointerover", (e) => {
+      if (e.pointerType === "mouse" && !$("railFly").hidden) this.hideFlyout();
+    });
     this.markRail();
     if (this.keyCfg) this.applyKeyCfg(this.keyCfg);
   }
 
   /** Opens (or closes) a family's flyout next to its slot. */
-  toggleFlyout(fam, open) {
+  toggleFlyout(fam, open, focus = true) {
     const fly = $("railFly");
     const willOpen = open ?? (fly.hidden || this.flyFam !== fam);
     if (!willOpen) {
@@ -1224,10 +1230,12 @@ class App {
     const body = fly.parentElement.getBoundingClientRect();
     const r = slot.getBoundingClientRect();
     const h = fly.offsetHeight;
-    fly.style.left = `${$("tools").offsetWidth + 4}px`;
+    fly.style.left = `${$("tools").offsetWidth}px`; // touching the rail: the pointer goes from slot to list without crossing the drawing
     fly.style.top = `${Math.max(4, Math.min(r.top - body.top - 6, body.height - h - 4))}px`;
+    // the keyboard goes into the list only when it was opened from the keyboard or by a right click:
+    // after a mouse click, typed commands keep going to the command line
     const cur = fly.querySelector(`[data-fly="${fam}"] .frow.on`) || fly.querySelector(`[data-fly="${fam}"] .frow`);
-    if (cur) cur.focus({ preventScroll: true });
+    if (cur && focus) cur.focus({ preventScroll: true });
   }
 
   hideFlyout() {
