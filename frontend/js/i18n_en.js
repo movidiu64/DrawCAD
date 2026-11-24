@@ -1120,4 +1120,8 @@ export const EN = {
   "{} MB": "{} MB",
   "{} kB": "{} kB",
   "Lista familiei se deschide când ții mouse-ul pe buton": "A family's list opens when the mouse rests on its button",
+  "Mai multe": "More",
+  "Deschide…": "Open…",
+  "Setări…": "Settings…",
+  "Mai mult loc pentru desen: ascunde panourile (Ctrl+0)": "More room for the drawing: hide the panels (Ctrl+0)",
 };

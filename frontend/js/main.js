@@ -1352,6 +1352,32 @@ class App {
       if (!xmenu.hidden && !e.target.closest(".split")) xopen(false);
     });
     $("btnMin").addEventListener("click", () => this.toggleMinUI());
+    // phone: Redo, Open, Settings and Keys behind "⋯" (UI-D16)
+    const more = $("moreMenu");
+    const mopen = (open) => {
+      more.hidden = !open;
+      $("btnMore").setAttribute("aria-expanded", String(open));
+      if (open) more.querySelector("button").focus();
+    };
+    $("btnMore").addEventListener("click", () => mopen(more.hidden));
+    more.querySelectorAll("[data-more]").forEach((b) => b.addEventListener("click", () => {
+      mopen(false);
+      const k = b.dataset.more;
+      if (k === "redo") this.doRedo();
+      else if (k === "open") $("btnOpen").click();
+      else if (k === "settings") $("btnSettings").click();
+      else if (k === "keys") dlg.keysDialog(this);
+    }));
+    more.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        mopen(false);
+        $("btnMore").focus();
+      }
+    });
+    document.addEventListener("pointerdown", (e) => {
+      if (!more.hidden && !e.target.closest(".more")) mopen(false);
+    });
     $("btnKeys2").addEventListener("click", () => dlg.keysDialog(this));
     $("btnClose").addEventListener("click", () => this.closeDoc());
     $("btnPanel").addEventListener("click", () => this.setPanelOpen(!$("app").classList.contains("panel-open")));

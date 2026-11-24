@@ -250,7 +250,7 @@ Default direct keys:
 - **right click held** = radial menu with your favorite commands (chosen in **Settings**, in the 8 positions). At the top is the last command used, then Diameter, Radius, Text, Line (or Delete selection), Leader, Undo, Measure. Pick by dragging towards the command and releasing, or release in place and click the command.
 - **right click dragged** or the pressed wheel = pan the sheet
 
-**Tablet and phone:** the properties panel becomes a drawer (on a phone, a sheet sliding up from the bottom). It opens by itself when you pick an annotation or have text to type, and the slider button in the header opens it at any time. On a phone the tool rail is a bar at the bottom and a family's list opens upwards. On touch screens:
+**Tablet and phone:** the properties panel becomes a drawer (on a phone, a sheet sliding up from the bottom). It opens by itself when you pick an annotation or have text to type, and the panel button in the header opens it at any time. On a phone the tool rail is a bar at the bottom and a family's list opens upwards; Redo, Open, Settings and Keys are in the header's ⋯ menu. On touch screens:
 - **two fingers** pan and zoom
 - **the point** is placed when the finger lifts, so you can adjust it with snap
 - **long press** opens the radial menu

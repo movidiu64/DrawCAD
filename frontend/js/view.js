@@ -14,13 +14,14 @@ export const COLORS = {
   edgreen: "#2e9d5b",
   sel: "#f2a93b",
   gripHot: "#e53935", // hot grips, red as in AutoCAD
+  gripEdge: "#1a1a1a", // grip outline: amber alone is 2:1 on the white sheet
   preview: "#2f6fd6",
   // editor
   canvasBg: "#2b3038",
   inkDefault: "#111111",
   hitMark: "#f08c00",
-  snapMark: "#3ccf8e",
-  acquired: "#e07b00",
+  snapMark: "#1f9d55", // tracking lines and acquired points: ≥ 3:1 on the white sheet and on the canvas
+  acquired: "#d06f00", // the snap marker: ≥ 3:1 on the white sheet
   tipLine: "#4a525d",
   tipBg: "#f1f3f5",
   selWindow: "#4c9aff",
@@ -524,7 +525,7 @@ export class View {
     for (const h of handles) {
       if (!h.p) continue;
       ctx.fillStyle = h.k === "tx" ? COLORS.white : isHot(h.k) ? COLORS.gripHot : COLORS.sel;
-      ctx.strokeStyle = h.k === "tx" ? COLORS.sel : COLORS.white;
+      ctx.strokeStyle = h.k === "tx" ? COLORS.sel : COLORS.gripEdge;
       ctx.lineWidth = 1.2 / this.zoom;
       if (h.k === "sc") {
         // resize handle: white outline with a diagonal arrow
