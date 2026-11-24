@@ -211,6 +211,8 @@ Dimensions do not change on calibration: they measure the drawing.
 
 **Hot grips:** click a grip of the selected annotation without dragging and it becomes hot (dragging still stretches it). Space, Enter or right click go Stretch → Move → Rotate → Scale → Mirror; `B` picks another base point, `C` leaves a copy at every click (the grip stays hot), `X` or Esc ends. Points can be typed as anywhere else, relative to the base (`@0,-10`). Rotate turns in quarter turns (type `90`, `180`, `270` or point the cursor), Scale takes the cursor's distance from the base when the mode starts as factor 1 (or type the factor), Mirror flips about a horizontal or vertical axis through the base, picked from the cursor's direction; texts stay readable. With several annotations selected each shows its grips (up to 100; no resize corners then). Shift+click makes several grips hot (red); a click on one of them then stretches all of them by the same displacement.
 
+**Annotations on top of each other:** in Select mode the tip under the cursor shows `1/2 — Tab: next`; Tab changes which one is highlighted, and the click selects that one.
+
 **Transparent commands:** `'Z` (or `Z`), `'ZS`, `'OS`, `'OR`, `'POLAR` work in the middle of a command without ending it. Other commands wait until the current one ends (Esc).
 
 **Keys and commands:** there are two modes, chosen in **Settings → Keys and commands** or by typing the `ALIASEDIT` command.

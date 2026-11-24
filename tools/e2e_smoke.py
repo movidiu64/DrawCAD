@@ -506,6 +506,31 @@ def main(url, out):
         assert got == [[[110, 50], [115, 60]], [[35, 65], [40, 70]]], got
         page.keyboard.press("Escape")
         page.keyboard.press("Escape")
+        # 28. selection cycling: a line drawn on top of another; Tab over them, the click takes the one below
+        page.evaluate("window.cotare.select(null)")
+        old_id = page.evaluate(f"{lines}.slice(-1)[0].id")
+        page.keyboard.press("i")
+        page.click("#cmdIn")
+        typed("35,65", "40,70")
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
+        new_id = page.evaluate(f"{lines}.slice(-1)[0].id")
+        assert new_id != old_id
+        page.keyboard.press("v")
+        page.evaluate("document.activeElement && document.activeElement.blur()")
+        mx, my = scr(37.5, uy(67.5))
+        page.mouse.move(mx, my)
+        page.mouse.move(mx + 1, my)
+        assert page.evaluate("window.cotare.hover && window.cotare.hover.a.id") == new_id
+        page.keyboard.press("Tab")
+        assert page.evaluate("window.cotare.hover.a.id") == old_id
+        page.mouse.click(mx + 1, my)
+        assert page.evaluate("[...window.cotare.sel]") == [old_id], page.evaluate("[...window.cotare.sel]")
+        page.evaluate(f"window.cotare.select('{new_id}')")
+        page.click("#cmdIn")
+        typed("E")
+        assert page.evaluate(f"window.cotare.annots.some(a => a.id === '{new_id}')") is False
+        page.keyboard.press("Escape")
         page.keyboard.press("f")
         page.wait_for_timeout(300)
 

@@ -1425,6 +1425,15 @@ class App {
     }
   }
 
+  /** Every annotation under the point, the topmost first (for selection cycling). */
+  annotsAt(raw) {
+    const tol = 5 / this.view.zoom;
+    const items = this.visibleBuilt();
+    const out = [];
+    for (let i = items.length - 1; i >= 0; i--) if (hit(items[i].built, items[i].a, raw, tol)) out.push(items[i].a);
+    return out;
+  }
+
   annotAt(raw) {
     const tol = 5 / this.view.zoom;
     const items = this.visibleBuilt();
@@ -2802,6 +2811,7 @@ class App {
 
   startSelectDrag(raw, sx, sy, e) {
     const v = this.view;
+    const hv = this.hover;
     this.hover = null;
     this.hoverKey2 = "";
     const sp = this.selPrompt;
@@ -2837,7 +2847,10 @@ class App {
       return;
     }
     const tol = 5 / v.zoom;
-    const items = this.visibleBuilt();
+    const all = this.visibleBuilt();
+    // Tab (selection cycling) chose an annotation under the cursor: the click takes that one
+    const cycled = !sp && hv && hv.kind === "body" && this.hoverCycle && this.hoverCycle.i > 0 ? all.find((x) => x.a.id === hv.a.id) : null;
+    const items = cycled ? [...all, cycled] : all;
     for (let i = items.length - 1; i >= 0; i--) {
       const { a, built } = items[i];
       if (hit(built, a, raw, tol)) {
@@ -2860,16 +2873,12 @@ class App {
     this.drag = { kind: "marquee", start: raw, add: e.shiftKey };
   }
 
-  /**
-   * A click on the handles of the selected annotation edits it. With another tool active only the
-   * resize handle counts: endpoints must stay free for chained dimensions from the same point.
-   */
-  /** Handle of the selected annotation closest to the cursor (screen pixels), or null. */
-  /** The selected annotations that show grips: all of them up to GRIP_LIMIT (none beyond, as in AutoCAD). */
+  /** At most this many selected annotations show grips. */
   get gripLimit() {
     return GRIP_LIMIT;
   }
 
+  /** The selected annotations that show grips: all of them up to GRIP_LIMIT (none beyond, as in AutoCAD). */
   gripOwners() {
     if (!this.sel.size || this.sel.size > GRIP_LIMIT) return [];
     return this.selectedAll().filter((a) => a.page === this.page && !this.hidden.has(this.layerOf(a)));
@@ -2881,6 +2890,7 @@ class App {
     return multi ? hs.filter((h) => h.k !== "sc") : hs;
   }
 
+  /** The grip of the selected annotations closest to the cursor (screen pixels), or null. */
   handleAt(sx, sy, touch = false) {
     const r = touch ? 16 : 10;
     let best = null;
@@ -2938,6 +2948,10 @@ class App {
    * A click on the handles of the selected annotation edits it. With another tool active only the
    * resize handles count: endpoints must stay free for chained dimensions from the same point.
    */
+  /**
+   * A click on a grip of a selected annotation edits it. With another tool active only the
+   * resize handle counts: endpoints must stay free for chained dimensions from the same point.
+   */
   tryHandleDrag(sx, sy, onlyScale = false, touch = false) {
     const hit0 = this.handleAt(sx, sy, touch);
     if (!hit0) return false;
@@ -2958,9 +2972,29 @@ class App {
     if (h) return { kind: "handle", a: h.a, h: h.h, cursor: this.handleCursor(h.a, h.h), label: this.handleLabel(h.a, h.h.k) };
     const edge = this.edgeAt(sx, sy, touch);
     if (edge) return { kind: "edge", a: edge.a, cursor: this.edgeCursor(edge.code), label: edge.code.length === 2 ? "Colț — redimensionează" : "Margine — redimensionează" };
-    const a = this.annotAt(raw);
-    if (a) return { kind: "body", a, cursor: "move", label: `${typeName(a)}${this.sel.has(a.id) ? " — trage pentru a muta" : " — click pentru a selecta, trage pentru a muta"}` };
-    return null;
+    const all = this.annotsAt(raw);
+    if (!all.length) {
+      this.hoverCycle = null;
+      return null;
+    }
+    // selection cycling: with annotations on top of each other Tab picks which one a click takes
+    const key = all.map((x) => x.id).join(",");
+    if (!this.hoverCycle || this.hoverCycle.key !== key) this.hoverCycle = { key, i: 0, n: all.length };
+    const a = all[this.hoverCycle.i % all.length];
+    const cyc = all.length > 1 ? ` · ${this.hoverCycle.i + 1}/${all.length} — Tab: următorul` : "";
+    return { kind: "body", a, cursor: "move", label: `${typeName(a)}${this.sel.has(a.id) ? " — trage pentru a muta" : " — click pentru a selecta, trage pentru a muta"}${cyc}` };
+  }
+
+  /** Tab over annotations on top of each other: the next one becomes the one a click takes. */
+  cycleHover() {
+    const hc = this.hoverCycle;
+    const hv = this.hover;
+    if (!hc || hc.n < 2 || !hv || hv.kind !== "body" || !this.hoverPt) return false;
+    hc.i = (hc.i + 1) % hc.n;
+    const [sx, sy] = this.view.toScreen(this.hoverPt);
+    this.hoverKey2 = "";
+    this.setHover(this.hoverAt(sx, sy, this.hoverPt, false), this.hoverPt);
+    return true;
   }
 
   setHover(hv, raw) {
@@ -3596,6 +3630,10 @@ class App {
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === "Tab" && !this.cmdActive() && this.tool === "select" && this.cycleHover()) {
+        e.preventDefault();
+        return;
+      }
       if (this.hotGrip && (e.key === " " || e.key === "Enter") && !this.dynMenu) {
         // as in AutoCAD: Space (or Enter) on a hot grip goes Stretch → Move → Rotate → Scale → Mirror
         e.preventDefault();

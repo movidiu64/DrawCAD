@@ -34,15 +34,15 @@ Re-measured on branch `v1.1` after phases 1–5, the same way and with the same 
 | Dynamic input | 10 % | 35 % | 62 % | `@ # <` from anywhere, absolute points through the command line, the prompt and its options menu next to the cursor |
 | Command line | 15 % | 40 % | 77 % | prompts, options by letter or click (DCO / DBA Select, TEXT H / R, DIST M too), typed points, transparent commands, F2 |
 | Grips and editing | 10 % | 30 % | 75 % | MOVE and COPY with base point and displacement; hot grips (Space: Stretch / Move / Rotate / Scale / Mirror, Base point, Copy, typed points and values); grips on up to 100 selected annotations, several hot grips with Shift |
-| Selection | 10 % | 40 % | 78 % | Select objects prompt (W, C, F, WP, CP, ALL, L, P, R, A), AutoCAD selection option |
+| Selection | 10 % | 40 % | 83 % | Select objects prompt (W, C, F, WP, CP, ALL, L, P, R, A), AutoCAD selection option, selection cycling with Tab |
 | Keys and aliases | 10 % | 55 % | 75 % | acad.pgp import, F2, E = ERASE |
 | **Total (estimate)** | 100 % | ≈ 42 % | **≈ 77 %** | |
 
 The total is the weighted sum of the rows (0.15 × 78 + 0.20 × 84 + 0.10 × 78 + 0.10 × 62 + 0.15 × 77 +
-0.10 × 75 + 0.10 × 78 + 0.10 × 75 = 76.85). The previous revision gave ≈ 76 % with grips at 45 %, which
+0.10 × 75 + 0.10 × 83 + 0.10 × 75 = 77.35). The previous revision gave ≈ 76 % with grips at 45 %, which
 sums to 73.85: it was overstated by about two points.
 
-Still missing, in the order they matter: multifunctional grip menus; lasso (press-drag is the rectangle here, by design) and selection cycling;
+Still missing, in the order they matter: multifunctional grip menus; lasso (press-drag is the rectangle here, by design);
 `TK` tracking points; tracking paths along polar angles.
 
 ## How this was measured
@@ -458,6 +458,10 @@ Ovidiu's confirmation (behaviour in his AutoCAD, or a product choice) before it 
 - **Check:** confirm PICKADD = 2 behaviour in your AutoCAD, and that `E` should never start the
   removal tool.
 - **Node tests:** `selectionReducer(sel, event, mode)` for click, Shift+click and window in both modes.
+- **Selection cycling (v1.1):** in Select mode, over annotations on top of each other the tip shows
+  `1/2 — Tab: next`; Tab changes which one is highlighted and the click takes that one. AutoCAD
+  shows a list instead (SELECTIONCYCLING); Tab was chosen because it already cycles snaps here.
+  e2e step 28.
 
 ### CMD-D13 — MOVE / COPY with a base point (planned)
 
@@ -535,6 +539,7 @@ After phases 1–5 the same weights give about **≈ 65 %** (estimate).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-24 | minor | Selection cycling with Tab on `v1.1`; selection 78 → 83 %; ≈ 77 % (estimate) |
 | 2026-11-24 | minor | Grips on several selected annotations and several hot grips (Shift) on `v1.1`; grips 65 → 75 %; ≈ 77 % (estimate) |
 | 2026-11-24 | minor | Hot grips (CMD-D14, partly) on `v1.1`; grips 45 → 65 %; total corrected to the weighted sum, ≈ 76 % (estimate) |
 | 2026-11-24 | minor | Polar extras, WP / CP, .X / .Y, snap on scans on `v1.1`; ≈ 76 % (estimate) |

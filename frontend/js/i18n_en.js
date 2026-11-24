@@ -1068,4 +1068,6 @@ export const EN = {
   "  Doar multipli de 90°": "  Only multiples of 90°",
   "  Factorul trebuie să fie pozitiv": "  The factor must be positive",
   "** GRIP ** ({})": "** GRIP ** ({})",
+  "{}/{} — Tab: următorul": "{}/{} — Tab: next",
+  " · {}/{} — Tab: următorul": " · {}/{} — Tab: next",
 };
