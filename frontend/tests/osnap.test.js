@@ -163,3 +163,20 @@ test("geometric center and insertion: points of their own modes, also as overrid
   assert.equal(parseOverride("INS"), "i");
   assert.equal(s.snap([81, 21], { tol: 3, modes: new Set([parseOverride("ins")]) }).kind, "i");
 });
+
+test("polar extras: additional angles, angles from the last segment, distance steps", async () => {
+  const { polarAngle } = await import("../js/osnap.js");
+  const deg = (r) => Math.round((r * 180) / Math.PI * 1000) / 1000;
+  const rad = (d) => (d * Math.PI) / 180;
+  assert.equal(polarAngle(rad(10), { polarInc: 0 }), null, "polar off");
+  assert.equal(deg(polarAngle(rad(8), { polarInc: 15 })), 15);
+  assert.equal(deg(polarAngle(rad(8), { polarInc: 15, polarExtra: [7] })), 7, "an additional angle closer than the increment");
+  assert.equal(deg(polarAngle(rad(8), { polarInc: 0, polarExtra: [7, 100] })), 7, "additional angles alone");
+  // relative to a last segment at 20°: increments of 45° from it
+  assert.equal(deg(polarAngle(rad(60), { polarInc: 45, polarBase: 20 })), 65);
+  // PolarSnap: along the 0° ray the point moves in 10-point steps
+  const s = new Snapper({});
+  const r = s.snap([23, 0.5], { tol: 3, modes: new Set(), anchor: [0, 0], polarInc: 90, polarStep: 10 });
+  assert.equal(r.kind, "pol");
+  assert.ok(near(r.p, [20, 0]), JSON.stringify(r.p));
+});

@@ -1028,4 +1028,8 @@ export const EN = {
   "Adaugă": "Add",
   "Scoate": "Remove",
   "{} — selectează obiectele ({} {}){} · {}, Esc renunță": "{} — select objects ({} {}){} · {}, Esc cancels",
+  "Pas pe direcția polară (mm reali, 0 = fără)": "Step along the polar direction (real mm, 0 = none)",
+  "Unghiuri față de ultimul segment": "Angles from the last segment",
+  "Unghiuri suplimentare (°, despărțite prin ; )": "Additional angles (°, separated by ; )",
+  "ex.: 7; 22,5": "e.g. 7; 22.5",
 };

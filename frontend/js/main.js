@@ -1912,6 +1912,9 @@ class App {
         acq: on ? this.acq : [],
         parDir: this.parDir,
         polarInc: !ortho && cfg.polar ? cfg.polarInc : 0,
+        polarExtra: !ortho && cfg.polar ? cfg.polarExtra || [] : [],
+        polarBase: cfg.polarRel ? this.lastSegAngle() : 0,
+        polarStep: cfg.polarStep > 0 ? (cfg.polarStep / (Number(this.settings.scale) || 1)) * K : 0,
         tracking: on && cfg.tracking,
       });
       if (sn) {
@@ -1939,6 +1942,19 @@ class App {
       s += `: ${fmtNum(L, ",", 2)} < ${fmtNum(ang, ",", 1)}°`;
     }
     return s;
+  }
+
+  /** Direction of the last segment drawn (degrees, counter-clockwise), for relative polar angles. */
+  lastSegAngle() {
+    let p = null;
+    let q = null;
+    if (this.clicks.length >= 2) [p, q] = this.clicks.slice(-2);
+    else if (this.chain && this.chain.ids.length) {
+      const a = this.annots.find((x) => x.id === this.chain.ids[this.chain.ids.length - 1]);
+      if (a && a.pts && a.pts.length >= 2) [p, q] = a.pts.slice(-2);
+    }
+    if (!p || !q) return 0;
+    return (Math.atan2(-(q[1] - p[1]), q[0] - p[0]) * 180) / Math.PI;
   }
 
   /** Tab: the next snap candidate under the cursor (Shift+Tab: the previous one). */
@@ -2052,6 +2068,10 @@ class App {
     $("snapMenu").innerHTML = `<div class="h">Moduri de snap</div>
       ${MODES.map((m) => `<label class="chk"><input type="checkbox" data-mode="${m.id}"> ${m.name}</label>`).join("")}
       <div class="row"><button class="ghost" data-all="1">Toate</button><button class="ghost" data-all="0">Niciunul</button></div>
+      <div class="h">Polar</div>
+      <label class="fld">Unghiuri suplimentare (°, despărțite prin ; ) <input type="text" id="snPolarExtra" class="mono" placeholder="ex.: 7; 22,5" value="${esc((c.polarExtra || []).join("; "))}"></label>
+      <label class="chk wide"><input type="checkbox" id="snPolarRel" ${c.polarRel ? "checked" : ""}> Unghiuri față de ultimul segment</label>
+      <label class="fld">Pas pe direcția polară (mm reali, 0 = fără) <input type="text" id="snPolarStep" class="mono" value="${esc(String(c.polarStep || 0))}"></label>
       <div class="sub">Urmărire: oprește cursorul o clipă pe un punct (apare o cruciuliță verde), apoi mișcă-te pe orizontală, verticală sau în prelungirea liniei. Încă o oprire pe punct îl scoate.<br>Paralel: în timpul unei comenzi, oprește-te pe o linie, apoi mișcă-te aproape paralel cu ea.<br>F3 snap · F8 ortho · F10 polar · F11 urmărire · Alt = fără snap</div>`;
     $("snapMenu").querySelectorAll("[data-mode]").forEach((cb) => cb.addEventListener("change", () => {
       const set = new Set(c.modes);
@@ -2060,6 +2080,18 @@ class App {
       c.modes = MODES.map((m) => m.id).filter((id) => set.has(id));
       this.saveSnapCfg();
     }));
+    $("snPolarExtra").addEventListener("change", (e) => {
+      c.polarExtra = e.target.value.replace(/,\s+/g, ";").split(/[;\s]+/).map((x) => parseFloat(x.replace(",", "."))).filter((v) => Number.isFinite(v) && Math.abs(v) <= 360).slice(0, 12);
+      e.target.value = c.polarExtra.join("; ");
+      this.saveSnapCfg();
+    });
+    $("snPolarRel").addEventListener("change", (e) => { c.polarRel = e.target.checked; this.saveSnapCfg(); });
+    $("snPolarStep").addEventListener("change", (e) => {
+      const v = parseFloat(String(e.target.value).replace(",", "."));
+      c.polarStep = Number.isFinite(v) && v > 0 ? v : 0;
+      e.target.value = String(c.polarStep);
+      this.saveSnapCfg();
+    });
     $("snapMenu").querySelectorAll("[data-all]").forEach((b) => b.addEventListener("click", () => {
       c.modes = b.dataset.all === "1" ? MODES.map((m) => m.id) : [];
       this.saveSnapCfg();

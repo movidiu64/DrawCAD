@@ -64,6 +64,22 @@ export const LABELS = {
 const TAU = Math.PI * 2;
 const PRIO = { c: 0, e: 1, a: 1, x: 1, q: 2, ax: 2, g: 2, i: 2, p: 2.2, t: 2.2, m: 3 };
 const angOf = (c, p) => Math.atan2(-(p[1] - c[1]), p[0] - c[0]);
+
+/**
+ * The polar angle closest to `a` (radians, counter-clockwise, Y up): multiples of the increment and
+ * the additional angles, both measured from `polarBase` (degrees). null when polar is off.
+ */
+export function polarAngle(a, o) {
+  const inc = o.polarInc > 0 ? (o.polarInc * Math.PI) / 180 : 0;
+  const extra = (o.polarExtra || []).filter(Number.isFinite).map((d) => (d * Math.PI) / 180);
+  if (!inc && !extra.length) return null;
+  const base = ((o.polarBase || 0) * Math.PI) / 180;
+  const rel = a - base;
+  const diff = (u, v) => Math.abs(Math.atan2(Math.sin(u - v), Math.cos(u - v)));
+  let best = inc ? Math.round(rel / inc) * inc : extra[0];
+  for (const e of extra) if (diff(rel, e) < diff(rel, best)) best = e;
+  return best + base;
+}
 const polar = (c, r, th) => [c[0] + r * Math.cos(th), c[1] - r * Math.sin(th)];
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const wrap = (x) => ((x % TAU) + TAU) % TAU;
@@ -258,7 +274,9 @@ export class Snapper {
 
   /**
    * o: { tol, modes (Set), anchor, extra: {pts, segs, arcs}, acq: [{p, dirs}], parDir,
-   *      polarInc (degrees, 0 = off), tracking (bool) }.
+   *      polarInc (degrees, 0 = off), polarExtra (additional angles, degrees), polarBase (degrees
+   *      the polar angles are measured from: 0, or the last segment), polarStep (distance step along
+   *      a polar ray, page points; 0 = off), tracking (bool) }.
    * Returns { p, kind, guides: [{ o, p }], from } or null.
    */
   snap(cur, o) {
@@ -419,15 +437,14 @@ export class Snapper {
       if (M.has("ext")) for (const d of q.dirs || []) guides.push({ o: q.p, d, ray: true, kind: "ext" });
     }
     if (A && o.parDir && M.has("par")) guides.push({ o: A, d: o.parDir, line: true, kind: "par" });
-    if (A && o.polarInc > 0) {
-      const inc = (o.polarInc * Math.PI) / 180;
-      const th = Math.round(angOf(A, cur) / inc) * inc;
-      guides.push({ o: A, d: [Math.cos(th), -Math.sin(th)], ray: true, kind: "pol" });
-    }
+    const th = A && polarAngle(angOf(A, cur), o);
+    if (th != null && th !== false) guides.push({ o: A, d: [Math.cos(th), -Math.sin(th)], ray: true, kind: "pol" });
     if (guides.length) {
       const GP = { ext: 1, par: 1, trk: 1.5, pol: 2 };
       const proj = (g) => {
-        const t = (x - g.o[0]) * g.d[0] + (y - g.o[1]) * g.d[1];
+        let t = (x - g.o[0]) * g.d[0] + (y - g.o[1]) * g.d[1];
+        // PolarSnap: along a polar ray the distance goes in steps
+        if (g.kind === "pol" && o.polarStep > 0) t = Math.round(t / o.polarStep) * o.polarStep;
         if (g.ray && t < 0) return null;
         return [g.o[0] + g.d[0] * t, g.o[1] + g.d[1] * t];
       };
@@ -461,7 +478,9 @@ export class Snapper {
       for (const g of guides) {
         const q = proj(g);
         if (!q) continue;
-        const d = dist(q, cur);
+        // with PolarSnap the point jumps along the ray: what counts is the distance to the ray
+        const off = Math.abs((x - g.o[0]) * g.d[1] - (y - g.o[1]) * g.d[0]);
+        const d = g.kind === "pol" && o.polarStep > 0 ? off : dist(q, cur);
         if (d <= tol && dist(q, g.o) > tol) take(q, g.kind, d, GP[g.kind], { guides: [{ o: g.o, p: q }], from: g.o });
       }
       if (best) return best;
