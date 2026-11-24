@@ -68,7 +68,7 @@ The state embedded in an export (`drawcad.json`) already reopens as editable. Th
 
 ## V12-4 — Markup: revision cloud, highlighter, comments · built
 
-- **Revision cloud:** drawn as a rectangle (a polyline outline is left for later), turned into arcs (arc length from the text
+- **Revision cloud:** drawn as a rectangle (REVCLOUD) or on any outline (RVCP), turned into arcs (arc length from the text
   height); optional revision triangle on the outline, numbered from the document revision. Layer
   Revisions.
 - **Highlighter:** freehand or straight strokes, wide (3 / 6 / 10 mm) and transparent; colors green
@@ -99,7 +99,8 @@ The state embedded in an export (`drawcad.json`) already reopens as editable. Th
   alignment (phase correlation, refined to the pixel) removes an overall shift. Two-point alignment for a
   rescaled or rotated export is left for later.
 - Shown as an overlay in the editor (slider in the context bar), with the changed regions (connected areas of
-  difference, grouped on a 2.5 mm grid) to step through. Pages are compared without DrawCAD annotations.
+  difference, grouped on a 2.5 mm grid) to step through. By default both pages include their DrawCAD
+  annotations (as exported, black); comments and the watermark are too faint or not exported.
 - Export of the comparison as a PDF page, for the review record.
 
 ---

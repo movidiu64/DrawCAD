@@ -450,17 +450,30 @@ class App {
 
   // ------------------------------------------------------------ revision compare (V12-6)
   /** Lays page otherPage of document other (the older revision) under the current page. */
-  async runCompare(other, otherPage, align, otherName) {
+  async runCompare(other, otherPage, align, otherName, withAnnots = true) {
     dlg.toast("Se compară…", 30000);
     try {
-      const res = await api.compare(this.doc.id, { other, page: this.page, otherPage, align });
+      const body = { other, page: this.page, otherPage, align };
+      if (withAnnots) {
+        // both pages as their exports look: this one from the editor, the other from its saved state
+        const mine = this.pageLayer(this.annots, this.page, (a) => this.builtOf(a));
+        body.prims = mine.prims;
+        body.removals = mine.removals;
+        const om = await api.getDoc(other);
+        const st = om.state || {};
+        const oS = { ...derive({ ...dlg.storedDefaults(), ...(st.settings || {}) }), pagesWH: (om.pages || []).map((p) => [p.w, p.h]) };
+        const theirs = this.pageLayer(st.annots || [], otherPage, (a) => build(a, oS, this.measure));
+        body.otherPrims = theirs.prims;
+        body.otherRemovals = theirs.removals;
+      }
+      const res = await api.compare(this.doc.id, body);
       const img = new Image();
       await new Promise((ok, bad) => {
         img.onload = ok;
         img.onerror = bad;
         img.src = res.image;
       });
-      this.compare = { other, otherPage, otherName, align, page: this.page, regions: res.regions, idx: -1, alpha: 1, img };
+      this.compare = { other, otherPage, otherName, align, withAnnots, body, page: this.page, regions: res.regions, idx: -1, alpha: 1, img };
       this.view.redraw();
       this.renderCtx();
       const n = res.regions.length;
@@ -495,7 +508,7 @@ class App {
     const c = this.compare;
     if (!c) return;
     try {
-      const blob = await api.compare(this.doc.id, { other: c.other, page: this.page, otherPage: c.otherPage, align: c.align, format: "pdf",
+      const blob = await api.compare(this.doc.id, { ...c.body, format: "pdf",
         legend: `${tr("doar în")} ${c.otherName}|${tr("doar în")} ${this.doc.name}|${tr("în ambele")}` });
       const base = this.doc.name.replace(/\.[^.]+$/, "");
       await dlg.saveBlob(blob, `${base}_comparare.pdf`);
@@ -3117,6 +3130,22 @@ class App {
     this.changed();
   }
 
+  /** What the export draws on page n of a document: primitives and removals from the original. */
+  pageLayer(annots, n, builtOf, inkAll = false) {
+    const prims = [];
+    const removals = [];
+    for (const a of annots) {
+      if (a.page !== n) continue;
+      prims.push(...exportPrims(builtOf(a).prims));
+      if (a.type === "redact" && a.mode !== "cover") {
+        const op = a.mode === "objects" ? { mode: "objects", ids: a.ids || [] } : { mode: a.mode, rect: a.r };
+        if (a.mode !== "objects" || op.ids.length) removals.push(op);
+      }
+      if (a.type === "ink" && (a.ids || []).length && !inkAll) removals.push({ mode: "black", ids: a.ids });
+    }
+    return { prims, removals };
+  }
+
   async exportPdf(filename, colorMode, embed, pageSel = null, split = false, extra = {}) {
     const pages = {};
     const removals = {};
@@ -3835,7 +3864,7 @@ class App {
   /** Editable rectangle of a box (cover, removal, blackening, struck dimension, drawn rectangle). */
   boxOf(a) {
     let r = null;
-    if (a.r && ["white", "redact", "ink", "strike", "image"].includes(a.type)) r = a.r;
+    if (a.r && ["white", "redact", "ink", "strike", "image", "cloud"].includes(a.type)) r = a.r;
     else if (a.type === "shape" && a.kind === "rect" && a.pts && a.pts.length >= 2) r = [...a.pts[0], ...a.pts[1]];
     if (!r) return null;
     return [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.max(r[0], r[2]), Math.max(r[1], r[3])];

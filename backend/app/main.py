@@ -616,9 +616,33 @@ async def api_compare(request: Request):
         return _err("Pagină sau document inexistent", 404)
     pn = meta["pages"][n]
     po = ometa["pages"][m]
+    # with the DrawCAD annotations: each page as its export would look (black), not the bare original
+    try:
+        layers = {}
+        for key, did, idx in (("prims", doc_id, n), ("otherPrims", other, m)):
+            pr = body.get(key)
+            if isinstance(pr, list):
+                images = _doc_images(_doc_dir(did))
+                keep = []
+                for p in _clean_prims(pr):
+                    if p["t"] == "I":
+                        if p["img"] not in images:
+                            continue
+                        p["src"] = str(images[p["img"]])
+                    keep.append(p)
+                rk = "removals" if key == "prims" else "otherRemovals"
+                layers[did if key == "prims" else "other"] = ({idx: keep}, {idx: _clean_ops(body.get(rk) or [])})
+    except (ValueError, TypeError) as e:
+        return _err(f"Date de comparare invalide: {e}")
+
+    def page_pdf(did, key):
+        if key not in layers:
+            return _original(did)
+        prims, rem = layers[key]
+        return pdfcore.export_pdf(_original(did), prims, rem, "black", None, False, None)[0]
 
     def work():
-        return compare.compare_pages(_original(other), m, _original(doc_id), n, (pn["w"], pn["h"]), (po["w"], po["h"]),
+        return compare.compare_pages(page_pdf(other, "other"), m, page_pdf(doc_id, doc_id), n, (pn["w"], pn["h"]), (po["w"], po["h"]),
                                      align=bool(body.get("align", True)))
 
     try:

@@ -1301,5 +1301,8 @@ export const EN = {
   "Încarcă revizia veche…": "Upload the older revision…",
   "Închide comparația": "Close compare",
   "în ambele": "in both",
-  "Pagina {} din {} (revizia nouă) peste o pagină dintr-un desen mai vechi. Se compară desenele ca PDF, fără adnotările adăugate în DrawCAD.": "Page {} of {} (the newer revision) over a page of an older drawing. The drawings are compared as PDF, without the annotations added in DrawCAD.",
+  "Pagina {} din {} (revizia nouă) peste o pagină dintr-un desen mai vechi.": "Page {} of {} (the newer revision) over a page of an older drawing.",
+  "Cu adnotările DrawCAD (cote, revizii, indicator…), ca în export": "With the DrawCAD annotations (dimensions, revisions, title block…), as exported",
+  "Nor pe contur": "Cloud on an outline",
+  "Click pe colțurile zonei modificate · Enter, click dreapta sau click pe primul punct închide norul": "Click the corners of the changed area · Enter, right-click or a click on the first point closes the cloud",
 };

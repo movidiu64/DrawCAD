@@ -1287,13 +1287,26 @@ function revTriangle(bx, by, ang, size, S, measure, rev, c) {
  * top-right corner. a.arc = chord of one arc in mm (paper). */
 function buildCloud(a, S, measure) {
   const c = a.layer || "rev";
-  const [x0, y0, x1, y1] = normRect(a.r);
   const L = Math.max(1, (a.arc || 6) * K * (a.scale || 1));
-  const corners = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+  // a rectangle, or any closed outline (a.pts), turned clockwise on screen so the arcs bulge outwards
+  let corners;
+  if (Array.isArray(a.pts) && a.pts.length >= 3) {
+    corners = a.pts.map((q) => [...q]);
+    let area = 0;
+    corners.forEach((q, i) => {
+      const r = corners[(i + 1) % corners.length];
+      area += q[0] * r[1] - r[0] * q[1];
+    });
+    if (area < 0) corners.reverse();
+  } else if (Array.isArray(a.r)) {
+    const [x0, y0, x1, y1] = normRect(a.r);
+    corners = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+  } else return { prims: [], handles: [] };
+  const nc = corners.length;
   const pts = [];
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < nc; i++) {
     const A = corners[i];
-    const B = corners[(i + 1) % 4];
+    const B = corners[(i + 1) % nc];
     const d = sub(B, A);
     const len = Math.hypot(d[0], d[1]);
     if (len < 1e-6) continue;
@@ -1312,10 +1325,15 @@ function buildCloud(a, S, measure) {
   }
   const prims = [{ t: "P", p: pts, close: true, w: S.lw * 1.4, c }];
   if (a.tri) {
+    // at the top-right corner of the outline
+    const tr = corners.reduce((b, q) => (q[0] - q[1] > b[0] - b[1] ? q : b), corners[0]);
     const size = S.h * 1.9 * (a.scale || 1);
-    prims.push(...revTriangle(x1 + L * 0.6, y0 - L * 0.6, 0, size, S, measure, String(a.rev || ""), c));
+    prims.push(...revTriangle(tr[0] + L * 0.6, tr[1] - L * 0.6, 0, size, S, measure, String(a.rev || ""), c));
   }
-  return { prims, handles: [{ k: "r0", p: [a.r[0], a.r[1]] }, { k: "r1", p: [a.r[2], a.r[3]] }] };
+  const handles = Array.isArray(a.pts) && a.pts.length >= 3
+    ? a.pts.map((q, i) => ({ k: `pts.${i}`, p: q }))
+    : [{ k: "r0", p: [a.r[0], a.r[1]] }, { k: "r1", p: [a.r[2], a.r[3]] }];
+  return { prims, handles };
 }
 
 /** Highlighter: a wide, transparent stroke that leaves what is under it readable (multiply). */

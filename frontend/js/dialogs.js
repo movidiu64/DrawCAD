@@ -930,12 +930,13 @@ export async function compareDialog(app) {
   let chosen = docs[0] ? docs[0].id : null;
   const dlg = showModal(`
     <h2>Compară cu altă revizie</h2>
-    <div class="sub">Pagina ${app.page + 1} din ${esc(app.doc.name)} (revizia nouă) peste o pagină dintr-un desen mai vechi. Se compară desenele ca PDF, fără adnotările adăugate în DrawCAD.</div>
+    <div class="sub">Pagina ${app.page + 1} din ${esc(app.doc.name)} (revizia nouă) peste o pagină dintr-un desen mai vechi.</div>
     <div class="lbl">Revizia veche</div>
     <div class="cmplist" id="cmpList">${docs.slice(0, 30).map((d) => `<label class="cmpitem"><input type="radio" name="cmpDoc" value="${d.id}" ${d.id === chosen ? "checked" : ""}>
       <span translate="no">${esc(d.name)}</span><span class="sub">${(d.pages || []).length} pag. · ${ago(d.updated)}</span></label>`).join("") || `<div class="note">Niciun alt document pe server. Încarcă revizia veche (PDF sau scan).</div>`}</div>
     <div class="row"><button class="ghost" id="cmpUp">Încarcă revizia veche…</button><input type="file" id="cmpFile" accept=".pdf,application/pdf,image/*" hidden>
       <div class="field" style="max-width:120px"><label for="cmpPage">Pagina din cea veche</label><input type="text" class="mono" id="cmpPage" value="${app.page + 1}"></div></div>
+    <label class="chk"><input type="checkbox" id="cmpAnn" checked> Cu adnotările DrawCAD (cote, revizii, indicator…), ca în export</label>
     <label class="chk"><input type="checkbox" id="cmpAlign" checked> Aliniază automat (un export decalat cu câțiva milimetri nu apare ca modificare)</label>
     <div class="foot"><span class="muted" id="cmpMsg"></span><button class="ghost" data-close>Anulează</button><button class="primary" id="cmpGo" ${chosen ? "" : "disabled"}>Compară</button></div>`);
   const pick = () => {
@@ -966,8 +967,9 @@ export async function compareDialog(app) {
     if (!d) return;
     const n = Math.max(1, Math.min((d.pages || []).length || 1, parseInt(dlg.querySelector("#cmpPage").value, 10) || 1));
     const align = dlg.querySelector("#cmpAlign").checked;
+    const withAnn = dlg.querySelector("#cmpAnn").checked;
     closeModal();
-    app.runCompare(d.id, n - 1, align, d.name);
+    app.runCompare(d.id, n - 1, align, d.name, withAnn);
   });
 }
 

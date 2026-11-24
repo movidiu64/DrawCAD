@@ -47,6 +47,7 @@ export const DEFAULT_ALIASES = {
   image: ["IAT", "IMAGEATTACH", "IMG"],
   tblock: ["TB", "TITLEBLOCK"],
   cloud: ["REVCLOUD", "RVC"],
+  cloudp: ["RVCP", "REVCLOUDP"],
   mark: ["HL", "HIGHLIGHT"],
   comment: ["CMT", "COMMENT"],
   stamp: ["STAMP", "STP"],

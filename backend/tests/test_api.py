@@ -228,6 +228,12 @@ class ApiTest(unittest.TestCase):
         boxes = r1["regions"]
         self.assertTrue(any(b[0] < 300 < b[2] and b[1] < 595 - 250 < b[3] for b in boxes), boxes)  # the hole
         self.assertTrue(any(b[0] < 700 < b[2] for b in boxes), boxes)  # the new line
+        # with annotations: the same original, a dimension line added in DrawCAD on the newer one shows green
+        line = [{"t": "L", "p": [150, 550, 450, 550], "w": 0.7, "c": "add"}]
+        r2 = self.req("POST", f"/api/doc/{same['id']}/compare",
+                      {"other": old["id"], "page": 0, "otherPage": 0, "prims": line, "otherPrims": []})
+        self.assertGreater(r2["added"], 0)
+        self.assertTrue(any(b[0] < 300 < b[2] and b[1] <= 550 <= b[3] for b in r2["regions"]), r2["regions"])
         pdf, h = self.req("POST", f"/api/doc/{new['id']}/compare",
                           {"other": old["id"], "page": 0, "otherPage": 0, "format": "pdf", "legend": "vechi|nou|ambele"}, raw=True)
         self.assertTrue(pdf.startswith(b"%PDF"))
