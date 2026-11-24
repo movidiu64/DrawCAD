@@ -1112,4 +1112,7 @@ export const EN = {
   "Cotele, toleranțele și GD&T adăugate apar cu albastru.": "Added dimensions, tolerances and GD&T appear in blue.",
   "Ascunde panourile (Ctrl+0)": "Hide the panels (Ctrl+0)",
   "Ascunde panourile": "Hide the panels",
+  "Personalizată": "Custom",
+  "Tipul și grosimea liniilor noi (ISO 128-24)": "Type and width of new lines (ISO 128-24)",
+  "Înălțimea textului pe desen, pentru tot documentul": "Text height on the drawing, for the whole document",
 };

@@ -4,7 +4,7 @@ import { build, derive, hit, holeTable, setHandle, moveAnnot, annotSnapPoints, e
 import { View, COLORS } from "./view.js";
 import { Snapper, MODES, DEFAULT_MODES, parseOverride, overrideModes, LABELS } from "./osnap.js";
 import { Panel } from "./panel.js";
-import { TOOL_BY_ID, FAMILIES, FAMILY_OF, finalize, promptFor, resolveOption } from "./tools.js";
+import { TOOL_BY_ID, DRAW_TOOLS, FAMILIES, FAMILY_OF, finalize, promptFor, resolveOption } from "./tools.js";
 import { clickSelection, windowSelection, pointInPolygon, boxInPolygon } from "./selection.js";
 import { parsePoint, parsePointMod, resolvePoint, toUser, defaultOrigin, orthoActive, routeKey } from "./pointin.js";
 import * as dlg from "./dialogs.js";
@@ -12,7 +12,7 @@ import { VIEW_LETTERS } from "./symbols.js";
 import { markingConfig, MM_ICONS } from "./mmenu.js";
 import { keyConfig, directKeyMap, resolveCommand, suggest, commandList, labelOf, ACTIONS } from "./commands.js";
 import { applyPageOp, rotateAbout, scaleAbout, mirrorAbout } from "./pages.js";
-import { hasVertices, addVertex, removeVertex } from "./shapes.js";
+import { hasVertices, addVertex, removeVertex, PRESETS as LINE_PRESETS } from "./shapes.js";
 import { startI18n, lang as uiLang, tr } from "./i18n.js";
 
 const esc = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -3289,14 +3289,31 @@ class App {
     } else {
       const t = TOOL_BY_ID[this.tool];
       if (!t) return;
-      const opts = this.cmdActive() && !this.cmdAsk ? this.currentOptions() : [];
-      html = `${ico(t.icon)}<b>${esc(tr(t.label))}</b><span class="ch" id="ctxHint" title="${esc(this.hintText || "")}">${esc(this.hintText || "")}</span>${opts.length ? `<span class="vs"></span>${opts.map((o) => `<button class="ca" data-ctxopt="${esc(o.key)}">${esc(tr(o.label))}<i>${esc(o.key)}</i></button>`).join("")}` : ""}`;
+      // the tool's defaults (UI-D2); the options of the current step stay in the command line
+      let defs = "";
+      if (DRAW_TOOLS.has(t.id) && t.id !== "cross" && t.id !== "hatch") {
+        const ds = this.drawStyle;
+        const cur = LINE_PRESETS.find((p) => p.ltype === ds.ltype && Math.abs(p.w - ds.w) < 1e-6);
+        defs = `<label class="cdef">Linie<select id="ctxLine" title="Tipul și grosimea liniilor noi (ISO 128-24)">${cur ? "" : `<option selected>${esc(tr("Personalizată"))}</option>`}${LINE_PRESETS.map((p) => `<option value="${p.id}" ${cur && cur.id === p.id ? "selected" : ""}>${esc(tr(p.name))} · ${fmtNum(p.w, this.settings.sep || ",", 2)}</option>`).join("")}</select></label>`;
+      } else if (FAMILY_OF[t.id] === "dims" || FAMILY_OF[t.id] === "tol" || FAMILY_OF[t.id] === "notes") {
+        const h = this.settings.textH || 3.5;
+        const hs = [2.5, 3.5, 5, 7];
+        defs = `<label class="cdef">Text<select id="ctxTextH" class="num" title="Înălțimea textului pe desen, pentru tot documentul">${hs.includes(h) ? "" : `<option selected>${fmtNum(h, ",", 2)} mm</option>`}${hs.map((v) => `<option value="${v}" ${v === h ? "selected" : ""}>${fmtNum(v, ",", 1)} mm</option>`).join("")}</select></label>`;
+      }
+      html = `${ico(t.icon)}<b>${esc(tr(t.label))}</b><span class="ch" id="ctxHint" title="${esc(this.hintText || "")}">${esc(this.hintText || "")}</span>${defs ? `<span class="vs"></span>${defs}` : ""}`;
     }
     if (box._html === html) return;
     box._html = html;
     box.innerHTML = html;
     box.querySelectorAll("[data-ctx]").forEach((b) => b.addEventListener("click", () => this.ctxAction(b.dataset.ctx)));
-    box.querySelectorAll("[data-ctxopt]").forEach((b) => b.addEventListener("click", () => this.runOption(b.dataset.ctxopt)));
+    const ln = box.querySelector("#ctxLine");
+    if (ln) ln.addEventListener("change", () => {
+      const p = LINE_PRESETS.find((x) => x.id === ln.value);
+      if (p) this.setDrawStyle({ ltype: p.ltype, w: p.w });
+      this.panel.render();
+    });
+    const th = box.querySelector("#ctxTextH");
+    if (th) th.addEventListener("change", () => this.setSettings({ textH: parseFloat(th.value) }));
   }
 
   ctxAction(k) {
