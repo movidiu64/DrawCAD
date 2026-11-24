@@ -125,7 +125,9 @@ def main(url, out):
         click(125, 75)
         click(125, 75)
         page.click("[data-act=rval][data-v='Ra 1,6']")
-        page.click("[data-act=scale][data-v='0.7']")
+        # Size is a secondary section (UI-D13): open it, then pick from the list
+        page.locator(".sec.col > .h", has_text="Mărime").click()
+        page.select_option("#scaleSel", "0.7")
         assert page.evaluate("window.cotare.selected().scale") == 0.7
         # 9. copy + paste: a second roughness on the Ø30 step
         page.keyboard.press("v")  # the newly created roughness stays selected

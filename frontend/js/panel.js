@@ -19,32 +19,162 @@ const ISO_DISP = [
   ["dev", "Doar abateri"],
 ];
 
+// panel sections that start collapsed (secondary; UI-D13): size and layer of the selection
+const CLOSED_BY_DEFAULT = ["Mărime", "Strat"];
+
 export class Panel {
   constructor(el, app) {
     this.el = el;
     this.app = app;
+    this.tabs = document.getElementById("ptabs");
+    try {
+      this.tab = localStorage.getItem("cotare.ptab") || "props";
+    } catch (_) {
+      this.tab = "props";
+    }
+    try {
+      const v = JSON.parse(localStorage.getItem("cotare.secs") || "null");
+      this.secs = v && typeof v === "object" ? v : {};
+    } catch (_) {
+      this.secs = {};
+    }
+    this.filter = { q: "", kind: "all" };
+    if (this.tabs) {
+      this.tabs.querySelectorAll("[data-ptab]").forEach((b) => b.addEventListener("click", () => this.setTab(b.dataset.ptab)));
+    }
+  }
+
+  /** The panel's tabs (UI-D3): Properties, Layers, Annotations; the choice is remembered. */
+  setTab(tab) {
+    this.tab = tab;
+    try {
+      localStorage.setItem("cotare.ptab", tab);
+    } catch (_) { /* not remembered */ }
+    this.render();
   }
 
   render() {
     const a = this.app.selected();
+    if (this.tabs) this.tabs.hidden = !this.app.doc;
     if (!this.app.doc) {
       this.el.innerHTML = this.introHtml();
       return;
     }
-    if (!a) {
-      this.el.innerHTML = this.docHtml();
+    // a new selection shows its properties
+    const selKey = [...this.app.sel].join(",");
+    if (selKey && selKey !== this._selKey) this.tab = "props";
+    this._selKey = selKey;
+    this.markTabs();
+    if (this.tab === "layers") {
+      this.el.innerHTML = this.layersHtml();
       this.bind();
-      return;
-    }
-    if (this.app.sel.size > 1) {
+    } else if (this.tab === "list") {
+      this.el.innerHTML = this.listTabHtml();
+      this.bind();
+      this.bindList();
+    } else if (!a) {
+      this.el.innerHTML = this.noSelHtml();
+      this.bind();
+    } else if (this.app.sel.size > 1) {
       this.el.innerHTML = this.groupHtml();
       this.bindGroup();
-      return;
+    } else {
+      const fn = this[`html_${a.type}`];
+      this.el.innerHTML = this.headHtml(a) + (fn ? fn.call(this, a) : "") + this.footHtml(a);
+      this.bind();
+      this.drawPreview(a);
     }
-    const fn = this[`html_${a.type}`];
-    this.el.innerHTML = this.headHtml(a) + (fn ? fn.call(this, a) : "") + this.footHtml(a);
-    this.bind();
-    this.drawPreview(a);
+    this.collapsible();
+  }
+
+  markTabs() {
+    if (!this.tabs) return;
+    const n = this.app.annots.filter((x) => x.page === this.app.page).length;
+    this.tabs.querySelectorAll("[data-ptab]").forEach((b) => {
+      const on = b.dataset.ptab === this.tab;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-selected", String(on));
+    });
+    const c = this.tabs.querySelector("#ptabN");
+    if (c) c.textContent = String(n);
+  }
+
+  /** Section headings open and close their section; the state is remembered per heading (UI-D13). */
+  collapsible() {
+    const secs = [...this.el.children].filter((c) => c.classList.contains("sec"));
+    secs.forEach((sec, i) => {
+      const h = [...sec.children].find((c) => c.classList.contains("h"));
+      if (!h || i === 0 || sec.children.length < 2) return;
+      const key = h.textContent.replace(/[\d·()]+/g, " ").replace(/\s+/g, " ").trim();
+      const closed = this.secs[key] ?? CLOSED_BY_DEFAULT.includes(key);
+      sec.classList.add("col");
+      sec.classList.toggle("closed", closed);
+      h.setAttribute("role", "button");
+      h.setAttribute("tabindex", "0");
+      h.setAttribute("aria-expanded", String(!closed));
+      const toggle = () => {
+        const now = !sec.classList.contains("closed");
+        sec.classList.toggle("closed", now);
+        h.setAttribute("aria-expanded", String(!now));
+        this.secs[key] = now;
+        try {
+          localStorage.setItem("cotare.secs", JSON.stringify(this.secs));
+        } catch (_) { /* not remembered */ }
+      };
+      h.addEventListener("click", toggle);
+      h.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          e.stopPropagation(); // not a command repeat
+          toggle();
+        }
+      });
+    });
+  }
+
+  /** Properties with nothing selected: what to do, and the drawing style of a drawing tool. */
+  noSelHtml() {
+    const app = this.app;
+    const tool = TOOL_BY_ID[app.tool];
+    return `<div class="sec"><div class="h">Nicio selecție</div>
+        <div class="sub">Click pe o adnotare din desen (sau din tab-ul Adnotări) ca să-i vezi proprietățile. Un dreptunghi pe zonă goală selectează mai multe.</div></div>
+      ${tool && DRAW_TOOLS.has(tool.id) && tool.id !== "cross" && tool.id !== "hatch" ? this.styleHtml(app.drawStyle, "tool") : ""}`;
+  }
+
+  /** The Annotations tab: a filter, chips by kind and the whole list. */
+  listTabHtml() {
+    const app = this.app;
+    const all = app.annots.filter((a) => a.page === app.page);
+    const kinds = [["all", "Toate", () => true], ["dims", "Cote", (a) => ["dim", "rad", "ang", "ord", "chamfer"].includes(a.type)], ["tol", "Toleranțe", (a) => ["gdt", "rough", "datum"].includes(a.type)], ["rev", "Revizii", (a) => a.layer === "rev" || ["strike", "revtab"].includes(a.type)], ["text", "Text", (a) => ["text", "note", "lead", "balloon"].includes(a.type)]];
+    const f = this.filter;
+    const kind = kinds.find((k) => k[0] === f.kind) || kinds[0];
+    const q = f.q.trim().toLowerCase();
+    const list = all.filter((a) => kind[2](a) && (!q || `${tr(typeName(a))} ${app.annotLabel(a)}`.toLowerCase().includes(q)));
+    return `<div class="sec">
+        <input type="search" id="annQ" placeholder="Filtrează: tip sau valoare" aria-label="Filtrează adnotările" value="${esc(f.q)}">
+        <div class="chips">${kinds.map(([k, l, fn]) => `<button data-kind="${k}" class="${f.kind === k ? "on" : ""}" aria-pressed="${f.kind === k}">${l} <span class="num">${all.filter(fn).length}</span></button>`).join("")}</div>
+      </div>
+      ${this.annListHtml(list)}`;
+  }
+
+  bindList() {
+    const q = this.el.querySelector("#annQ");
+    if (q) {
+      q.addEventListener("input", () => {
+        this.filter.q = q.value;
+        const pos = q.selectionStart;
+        this.render();
+        const q2 = this.el.querySelector("#annQ");
+        if (q2) {
+          q2.focus();
+          q2.setSelectionRange(pos, pos);
+        }
+      });
+    }
+    this.el.querySelectorAll("[data-kind]").forEach((b) => b.addEventListener("click", () => {
+      this.filter.kind = b.dataset.kind;
+      this.render();
+    }));
   }
 
   // -------------------------------------------------------------- multiple selection
@@ -128,7 +258,7 @@ export class Panel {
       <b>Ctrl+Z / Ctrl+Y</b> anulează / refă · <b>F</b> potrivește · <b>Shift+F</b> zoom pe selecție · <b>dublu-click</b> editează · rotița = zoom · Space+tragere = mută</div></div>`;
   }
 
-  docHtml() {
+  layersHtml() {
     const app = this.app;
     const d = app.doc;
     const S = app.settings;
@@ -138,7 +268,6 @@ export class Panel {
       else if (a.layer === "rev") counts.rev++;
       else counts.add++;
     }
-    const tool = TOOL_BY_ID[app.tool];
     const pg = d.pages[app.page];
     return `<div class="sec"><div class="h">Document</div>
         <div class="title" style="word-break:break-all">${esc(d.name)}</div>
@@ -148,8 +277,6 @@ export class Panel {
           <div style="margin-top:6px"><button class="ghost" data-act="pages">Mărimea foii…</button></div></div>` : ""}
         ${d.fromExport ? `<div class="note">Deschis dintr-un export anterior: cotele sunt editabile, originalul a fost recuperat din fișier.</div>` : ""}
       </div>
-      <div class="sec"><div class="h">Unealta activă</div><div class="title" style="font-size:14px">${esc(tool ? tool.label : "")}</div><div class="note">${esc(tool ? tool.hint : "")}</div></div>
-      ${tool && DRAW_TOOLS.has(tool.id) && tool.id !== "cross" && tool.id !== "hatch" ? this.styleHtml(app.drawStyle, "tool") : ""}
       <div class="sec"><div class="h">Scara desenului</div>
         <div class="row"><div class="field"><label for="dScale">mm reali / mm hârtie</label><input type="text" class="mono" id="dScale" value="${fmtNum(S.scale, ",", 4)}"></div>
         <button class="ghost" data-act="calib" style="align-self:flex-end">Calibrează</button></div>
@@ -165,19 +292,16 @@ export class Panel {
           }).join("")}
         ${app.hidden.size ? `<div class="sub">Ascunderea e doar pe ecran: exportul conține toate straturile.</div>` : ""}
       </div>
-      ${this.inkHtml()}
-      ${this.annListHtml()}
-      ${this.keysHtml()}`;
+      ${this.inkHtml()}`;
   }
 
   /** List of annotations on the page: click = select and center, bin = delete. */
-  annListHtml() {
+  annListHtml(list) {
     const app = this.app;
-    const list = app.annots.filter((a) => a.page === app.page);
-    if (!list.length) return "";
+    if (!list.length) return `<div class="sub">Nicio adnotare${this.filter.q || this.filter.kind !== "all" ? " care să se potrivească" : " pe această pagină"}.</div>`;
     const col = (a) => (["white", "redact", "ink"].includes(a.type) ? "var(--layer-del)" : a.layer === "rev" ? "var(--layer-rev)" : "var(--layer-add)");
-    return `<div class="sec"><div class="h">Adnotări pe pagina ${app.page + 1} · ${list.length}</div>
-      <div class="annlist">${list.map((a) => `<div class="it ${app.sel.has(a.id) ? "on" : ""}" data-ann="${esc(a.id)}" title="Click: selectează și centrează">
+    return `<div class="sec">
+      <div class="annlist full">${list.map((a) => `<div class="it ${app.sel.has(a.id) ? "on" : ""}" data-ann="${esc(a.id)}" title="Click: selectează și centrează">
         <i style="background:${col(a)}"></i><span class="t">${esc(typeName(a))}</span><span class="v" translate="no">${esc(app.annotLabel(a))}</span>
         <button class="icon" data-anndel="${esc(a.id)}" aria-label="Șterge ${esc(typeName(a))}" title="Șterge"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg></button></div>`).join("")}</div>
       <div class="sub">Shift+F face zoom pe selecție, F revine la toată pagina.</div></div>`;
@@ -225,11 +349,11 @@ export class Panel {
     if (!SCALABLE.has(a.type) || a.type === "text" || a.type === "note") return "";
     const k = a.scale || 1;
     const opts = [0.5, 0.7, 0.85, 1, 1.2, 1.5, 2];
+    const known = opts.some((v) => Math.abs(k - v) < 0.001);
     return `<div class="sec"><div class="h">Mărime</div>
-      <div class="row"><button class="ghost" data-act="scalestep" data-v="-0.1" aria-label="Micșorează" style="width:40px;padding:0">−</button>
-        <span class="mono" style="min-width:60px;text-align:center;font-size:15px">${Math.round(k * 100)}%</span>
-        <button class="ghost" data-act="scalestep" data-v="0.1" aria-label="Mărește" style="width:40px;padding:0">+</button></div>
-      <div class="pills">${opts.map((v) => `<button data-act="scale" data-v="${v}" class="${Math.abs(k - v) < 0.001 ? "on" : ""}">${Math.round(v * 100)}%</button>`).join("")}</div>
+      <div class="row"><button class="ghost" data-act="scalestep" data-v="-0.1" aria-label="Micșorează" style="width:34px;height:34px;padding:0">−</button>
+        <select id="scaleSel" aria-label="Mărime" class="num" style="flex:1">${known ? "" : `<option selected>${Math.round(k * 100)} %</option>`}${opts.map((v) => `<option value="${v}" ${Math.abs(k - v) < 0.001 ? "selected" : ""}>${Math.round(v * 100)} %</option>`).join("")}</select>
+        <button class="ghost" data-act="scalestep" data-v="0.1" aria-label="Mărește" style="width:34px;height:34px;padding:0">+</button></div>
       <div class="sub">Sau trage de oricare colț alb al casetei punctate din jurul adnotării.</div></div>`;
   }
 
@@ -278,7 +402,7 @@ export class Panel {
         <div class="sub" style="align-self:flex-end;padding-bottom:9px">literă mică = arbore, mare = alezaj</div></div>
         ${info}<div class="lbl">Afișare pe desen</div><div class="opts">${opts}</div>`;
     }
-    return `<div class="sec"><div class="h">Toleranță</div><div class="seg">${seg}</div>${body}${this.previewBox()}</div>`;
+    return `<div class="sec"><div class="h">Toleranță</div><div class="seg">${seg}</div>${body}${t.mode !== "none" ? this.previewBox() : ""}</div>`;
   }
 
   html_dim(a) {
@@ -703,6 +827,8 @@ export class Panel {
       inp.setSelectionRange(p0 + ch.length, p0 + ch.length);
     }));
     el.querySelectorAll("[data-act]").forEach((btn) => btn.addEventListener("click", () => this.onAct(btn.dataset.act, btn.dataset.v, btn.dataset.k)));
+    const ss = el.querySelector("#scaleSel");
+    if (ss) ss.addEventListener("change", () => this.onAct("scale", ss.value));
     el.querySelectorAll("[data-st]").forEach((btn) => btn.addEventListener("click", () => this.onStyle(btn.dataset.st, btn.dataset.v, btn.dataset.scope)));
     el.querySelectorAll("[data-shf]").forEach((inp) => {
       inp.addEventListener("change", () => {
