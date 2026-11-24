@@ -100,6 +100,13 @@ class App {
   escape(confirm = false) {
     const t = TOOL_BY_ID[this.tool];
     if (this.selPrompt) {
+      if (this.selPrompt.fence && !confirm) {
+        this.selPrompt.fence = null;
+        this.view.overlay = null;
+        this.view.redraw();
+        this.updateCmdPrompt();
+        return;
+      }
       // right click / Enter runs the command on the selection, Esc drops it
       if (confirm) this.finishSelPrompt();
       else {
@@ -154,6 +161,7 @@ class App {
     }
     if (this.acq.length || this.parDir) this.clearAcq();
     this.chain = null;
+    if (this.tool === "measure") this.cmdState = {}; // DIST Multiple ends with the chain
     if (this.clicks.length) {
       this.clicks = [];
       this.view.overlay = null;
@@ -308,6 +316,10 @@ class App {
         this.clicks = [];
         this.view.overlay = null;
         if (t.id === "measure") {
+          if (this.cmdState.multi) {
+            this.measureChain(pts[0], pts[1]);
+            return;
+          }
           this.showMeasure(pts[0], pts[1]);
           return;
         }
@@ -493,13 +505,21 @@ class App {
       return;
     }
     if (this.selPrompt) {
-      inp.placeholder = "ALL · L · Enter";
+      inp.placeholder = "W · C · F · ALL · L · P · R · A";
       if (box) {
+        const sp = this.selPrompt;
         const n = this.sel.size;
-        const what = { erase: "Șterge adnotările", moveSel: "Mută obiectele", copySel: "Copiază obiectele" }[this.selPrompt.cmd] || "";
-        const then = this.selPrompt.cmd === "erase" ? "Enter șterge" : "Enter continuă";
-        box.innerHTML = `<b>${what} — selectează obiectele (${n} ${n === 1 ? "selectat" : "selectate"}) · ${then}, Esc renunță</b>`;
+        const what = { erase: "Șterge adnotările", moveSel: "Mută obiectele", copySel: "Copiază obiectele" }[sp.cmd] || "";
+        const then = sp.fence ? "Enter închide linia" : sp.cmd === "erase" ? "Enter șterge" : "Enter continuă";
+        const state = sp.fence ? "linie de selecție: click-uri" : sp.force === "w" ? "fereastră" : sp.force === "c" ? "traversare" : sp.remove ? "scoate din selecție" : "";
+        const opts = [["W", "Fereastră"], ["C", "Traversare"], ["F", "Linie"], ["ALL", "Tot"], ["L", "Ultimul"], ["P", "Anterior"], sp.remove ? ["A", "Adaugă"] : ["R", "Scoate"]]
+          .map(([k, l]) => `<button type="button" data-selopt="${k}" title="${esc(l)} (${k})">${esc(l)} <i>${k}</i></button>`).join("");
+        box.innerHTML = `<b>${what} — selectează obiectele (${n} ${n === 1 ? "selectat" : "selectate"})${state ? ` · ${state}` : ""} · ${then}, Esc renunță</b> <span class="cmdopts">${opts}</span>`;
         box.hidden = false;
+        box.querySelectorAll("[data-selopt]").forEach((b) => b.addEventListener("mousedown", (ev) => {
+          ev.preventDefault();
+          this.selPromptOption(b.dataset.selopt);
+        }));
       }
       return;
     }
@@ -1403,9 +1423,46 @@ class App {
     this.updateCmdPrompt();
   }
 
+  /** The fence being drawn, with the rubber segment to the cursor. */
+  drawFence(cur) {
+    const f = this.selPrompt.fence;
+    const pts = cur ? [...f, cur] : f;
+    const prims = [];
+    for (let i = 0; i + 1 < pts.length; i++) prims.push({ t: "L", p: [...pts[i], ...pts[i + 1]], w: 0.8, c: "sel", dash: true });
+    this.view.overlay = { prims };
+    this.view.redraw();
+  }
+
+  /** Enter after F: what the fence line crosses is added (or removed in R mode). */
+  finishFence() {
+    const sp = this.selPrompt;
+    const f = sp.fence;
+    sp.fence = null;
+    this.view.overlay = null;
+    const ids = [];
+    if (f.length >= 2) {
+      const tol = 4 / this.view.zoom;
+      for (const { a, built } of this.visibleBuilt()) {
+        let crossed = false;
+        for (let i = 0; i + 1 < f.length && !crossed; i++) {
+          const [p, q] = [f[i], f[i + 1]];
+          const n = Math.max(1, Math.ceil(Math.hypot(q[0] - p[0], q[1] - p[1]) / tol));
+          for (let k = 0; k <= n && !crossed; k++) crossed = hit(built, a, [p[0] + ((q[0] - p[0]) * k) / n, p[1] + ((q[1] - p[1]) * k) / n], tol);
+        }
+        if (crossed) ids.push(a.id);
+      }
+    }
+    this.setSelection(windowSelection(this.sel, ids, { shift: !!sp.remove, pickadd: true }));
+  }
+
   /** Enter at the Select objects prompt: the command runs on the selection. */
   finishSelPrompt() {
     const p = this.selPrompt;
+    if (p && p.fence) {
+      this.finishFence();
+      return;
+    }
+    if (this.sel.size) this.prevSel = [...this.sel];
     this.selPrompt = null;
     if (p && p.cmd === "erase" && this.sel.size) this.deleteSelected();
     if (p && (p.cmd === "moveSel" || p.cmd === "copySel") && this.sel.size) this.moveCmd(p.cmd);
@@ -1415,6 +1472,7 @@ class App {
   // ------------------------------------------------------------ MOVE / COPY (CMD-D13)
   /** M / CO: on the selection, or after a Select objects prompt. */
   moveCmd(id) {
+    if (this.sel.size) this.prevSel = [...this.sel];
     if (!this.sel.size) {
       if (this.tool !== "select") this.setTool("select");
       this.selPrompt = { cmd: id };
@@ -1464,18 +1522,48 @@ class App {
     return null;
   }
 
-  /** Options typed at the Select objects prompt: ALL, L (last). */
+  /** Options typed at the Select objects prompt: ALL, L (last), P (previous), W, C, F, R, A. */
   selPromptOption(text) {
     const q = String(text || "").trim().toUpperCase();
+    const sp = this.selPrompt;
     const onPage = this.visibleBuilt().map(({ a }) => a.id);
-    if (q === "ALL" || q === "TOT") {
-      this.setSelection(new Set([...this.sel, ...onPage]));
+    const done = () => {
+      this.updateCmdPrompt();
       return true;
+    };
+    if (q === "W" || q === "WINDOW") {
+      sp.force = "w";
+      return done();
+    }
+    if (q === "C" || q === "CROSSING") {
+      sp.force = "c";
+      return done();
+    }
+    if (q === "F" || q === "FENCE") {
+      sp.fence = [];
+      return done();
+    }
+    if (q === "R" || q === "REMOVE") {
+      sp.remove = true;
+      return done();
+    }
+    if (q === "A" || q === "ADD") {
+      sp.remove = false;
+      return done();
+    }
+    if (q === "P" || q === "PREVIOUS") {
+      const prev = (this.prevSel || []).filter((id) => onPage.includes(id));
+      this.setSelection(windowSelection(this.sel, prev, { shift: !!sp.remove, pickadd: true }));
+      return done();
+    }
+    if (q === "ALL" || q === "TOT") {
+      this.setSelection(windowSelection(this.sel, onPage, { shift: !!sp.remove, pickadd: true }));
+      return done();
     }
     if (q === "L" || q === "LAST" || q === "ULTIMUL") {
       const last = [...this.annots].reverse().find((a) => onPage.includes(a.id));
-      if (last) this.setSelection(new Set([...this.sel, last.id]));
-      return true;
+      if (last) this.setSelection(windowSelection(this.sel, [last.id], { shift: !!sp.remove, pickadd: true }));
+      return done();
     }
     return false;
   }
@@ -2195,12 +2283,17 @@ class App {
         return;
       }
       if (d && d.kind === "marquee") {
-        const crossing = raw[0] < d.start[0];
+        const force = this.selPrompt && this.selPrompt.force;
+        const crossing = force ? force === "c" : raw[0] < d.start[0];
         this.view.overlay = { rect: [d.start[0], d.start[1], raw[0], raw[1]], rectColor: crossing ? COLORS.selCrossing : COLORS.selWindow };
         this.view.redraw();
         return;
       }
       const t = TOOL_BY_ID[this.tool];
+      if (this.selPrompt && this.selPrompt.fence && this.selPrompt.fence.length) {
+        this.drawFence(raw);
+        return;
+      }
       if (t.kind === "select" || t.kind === "pan") {
         this.showCoords(raw);
         if (t.kind === "select" && !d) {
@@ -2307,7 +2400,10 @@ class App {
           return;
         }
         // left→right: only what is fully inside the rectangle; right→left: everything it touches
-        const crossing = end[0] < d.start[0];
+        // (W / C at the Select objects prompt force one of them for the next rectangle)
+        const force = this.selPrompt && this.selPrompt.force;
+        const crossing = force ? force === "c" : end[0] < d.start[0];
+        if (force) this.selPrompt.force = null;
         const ids = [];
         for (const { a, built } of this.visibleBuilt()) {
           const b = built.bbox;
@@ -2316,7 +2412,7 @@ class App {
           const touch = !(b[2] < x0 || b[0] > x1 || b[3] < y0 || b[1] > y1);
           if (crossing ? touch : inside) ids.push(a.id);
         }
-        if (this.pickAdd()) this.setSelection(windowSelection(this.sel, ids, { shift: d.add, pickadd: true }));
+        if (this.pickAdd()) this.setSelection(windowSelection(this.sel, ids, { shift: d.add || !!(this.selPrompt && this.selPrompt.remove), pickadd: true }));
         else this.selectMany(ids, d.add);
         return;
       }
@@ -2403,8 +2499,15 @@ class App {
     const v = this.view;
     this.hover = null;
     this.hoverKey2 = "";
-    if (!e.shiftKey && this.sel.size <= 1 && this.tryHandleDrag(sx, sy, false, e.pointerType === "touch")) return;
-    const edge = !e.shiftKey && this.edgeAt(sx, sy, e.pointerType === "touch");
+    const sp = this.selPrompt;
+    if (sp && sp.fence) {
+      // F (Fence): the clicks draw the line; Enter selects what it crosses
+      sp.fence.push(raw);
+      this.drawFence(raw);
+      return;
+    }
+    if (!sp && !e.shiftKey && this.sel.size <= 1 && this.tryHandleDrag(sx, sy, false, e.pointerType === "touch")) return;
+    const edge = !sp && !e.shiftKey && this.edgeAt(sx, sy, e.pointerType === "touch");
     if (edge) {
       if (!this.sel.has(edge.a.id)) this.select(edge.a.id);
       this.drag = { kind: "edge", id: edge.a.id, code: edge.code };
@@ -2416,7 +2519,7 @@ class App {
       const { a, built } = items[i];
       if (hit(built, a, raw, tol)) {
         if (this.pickAdd()) {
-          this.setSelection(clickSelection(this.sel, a.id, { shift: e.shiftKey, pickadd: true }));
+          this.setSelection(clickSelection(this.sel, a.id, { shift: e.shiftKey || !!(this.selPrompt && this.selPrompt.remove), pickadd: true }));
           if (e.shiftKey || this.selPrompt) return;
           this.drag = { kind: "move", ids: [...this.sel], last: raw, start: raw, sx, sy };
           return;
@@ -2563,6 +2666,21 @@ class App {
     this.view.overlay = { prims: this.lastMeasure };
     this.view.redraw();
     dlg.toast(`L = ${f(L)} mm · Δx ${f(Math.abs(dx))} · Δy ${f(Math.abs(dy))} · ${fmtNum(ang, ",", 2)}°${Math.abs(k - 1) > 1e-9 ? ` (scara ${this.scaleLabel()})` : ""}`, 8000);
+  }
+
+  /** DIST, option Multiple: a chain of distances and their total, until Enter / Esc. */
+  measureChain(p, q) {
+    const k = this.settings.scale || 1;
+    const st = this.cmdState;
+    st.total = (st.total || 0) + (Math.hypot(q[0] - p[0], q[1] - p[1]) / K) * k;
+    st.n = (st.n || 0) + 1;
+    st.prims = [...(st.prims || []), { t: "L", p: [...p, ...q], w: 0.6, c: "sel" }, { t: "C", p: [...q], r: 1.2, w: 0.6, c: "sel" }];
+    this.lastMeasure = st.prims;
+    this.clicks = [q];
+    this.lastPick = q;
+    this.view.overlay = { prims: st.prims };
+    this.view.redraw();
+    dlg.toast(`Total = ${fmtNum(st.total, ",", 3)} mm (${st.n} ${st.n === 1 ? "segment" : "segmente"})${Math.abs(k - 1) > 1e-9 ? ` · scara ${this.scaleLabel()}` : ""}`, 8000);
   }
 
   // ------------------------------------------------------------ dynamic input (DYN)
@@ -3114,7 +3232,7 @@ class App {
       }
       const autocad = this.keyCfg && this.keyCfg.mode === "autocad";
       // direct keys: during a command, an option letter of its prompt goes to the command line
-      if (!autocad && e.key.length === 1 && /[a-z]/i.test(e.key) && !this.mmenu && this.currentOptions().some((o) => o.key === e.key.toUpperCase())) {
+      if (!autocad && e.key.length === 1 && /[a-z]/i.test(e.key) && !this.mmenu && (this.currentOptions().some((o) => o.key === e.key.toUpperCase()) || (this.selPrompt && "WCFLPRA".includes(e.key.toUpperCase())))) {
         e.preventDefault();
         this.focusCmdLine(e.key);
         return;

@@ -170,7 +170,13 @@ export const TOOLS = [
     preview(pts, cur) { return this.make([pts[0], cur]); } },
   { id: "text", label: "Text", key: "T", group: "Cote", icon: "M5 6h14M12 6v13M9 19h6", kind: "clicks", n: 1,
     hint: "Click → text liber (se editează în panou)",
-    make: (pts) => ({ type: "text", p: pts[0], text: "Text", angle: 0, size: 1 }) },
+    make: (pts, app) => {
+      const st = (app && app.cmdState) || {};
+      const S = app && app.S ? app.S() : null;
+      // option H: height in paper mm → the size factor of the standard text height
+      const size = st.textH && S && S.h ? Math.min(5, Math.max(0.3, Math.round(((st.textH * K) / S.h) * 100) / 100)) : 1;
+      return { type: "text", p: pts[0], text: "Text", angle: Number.isFinite(st.textA) ? st.textA : 0, size };
+    } },
 
   { id: "rough", label: "Rugozitate", key: "Q", group: "Toleranțe", icon: "M3 13l3 5 8-14h7M6.5 13h5", kind: "clicks", n: 2,
     hint: "Punct pe suprafață → al doilea click în același loc = simbol direct, în altă parte = cu linie de indicație",
@@ -291,6 +297,7 @@ export const TOOLS = [
 const DIM_PROMPTS = ["Originea primei linii ajutătoare", "Originea celei de-a doua linii ajutătoare", "Poziția liniei de cotă"];
 const PROMPTS = {
   ucs: ["Originea (0,0)"],
+  text: ["Locul textului"],
   moveSel: ["Punctul de bază", "Al doilea punct (sau @dx,dy)"],
   copySel: ["Punctul de bază", "Unde pui copia (sau @dx,dy; Enter = gata)"],
   measure: ["Primul punct", "Al doilea punct"],
@@ -358,6 +365,21 @@ const OPTIONS = {
     }),
   }],
   ucs: [{ key: "W", label: "Colțul paginii", en: ["WORLD"], run: (app) => app.ucsWorld() }],
+  text: [
+    { key: "H", label: "Înălțime", en: ["HEIGHT"], run: (app) => app.askValue("Înălțimea textului (mm pe hârtie)", (v) => {
+      const h = parseNum(v);
+      if (!(h > 0)) return false;
+      app.cmdState.textH = h;
+      return true;
+    }) },
+    { key: "R", label: "Rotire", en: ["ROTATION", "ROTATE"], run: (app) => app.askValue("Unghiul textului (grade, în sens trigonometric)", (v) => {
+      const a = parseNum(v);
+      if (a == null) return false;
+      app.cmdState.textA = ((a % 360) + 360) % 360;
+      return true;
+    }) },
+  ],
+  measure: [{ key: "M", label: "Mai multe puncte", en: ["MULTIPLE"], when: (app) => !app.cmdState || !app.cmdState.multi, run: (app) => { app.cmdState.multi = true; } }],
 };
 
 /** The prompt of a tool in the current state: { text, opts } (opts only those available now). */

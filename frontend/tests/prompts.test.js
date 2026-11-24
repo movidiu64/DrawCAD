@@ -52,3 +52,16 @@ test("DOR X / Y force the axis whatever the row position", () => {
   assert.equal(a.axis, "y");
   assert.equal(a.row, below[0]);
 });
+
+test("TEXT Height / Rotation: the size factor from paper mm and the angle", () => {
+  const t = TOOL_BY_ID.text;
+  const plain = t.make([mm(10, 10)], app());
+  assert.equal(plain.size, 1);
+  assert.equal(plain.angle, 0);
+  // standard text height 3.5 mm (app() above): 7 mm = size 2
+  const big = t.make([mm(10, 10)], app({ cmdState: { textH: 7, textA: 30 } }));
+  assert.equal(big.size, 2);
+  assert.equal(big.angle, 30);
+  assert.deepEqual(promptFor(TOOL_BY_ID.measure, app()).opts.map((o) => o.key), ["M"]);
+  assert.deepEqual(promptFor(TOOL_BY_ID.measure, app({ cmdState: { multi: true } })).opts, [], "Multiple once");
+});
