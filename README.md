@@ -25,7 +25,10 @@ Open a PDF exported from CAD, or a scan or photo of a drawing, add dimensions, t
 - 📏 **Dimensions**: linear (also chain and baseline series), aligned, diameter, radius, angle, ordinate (from a base point) with a hole table (X, Y, Ø), chamfer, leaders and text, with AutoCAD-like object snaps (endpoint, midpoint, center, intersection, apparent intersection, extension, tracking, polar, perpendicular, tangent).
 - 🎯 **Tolerances**: ±, deviations, and ISO 286 fits with automatic limits (`Ø25k6 (+0.015/+0.002)`).
 - ⌖ **GD&T** (ISO 1101): all 14 characteristics, modifiers, datums. **Surface roughness** (ISO 1302 / 21920-1).
-- 🔺 **Revisions**: strike-through value, new value and revision triangle, plus an auto-filled revision table.
+- 🔺 **Revisions**: strike-through value, new value and revision triangle, an auto-filled revision table, revision clouds, and the revision number in the file name (`_rev2`) and the PDF metadata, raised automatically on the first change after an export.
+- 🔀 **Revision compare**: lay an older revision over the page: red = removed, green = added, step through the changes and save the comparison as a PDF.
+- 🖍️ **Review markup**: highlighter, comments exported as PDF notes, stamps (APPROVED, CHECKED…, with date and name) and a watermark.
+- 🗂️ **Title blocks, images and QR codes**: an ISO 7200 title block generator and your own templates (kept in the browser) with fields filled from the document, logos and pictures (also pasted with Ctrl+V), and a QR code with the drawing number and revision.
 - 🧾 **Drawing tools**: notes, parts list, section and detail views, balloons, lines, arcs, hatches, break lines, with ISO 128 line types.
 - 🧽 **Edit the original**: white-out or truly remove PDF objects, turn faint colored drawings black for printing, rotate, reorder and resize pages.
 - 🔎 **Search and OCR**: Ctrl+F finds any text; scans are recognized with Tesseract (English and Romanian included) and can be exported as searchable PDFs.
