@@ -11,7 +11,7 @@ import * as dlg from "./dialogs.js";
 import { VIEW_LETTERS } from "./symbols.js";
 import { markingConfig, MM_ICONS } from "./mmenu.js";
 import { keyConfig, directKeyMap, resolveCommand, suggest, commandList, labelOf, ACTIONS } from "./commands.js";
-import { applyPageOp } from "./pages.js";
+import { applyPageOp, rotateAbout, scaleAbout, mirrorAbout } from "./pages.js";
 import { startI18n, lang as uiLang, tr } from "./i18n.js";
 
 const esc = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -99,6 +99,12 @@ class App {
    */
   escape(confirm = false) {
     const t = TOOL_BY_ID[this.tool];
+    if (this.hotGrip) {
+      // Enter / right click goes to the next mode, as Space; Esc ends
+      if (confirm) this.cycleHotGrip();
+      else this.endHotGrip();
+      return;
+    }
     if (this.selPrompt) {
       if (this.selPrompt.fence && !confirm) {
         this.selPrompt.fence = null;
@@ -364,7 +370,7 @@ class App {
   // ------------------------------------------------------------ typed points (CMD-D1…D4)
   /** A command that asks for points is running (any drawing or annotation tool). */
   cmdActive() {
-    return !!(this.doc && this.tool !== "select" && this.tool !== "pan");
+    return !!(this.doc && (this.hotGrip || (this.tool !== "select" && this.tool !== "pan")));
   }
 
   /** Origin of typed coordinates on a page: its UCS annotation, or the bottom-left corner. */
@@ -377,6 +383,7 @@ class App {
 
   /** The point @ and a lone distance are measured from. */
   lastPoint() {
+    if (this.hotGrip) return this.hotGrip.base;
     if (this.pointMod && this.pointMod.kind === "from" && this.pointMod.base) return this.pointMod.base;
     if (this.rectStart) return this.rectStart;
     if (this.clicks.length) return this.clicks[this.clicks.length - 1];
@@ -458,6 +465,133 @@ class App {
     return false;
   }
 
+  // ------------------------------------------------------------ hot grips (CMD-D14)
+  /** A click on a grip (without dragging): the grip becomes hot, as in AutoCAD. */
+  startHotGrip(d) {
+    const a = this.annots.find((x) => x.id === d.id);
+    if (!a) return;
+    this.hotGrip = { id: d.id, k: d.k, base: [...d.p], ids: [...this.sel], mode: "stretch", copy: false, pickBase: false, ref: 10 * K };
+    this.logCmd("** GRIP **");
+    this.updateCmdPrompt();
+    this.view.redraw();
+  }
+
+  endHotGrip() {
+    this.hotGrip = null;
+    this.view.overlay = null;
+    this.dragTip = null;
+    this.updateCmdPrompt();
+    this.renderDyn(null, null);
+    this.view.redraw();
+  }
+
+  /** Space / Enter: the next grip mode. */
+  cycleHotGrip() {
+    const g = this.hotGrip;
+    const order = ["stretch", "move", "rotate", "scale", "mirror"];
+    g.mode = order[(order.indexOf(g.mode) + 1) % order.length];
+    if (g.mode === "scale") {
+      // the cursor's distance from the base when SCALE starts is factor 1
+      const c = this.lastPt || g.base;
+      g.ref = Math.max(10 * K, Math.hypot(c[0] - g.base[0], c[1] - g.base[1]));
+    }
+    this.logCmd(`  ** ${this.hotGripName()} **`);
+    this.updateCmdPrompt();
+    if (this._dynPt) this.previewHotGrip(this._dynPt, null);
+  }
+
+  hotGripName() {
+    return { stretch: "ÎNTINDE", move: "MUTĂ", rotate: "ROTEȘTE", scale: "SCALEAZĂ", mirror: "OGLINDEȘTE" }[this.hotGrip.mode];
+  }
+
+  hotGripPrompt() {
+    const g = this.hotGrip;
+    const what = g.pickBase ? "punctul de bază" : { stretch: "punctul nou", move: "unde se mută", rotate: "unghiul (sfert de tură) sau scrie gradele", scale: "factorul (cursorul sau scrie-l)", mirror: "a doua axă a oglinzii (orizontală sau verticală)" }[g.mode];
+    const opts = g.mode === "stretch" ? [] : [
+      { key: "B", label: "Punct de bază", en: ["BASE"], run: (app) => { app.hotGrip.pickBase = true; } },
+      { key: "C", label: g.copy ? "Copiere (pornită)" : "Copiere", en: ["COPY"], run: (app) => { app.hotGrip.copy = !app.hotGrip.copy; } },
+    ];
+    opts.push({ key: "X", label: "Ieși", en: ["EXIT"], run: (app) => app.endHotGrip() });
+    return { text: `** ${this.hotGripName()} ** ${what} · Space = modul următor`, opts };
+  }
+
+  /** The annotations as the grip mode would leave them, for the point pt (or a typed value). */
+  hotGripResult(pt, value = null) {
+    const g = this.hotGrip;
+    const ids = g.mode === "stretch" ? [g.id] : g.ids;
+    const src = ids.map((id) => this.annots.find((a) => a.id === id)).filter(Boolean);
+    const out = src.map((a) => JSON.parse(JSON.stringify(a)));
+    const b = g.base;
+    let info = "";
+    if (g.mode === "stretch") {
+      setHandle(out[0], g.k, pt, this.builtOf(src[0]));
+    } else if (g.mode === "move") {
+      for (const c of out) moveAnnot(c, pt[0] - b[0], pt[1] - b[1]);
+    } else if (g.mode === "rotate") {
+      const ang = value != null ? value : (Math.atan2(-(pt[1] - b[1]), pt[0] - b[0]) * 180) / Math.PI;
+      const q = ((Math.round(ang / 90) % 4) + 4) % 4; // quarter turns, counter-clockwise
+      const cw = (360 - q * 90) % 360;
+      for (const c of out) rotateAbout(c, cw, b, this.S(), this.measure);
+      info = `${q * 90}°`;
+    } else if (g.mode === "scale") {
+      const k = value != null ? value : Math.hypot(pt[0] - b[0], pt[1] - b[1]) / g.ref;
+      const kk = Math.max(0.05, Math.min(20, Math.round(k * 100) / 100));
+      for (const c of out) scaleAbout(c, kk, b);
+      info = `× ${fmtNum(kk, ",", 2)}`;
+    } else if (g.mode === "mirror") {
+      const axis = Math.abs(pt[0] - b[0]) >= Math.abs(pt[1] - b[1]) ? "h" : "v";
+      for (const c of out) mirrorAbout(c, axis, b);
+      info = axis === "h" ? "axă orizontală" : "axă verticală";
+    }
+    return { out, info };
+  }
+
+  previewHotGrip(pt, sn) {
+    const g = this.hotGrip;
+    if (g.pickBase) {
+      this.view.overlay = { snap: sn };
+      this.view.redraw();
+      return;
+    }
+    const { out, info } = this.hotGripResult(pt);
+    const S = this.S();
+    const prims = out.flatMap((c) => build({ ...c, layer: "add" }, S, this.measure).prims);
+    prims.push({ t: "L", p: [...g.base, ...pt], w: 0.6, c: "preview", dash: true });
+    this.view.overlay = { prims, snap: sn };
+    this.dragTip = sn ? null : { p: pt, txt: `${this.hotGripName()}${info ? ` · ${info}` : ""}${g.copy ? " · copie" : ""}` };
+    this.view.redraw();
+  }
+
+  /** A click (or a typed point / value) with a hot grip. */
+  applyHotGrip(pt, value = null) {
+    const g = this.hotGrip;
+    if (g.pickBase && pt) {
+      g.base = pt;
+      g.pickBase = false;
+      this.updateCmdPrompt();
+      return;
+    }
+    if (!pt && value == null) return;
+    const { out } = this.hotGripResult(pt || g.base, value);
+    if (!out.length) {
+      this.endHotGrip();
+      return;
+    }
+    this.pushHistory();
+    if (g.copy && g.mode !== "stretch") {
+      for (const c of out) c.id = newId();
+      this.annots.push(...out);
+    } else {
+      const byId = new Map(out.map((c) => [c.id, c]));
+      this.annots = this.annots.map((a) => byId.get(a.id) || a);
+    }
+    this.frame++;
+    this.changed();
+    // with Copy the grip stays hot for more copies; otherwise it is done
+    if (!(g.copy && g.mode !== "stretch")) this.endHotGrip();
+    else if (this._dynPt) this.previewHotGrip(this._dynPt, null);
+  }
+
   /** DCO / DBA, option S: the next click picks the linear dimension to continue. */
   pickSeriesDim() {
     this.pointMod = { kind: "pickDim" };
@@ -465,6 +599,23 @@ class App {
 
   /** A point typed in the command line: false if it is not a point (then it may be a command). */
   typedPoint(text) {
+    const g = this.hotGrip;
+    if (g && (g.mode === "rotate" || g.mode === "scale") && /^[-+]?(\d+([.,]\d*)?|[.,]\d+)$/.test(String(text).trim())) {
+      // ROTATE: the angle (degrees, counter-clockwise); SCALE: the factor
+      const v = parseFloat(String(text).trim().replace(",", "."));
+      this.logCmd(`  ${String(text).trim()}`);
+      if (g.mode === "rotate" && Math.abs(v / 90 - Math.round(v / 90)) > 1e-9) {
+        // the annotations turn only in quarter turns (texts and symbols stay readable)
+        this.logCmd("  Doar multipli de 90°");
+        return true;
+      }
+      if (g.mode === "scale" && !(v > 0)) {
+        this.logCmd("  Factorul trebuie să fie pozitiv");
+        return true;
+      }
+      this.applyHotGrip(null, v);
+      return true;
+    }
     const q = parsePoint(text);
     if (!q) return false;
     const r = resolvePoint(q, { last: this.lastPoint(), cursor: this._dynPt || null, origin: this.originOf(), scale: this.settings.scale });
@@ -479,6 +630,10 @@ class App {
 
   /** A typed point, used as a click of the running tool. */
   pointInput(p) {
+    if (this.hotGrip) {
+      this.applyHotGrip(p);
+      return;
+    }
     const t = TOOL_BY_ID[this.tool];
     if (!t || !this.cmdActive()) return;
     if (this.dyn) this.dynReset();
@@ -554,6 +709,7 @@ class App {
 
   /** Prompt text and options of the running command (command line and cursor). */
   currentPrompt() {
+    if (this.hotGrip) return this.hotGripPrompt();
     const pr = promptFor(TOOL_BY_ID[this.tool], this);
     const pm = this.pointMod;
     if (pm && pm.kind === "from") pr.text = pm.base ? "FROM — deplasarea față de bază (@dx,dy sau @d<unghi)" : "FROM — punctul de bază";
@@ -568,7 +724,7 @@ class App {
 
   /** The options of the running command, available now. */
   currentOptions() {
-    return this.cmdActive() && !this.cmdAsk ? promptFor(TOOL_BY_ID[this.tool], this).opts : [];
+    return this.cmdActive() && !this.cmdAsk ? this.currentPrompt().opts : [];
   }
 
   /** Runs an option of the running command (typed or clicked). */
@@ -898,6 +1054,7 @@ class App {
     this.chain = null;
     this.selPrompt = null;
     this.pointMod = null;
+    this.hotGrip = null;
     this.snapOverride = null;
     this.snapPick = null;
     if (this.dyn) this.dynReset();
@@ -2252,6 +2409,11 @@ class App {
       }
       if (e.button !== 0) return;
       const t = TOOL_BY_ID[this.tool];
+      if (this.hotGrip) {
+        const { pt } = this.snapPoint(raw, e, this.hotGrip.base);
+        this.applyHotGrip(pt);
+        return;
+      }
       if (t.kind === "select") {
         this.startSelectDrag(raw, sx, sy, e);
         return;
@@ -2344,6 +2506,9 @@ class App {
         return;
       }
       if (d && d.kind === "handle") {
+        // a click without moving makes the grip hot (see pointerup); small jitter is not a drag
+        if (!d.moved && Math.hypot(sx - d.sx, sy - d.sy) < 4) return;
+        d.moved = true;
         const { pt, sn } = this.snapPoint(raw, e, d.anchor);
         this.trackHover(sn, raw);
         if (!d.pushed) {
@@ -2402,6 +2567,15 @@ class App {
       const t = TOOL_BY_ID[this.tool];
       if (this.selPrompt && this.selPrompt.fence && this.selPrompt.fence.length) {
         this.drawFence(raw);
+        return;
+      }
+      if (this.hotGrip && !d) {
+        const { pt, sn } = this.snapPoint(raw, e, this.hotGrip.base);
+        this.trackHover(sn, raw);
+        this._dynPt = pt;
+        this.previewHotGrip(pt, sn);
+        this.showCoords(pt, this.hotGrip.base);
+        this.renderDyn(pt, null);
         return;
       }
       if (t.kind === "select" || t.kind === "pan") {
@@ -2484,6 +2658,10 @@ class App {
           this.panel.render();
           this.changed();
         }
+        return;
+      }
+      if (d.kind === "handle" && !d.moved && d.k !== "tx") {
+        this.startHotGrip(d);
         return;
       }
       if (d.kind === "handle" || d.kind === "move" || d.kind === "scale") {
@@ -2713,7 +2891,7 @@ class App {
       return true;
     }
     if (onlyScale) return false;
-    this.drag = { kind: "handle", id: sel.id, k: h.k, label: this.handleLabel(sel, h.k), anchor: h.k === "p2" ? sel.p1 : h.k === "p1" ? sel.p2 : h.k === "elbow" ? sel.target : null };
+    this.drag = { kind: "handle", id: sel.id, k: h.k, p: h.p, sx, sy, label: this.handleLabel(sel, h.k), anchor: h.k === "p2" ? sel.p1 : h.k === "p1" ? sel.p2 : h.k === "elbow" ? sel.target : null };
     return true;
   }
 
@@ -3097,7 +3275,8 @@ class App {
           inp.blur();
           if (e.key === "Tab") return;
           // during a command: finish it (polyline, series) or stop; otherwise repeat the last one
-          if (this.cmdActive() && (this.clicks.length || this.rectStart)) this.escape(true);
+          if (this.hotGrip) this.cycleHotGrip();
+          else if (this.cmdActive() && (this.clicks.length || this.rectStart)) this.escape(true);
           else this.repeatCmd();
           return;
         }
@@ -3360,6 +3539,12 @@ class App {
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (this.hotGrip && (e.key === " " || e.key === "Enter") && !this.dynMenu) {
+        // as in AutoCAD: Space (or Enter) on a hot grip goes Stretch → Move → Rotate → Scale → Mirror
+        e.preventDefault();
+        this.cycleHotGrip();
+        return;
+      }
       // ↓ at the cursor: the options of the prompt (dynamic prompt), ↑ / ↓ move, Enter picks
       if (this.dynMenu && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === "Escape")) {
         e.preventDefault();

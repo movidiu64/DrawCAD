@@ -50,6 +50,9 @@ Two keyboard modes (Settings → Keys and commands): **direct keys** (one key = 
   AutoCAD's point syntax (`pointin.js`: comma separates X and Y). Keep the two rules apart.
 - In the command line, during a command, the order is: asked value → option → snap override
   (END, MID…) → typed point → command.
+- Hot grips (`app.hotGrip`, `startHotGrip` … `applyHotGrip` in `main.js`): while one is hot, `cmdActive()`
+  is true and Space / Enter / an empty command-line Enter cycle the mode instead of repeating the last
+  command; transforms about a base point live in `pages.js` (`rotateAbout`, `scaleAbout`, `mirrorAbout`).
 - Design and decisions: `docs/design/commands-v2.md` (CMD-D1…D16).
 
 ## Check it

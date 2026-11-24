@@ -463,6 +463,29 @@ def main(url, out):
         page.keyboard.press("Escape")
         assert page.evaluate(lastln) == [[30, 80], [35, 80]], page.evaluate(lastln)
         page.keyboard.press("Escape")
+        # 26. hot grips: click on a grip, Space → MOVE, a typed point; Enter twice → ROTATE, 90
+        page.keyboard.press("v")
+        page.evaluate(f"() => {{ const v = window.cotare.view; v.zoom = 2.2; v.panX = 0; v.panY = -({uy(80)} - 40)*72/25.4*2.2; v.afterZoom(); }}")
+        page.wait_for_timeout(300)
+        lnid = "window.cotare.annots.filter(a => a.type === 'shape' && a.kind === 'line').slice(-1)[0].id"
+        page.evaluate(f"window.cotare.select({lnid})")
+        click(35, uy(80))
+        assert page.evaluate("window.cotare.hotGrip && window.cotare.hotGrip.mode") == "stretch"
+        page.keyboard.press(" ")
+        assert page.evaluate("window.cotare.hotGrip.mode") == "move"
+        page.click("#cmdIn")
+        typed("@0,-10")
+        assert page.evaluate("window.cotare.hotGrip") is None
+        assert page.evaluate(lastln) == [[30, 70], [35, 70]], page.evaluate(lastln)
+        page.evaluate(f"window.cotare.select({lnid})")
+        click(35, uy(70))
+        page.click("#cmdIn")
+        typed("", "")  # STRETCH → MOVE → ROTATE
+        assert page.evaluate("window.cotare.hotGrip.mode") == "rotate"
+        typed("90")
+        assert page.evaluate(lastln) == [[35, 65], [35, 70]], page.evaluate(lastln)
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
         page.keyboard.press("f")
         page.wait_for_timeout(300)
 

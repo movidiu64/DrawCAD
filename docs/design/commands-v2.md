@@ -33,13 +33,17 @@ Re-measured on branch `v1.1` after phases 1–5, the same way and with the same 
 | Tracking, polar, ortho | 10 % | 60 % | 78 % | Shift toggles ortho; additional and relative polar angles, polar step |
 | Dynamic input | 10 % | 35 % | 62 % | `@ # <` from anywhere, absolute points through the command line, the prompt and its options menu next to the cursor |
 | Command line | 15 % | 40 % | 77 % | prompts, options by letter or click (DCO / DBA Select, TEXT H / R, DIST M too), typed points, transparent commands, F2 |
-| Grips and editing | 10 % | 30 % | 45 % | MOVE and COPY with base point and displacement |
+| Grips and editing | 10 % | 30 % | 65 % | MOVE and COPY with base point and displacement; hot grips (Space: Stretch / Move / Rotate / Scale / Mirror, Base point, Copy, typed points and values) |
 | Selection | 10 % | 40 % | 78 % | Select objects prompt (W, C, F, WP, CP, ALL, L, P, R, A), AutoCAD selection option |
 | Keys and aliases | 10 % | 55 % | 75 % | acad.pgp import, F2, E = ERASE |
 | **Total (estimate)** | 100 % | ≈ 42 % | **≈ 76 %** | |
 
-Still missing, in the order they matter: hot-grip modes (Space: Stretch / Move / Rotate / Scale / Mirror)
-and grips on several objects; lasso (press-drag is the rectangle here, by design) and selection cycling;
+The total is the weighted sum of the rows (0.15 × 78 + 0.20 × 84 + 0.10 × 78 + 0.10 × 62 + 0.15 × 77 +
+0.10 × 65 + 0.10 × 78 + 0.10 × 75 = 75.85). The previous revision gave ≈ 76 % with grips at 45 %, which
+sums to 73.85: it was overstated by about two points.
+
+Still missing, in the order they matter: several hot grips at once (Shift) and grips on several
+selected annotations; multifunctional grip menus; lasso (press-drag is the rectangle here, by design) and selection cycling;
 `TK` tracking points; tracking paths along polar angles.
 
 ## How this was measured
@@ -313,7 +317,7 @@ Ovidiu's confirmation (behaviour in his AutoCAD, or a product choice) before it 
 | CMD-D11 | Transparent commands with `'` | done (v1.1) | 4 |
 | CMD-D12 | `E` without a selection asks "Select objects:"; PICKADD option | done (v1.1) | 5 |
 | CMD-D13 | MOVE / COPY with base point and typed displacement | done (v1.1) | 5 |
-| CMD-D14 | Hot-grip modes, grips on several objects, grip input | planned | 6 |
+| CMD-D14 | Hot-grip modes, grip input; grips on several objects still planned | done (v1.1), partly | 6 |
 | CMD-D15 | F2 history window with prompts and messages | done (v1.1) | 2 |
 | CMD-D16 | Additional and relative polar angles, PolarSnap | done (v1.1) | 6 |
 
@@ -463,10 +467,23 @@ Ovidiu's confirmation (behaviour in his AutoCAD, or a product choice) before it 
 - **Node tests:** `@10,0` moves every selected annotation by 10 real mm; a hole table moves only its
   table (existing rule).
 
-### CMD-D14 — Grips (planned)
+### CMD-D14 — Grips (done on `v1.1`, except grips on several objects)
 
-- Space on a hot grip cycles Stretch / Move / Rotate / Scale / Mirror (Rotate and Mirror only where
-  an annotation can turn); typed L / ∠ while dragging a grip; grips on several selected annotations.
+- A click on a grip without dragging makes it hot (dragging still stretches, as before). Space,
+  Enter, right click or an empty Enter in the command line cycle Stretch → Move → Rotate → Scale →
+  Mirror; options B (base point), C (copy: each click leaves a copy, the grip stays hot), X (exit);
+  Esc cancels. Points can be typed (`@dx,dy`, `@L<∠`, absolute, FROM …), relative to the base.
+- Move, Rotate, Scale and Mirror apply to the whole selection; Stretch to the grip's annotation.
+- **Rotate** turns in quarter turns only (the cursor's angle rounded to 90°, or typed degrees that
+  must be a multiple of 90): annotations keep texts and symbols readable, as the page rotation does
+  (`rotateAbout` in `pages.js` reuses `rotateAnnot`).
+- **Scale:** the cursor's distance from the base when Scale starts is factor 1, or the factor is
+  typed; points scale about the base, text and symbols with them (`scaleAbout`).
+- **Mirror:** about a horizontal or vertical axis through the base, picked from the cursor's
+  direction; texts stay readable, hatch angles flip (`mirrorAbout`).
+- Not done: several hot grips with Shift, grips on several selected annotations, grip menus.
+- **Tests:** `frontend/tests/pages.test.js` (translate, rotate, scale, mirror about a base);
+  `tools/e2e_smoke.py` step 26 (Space → Move with `@0,-10`; Enter twice → Rotate 90).
 
 ### CMD-D15 — F2 history window (planned)
 
@@ -514,6 +531,7 @@ After phases 1–5 the same weights give about **≈ 65 %** (estimate).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-24 | minor | Hot grips (CMD-D14, partly) on `v1.1`; grips 45 → 65 %; total corrected to the weighted sum, ≈ 76 % (estimate) |
 | 2026-11-24 | minor | Polar extras, WP / CP, .X / .Y, snap on scans on `v1.1`; ≈ 76 % (estimate) |
 | 2026-11-24 | minor | Select objects keywords, TEXT H / R, DIST M, prompt next to the cursor on `v1.1`; ≈ 71 % (estimate) |
 | 2026-11-24 | minor | FROM, M2P, DCO / DBA Select, Geometric center and Insertion added on `v1.1`; ≈ 67 % (estimate) |

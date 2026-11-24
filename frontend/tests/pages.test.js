@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { rotatePoint, rotateAnnot, applyPageOp } from "../js/pages.js";
+import { rotatePoint, rotateAnnot, applyPageOp, translateAnnot, rotateAbout, scaleAbout, mirrorAbout } from "../js/pages.js";
 import { build, derive } from "../js/annots.js";
 
 const S = derive({});
@@ -81,4 +81,33 @@ test("diameter on a circle: arrow on the outline towards the center, horizontal 
   assert.ok(sh && sh.p[0] === 170 && sh.p[2] > 170);
   // the text sits above the shoulder
   assert.ok(t[0].p[1] < 140);
+});
+
+// ---- grip modes (CMD-D14): transforms about a base point
+test("translateAnnot moves every point", () => {
+  const a = translateAnnot({ type: "dim", p1: [0, 0], p2: [10, 0], pos: [5, -5] }, 3, 4);
+  assert.deepEqual([a.p1, a.p2, a.pos], [[3, 4], [13, 4], [8, -1]]);
+});
+
+test("rotateAbout turns clockwise on the page around the base", () => {
+  // 90 on the page (y down) is clockwise: (10,0) around (0,0) goes to (0,10)
+  const a = rotateAbout({ type: "dim", p1: [0, 0], p2: [10, 0], pos: [5, -5] }, 90, [0, 0]);
+  assert.deepEqual(a.p1, [0, 0]);
+  assert.deepEqual(a.p2, [0, 10]);
+  const b = rotateAbout({ type: "dim", p1: [10, 10], p2: [20, 10], pos: [15, 5] }, 180, [10, 10]);
+  assert.deepEqual([b.p1, b.p2], [[10, 10], [0, 10]]);
+});
+
+test("scaleAbout keeps the base fixed", () => {
+  const a = scaleAbout({ type: "dim", p1: [10, 10], p2: [20, 10], pos: [15, 0] }, 2, [10, 10]);
+  assert.deepEqual([a.p1, a.p2, a.pos], [[10, 10], [30, 10], [20, -10]]);
+});
+
+test("mirrorAbout flips across a horizontal or vertical axis", () => {
+  const h = mirrorAbout({ type: "dim", p1: [0, 0], p2: [10, 0], pos: [5, -5] }, "h", [0, 0]);
+  assert.deepEqual(h.pos, [5, 5]);
+  const v = mirrorAbout({ type: "dim", p1: [0, 0], p2: [10, 0], pos: [5, -5] }, "v", [0, 0]);
+  assert.deepEqual([v.p2, v.pos], [[-10, 0], [-5, -5]]);
+  const hatch = mirrorAbout({ type: "shape", kind: "hatch", pts: [[0, 0], [1, 0], [1, 1]], angle: 45 }, "v", [0, 0]);
+  assert.equal(hatch.angle, 135);
 });

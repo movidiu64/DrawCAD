@@ -1,6 +1,6 @@
 // Page operations (rotate, delete, move): annotations are transformed with the page so they
 // stay on the drawing. Coordinates are visual (points, y down); rotation is clockwise, like /Rotate.
-import { build, moveAnnot } from "./annots.js";
+import { build, moveAnnot, SCALABLE, SCALE_MIN, SCALE_MAX } from "./annots.js";
 
 const POINT_KEYS = ["p1", "p2", "p3", "c", "p", "v", "target", "pos", "vp", "tp", "elbow", "base"];
 // annotations that always stay horizontal (tables): moved whole, not rotated point by point
@@ -72,6 +72,62 @@ export function rotateAnnot(a, deg, W, H, S = null, measure = null) {
   if (quarter && (a.orient === "h" || a.orient === "v")) a.orient = a.orient === "h" ? "v" : "h";
   else if (quarter && a.type === "dim" && a.kind !== "ali" && !a.orient) a.orient = "v";
   if (quarter && a.type === "rough" && !a.pos) a.rot = a.rot ? 0 : 90;
+  return a;
+}
+
+// ------------------------------------------------------------------ grip edits (CMD-D14)
+// MOVE / ROTATE / SCALE / MIRROR from a hot grip, about a base point. Unlike moveAnnot (which,
+// for a hole table, moves only the table), these move every point of the annotation.
+
+/** Every point of the annotation moved by (dx, dy). */
+export function translateAnnot(a, dx, dy) {
+  const T = (p) => (Array.isArray(p) && p.length >= 2 ? [p[0] + dx, p[1] + dy] : p);
+  for (const k of POINT_KEYS) if (a[k]) a[k] = T(a[k]);
+  if (Array.isArray(a.pts)) a.pts = a.pts.map(T);
+  if (Array.isArray(a.r) && a.r.length === 4) a.r = [a.r[0] + dx, a.r[1] + dy, a.r[2] + dx, a.r[3] + dy];
+  if (a.type === "ord" && typeof a.row === "number") a.row += a.axis === "y" ? dx : dy;
+  return a;
+}
+
+/** Rotation about the base point by a quarter turn multiple (deg clockwise on screen: 90, 180, 270);
+ *  annotations keep their horizontal / vertical texts and tables stay upright. */
+export function rotateAbout(a, deg, base, S = null, measure = null) {
+  deg = normDeg(deg);
+  if (!deg) return a;
+  // rotate about the page origin (tables and hole tables keep upright, as on page rotation),
+  // then everything moves so that the base point is back where it was
+  rotateAnnot(a, deg, 0, 0, S, measure);
+  const b2 = rotatePoint(base, deg, 0, 0);
+  translateAnnot(a, base[0] - b2[0], base[1] - b2[1]);
+  return a;
+}
+
+/** Scale about the base point: positions by k, text and symbol sizes too (within the limits). */
+export function scaleAbout(a, k, base) {
+  if (!(k > 0) || Math.abs(k - 1) < 1e-9) return a;
+  scaleAnnot(a, k);
+  translateAnnot(a, base[0] * (1 - k), base[1] * (1 - k));
+  if (SCALABLE.has(a.type)) a.scale = Math.min(SCALE_MAX, Math.max(SCALE_MIN, Math.round((a.scale || 1) * k * 1000) / 1000));
+  return a;
+}
+
+/** Mirror about the vertical (axis "v": x = base x) or horizontal (axis "h") line through the base.
+ *  Texts stay readable (as AutoCAD with MIRRTEXT = 0): only positions are mirrored. */
+export function mirrorAbout(a, axis, base) {
+  const M = (p) => (Array.isArray(p) && p.length >= 2 ? (axis === "v" ? [2 * base[0] - p[0], p[1]] : [p[0], 2 * base[1] - p[1]]) : p);
+  for (const k of POINT_KEYS) if (a[k]) a[k] = M(a[k]);
+  if (Array.isArray(a.pts)) a.pts = a.pts.map(M);
+  if (Array.isArray(a.r) && a.r.length === 4) {
+    const p = M([a.r[0], a.r[1]]);
+    const q = M([a.r[2], a.r[3]]);
+    a.r = [Math.min(p[0], q[0]), Math.min(p[1], q[1]), Math.max(p[0], q[0]), Math.max(p[1], q[1])];
+  }
+  if (a.type === "ord" && typeof a.row === "number") {
+    // the row is y = row (values on X) or x = row (values on Y)
+    if (axis === "v" && a.axis === "y") a.row = 2 * base[0] - a.row;
+    if (axis === "h" && a.axis !== "y") a.row = 2 * base[1] - a.row;
+  }
+  if (a.type === "shape" && a.kind === "hatch") a.angle = ((180 - (a.angle ?? 45)) % 180 + 180) % 180;
   return a;
 }
 
