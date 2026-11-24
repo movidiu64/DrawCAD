@@ -42,6 +42,9 @@
   --layer-add: #4c8dff;
   --layer-rev: #ff6b6b;
   --layer-del: #a3acb7;
+  --accent-tint: rgba(242, 169, 59, 0.14);
+  --accent-line: #c9842a;
+  --chip-bg: rgba(17, 20, 24, 0.82);
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
 }
@@ -53,6 +56,8 @@ button { cursor: pointer; }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .muted { color: var(--muted); }
 .mono { font-family: var(--mono); }
+/* numbers line up and don't jitter while the cursor moves (tabular figures) */
+.num, .kv, #stCoords, #stScale, .zoom span, .annlist .v, .layer, .dynbox, .ordvals { font-variant-numeric: tabular-nums; }
 [hidden] { display: none !important; }
 
 #app { height: 100%; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
@@ -103,7 +108,7 @@ button.danger { height: 34px; padding: 0 12px; border: 1px solid var(--bad-line)
 .tools .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
 .tool { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; height: 50px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text2); font-size: 12px; font-weight: 500; padding: 2px; }
 .tool:hover { background: var(--raised); color: var(--text); }
-.tool.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.tool.on { background: var(--accent-tint); color: var(--accent); border-color: transparent; box-shadow: inset 2px 0 0 var(--accent); }
 .tool svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .tool .key { font-size: 10px; opacity: 0.7; }
 
@@ -170,10 +175,10 @@ textarea { width: 100%; min-height: 120px; padding: 8px 9px; border: 1px solid v
 .pills { display: flex; flex-wrap: wrap; gap: 6px; }
 .pills button { height: 32px; min-width: 40px; padding: 0 10px; border: 1px solid var(--line2); border-radius: 16px; background: transparent; font-size: 14px; }
 .pills.sym button { font-family: "osifont", var(--sans); font-size: 17px; min-width: 34px; padding: 0 6px; }
-.pills button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.pills button.on { background: var(--accent-tint); color: var(--accent); border-color: var(--accent); }
 .symgrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .symgrid button { aspect-ratio: 1; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); display: grid; place-items: center; padding: 0; }
-.symgrid button.on { background: var(--accent); border-color: var(--accent); }
+.symgrid button.on { background: var(--accent-tint); border-color: var(--accent); }
 .symgrid canvas { width: 22px; height: 22px; }
 .btns { display: flex; flex-wrap: wrap; gap: 8px; }
 .btns button.ghost { height: 34px; font-size: 13px; }
@@ -188,9 +193,18 @@ textarea { width: 100%; min-height: 120px; padding: 8px 9px; border: 1px solid v
 .keys b { color: var(--text2); font-weight: 500; font-family: var(--mono); }
 
 /* ---------- status bar */
-.status { display: flex; align-items: center; gap: 18px; min-height: 30px; padding: 3px 14px; background: var(--panel); border-top: 1px solid var(--line); font-size: 12px; color: var(--text2); flex-wrap: wrap; }
+.status { display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 0 10px; background: var(--panel); border-top: 1px solid var(--line); font-size: 12px; color: var(--text2); flex-wrap: nowrap; white-space: nowrap; min-width: 0; }
+#stCoords { flex: 0 0 auto; min-width: 150px; font-family: var(--sans); font-size: 11px; color: var(--text2); }
+#stScale { flex: 0 0 auto; font-size: 11px; }
+/* Snap, Tracking, Polar, Ortho as toggle chips; the checkbox stays for the code and for keyboard users */
+.status .chk { height: 24px; padding: 0 8px; border-radius: 4px; gap: 0; font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); position: relative; }
+.status .chk:hover { background: var(--raised); color: var(--text2); }
+.status .chk:has(input:checked) { background: var(--accent-tint); color: var(--accent); }
+.status .chk input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
+.status .chk:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+.status .toggles { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
 .snapctl { position: relative; display: flex; align-items: center; gap: 2px; }
-.polarctl { display: flex; align-items: center; gap: 6px; }
+.polarctl { display: flex; align-items: center; gap: 2px; }
 .status .mini { height: 22px; border: 1px solid var(--line2); border-radius: 4px; background: var(--raised); color: var(--text2); font-size: 12px; padding: 0 4px; }
 .status button.mini { width: 22px; display: grid; place-items: center; padding: 0; }
 .status button.mini svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -217,7 +231,7 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
 .coverctl button.ghost { height: 34px; }
 .coverctl svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; vertical-align: -3px; }
 .top svg.sm { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.status .hint { flex: 1; color: var(--text); min-width: 200px; }
+.status .hint { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
 .chk { display: flex; align-items: center; gap: 5px; cursor: pointer; }
 .chk input { accent-color: var(--accent); }
 
@@ -240,7 +254,7 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
 .objlist .st { margin-left: auto; font-size: 12px; }
 .prevbox { background: var(--paper); border-radius: 8px; min-height: 160px; display: grid; place-items: center; overflow: hidden; }
 .prevbox img { max-width: 100%; display: block; }
-.toast { position: fixed; left: 50%; bottom: 46px; transform: translateX(-50%); background: var(--deep); border: 1px solid var(--line2); color: var(--text); padding: 10px 16px; border-radius: 8px; font-size: 13px; z-index: 20; max-width: 90vw; }
+.toast { position: fixed; left: 50%; top: 104px; transform: translateX(-50%); pointer-events: none; background: var(--deep); border: 1px solid var(--line2); color: var(--text); padding: 10px 16px; border-radius: 8px; font-size: 13px; z-index: 20; max-width: 90vw; }
 
 /* ---------- smaller screens: the panel becomes a drawer over the drawing */
 @media (max-width: 1100px) {
@@ -300,8 +314,7 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
 .mm-item.mm-r { transform: translate(-12px, -50%); }
 .mm-item.mm-l { transform: translate(calc(-100% + 12px), -50%); flex-direction: row-reverse; }
 .mm-item svg { width: 17px; height: 17px; fill: none; stroke: var(--accent); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.mm-item:hover, .mm-item.hi { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-.mm-item:hover svg, .mm-item.hi svg { stroke: var(--accent-ink); }
+.mm-item:hover, .mm-item.hi { background: var(--accent-bg); color: var(--text); border-color: var(--accent); }
 
 /* text and OCR */
 .tlist { max-height: 320px; margin: 6px 0 10px; border: 1px solid var(--line); border-radius: 8px; padding: 3px; }
@@ -315,9 +328,10 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
 .seg button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* the command line (as in AutoCAD) */
-.cmdline { position: relative; display: flex; align-items: center; gap: 4px; }
+.cmdline { position: relative; display: flex; align-items: center; gap: 6px; flex: 1 0 320px; min-width: 0; height: 24px; padding: 0 0 0 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+.cmdline:focus-within { border-color: var(--accent); }
 .cmdline > span { color: var(--accent); font-weight: 700; }
-.cmdprompt { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); white-space: nowrap; }
+.cmdprompt { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); white-space: nowrap; min-width: 0; overflow: hidden; flex: 0 1 auto; }
 .cmdprompt b { font-weight: 500; }
 .cmdprompt .cmdopts { display: inline-flex; gap: 3px; }
 .cmdprompt button { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border: 1px solid var(--line2); border-radius: 4px; background: var(--raised); color: var(--text2); font-size: 11.5px; }
@@ -325,9 +339,9 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
 .cmdprompt button i { font-style: normal; font-family: var(--mono); color: var(--accent); }
 .histlog { max-height: 60vh; overflow: auto; margin: 0; padding: 8px 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--text2); white-space: pre-wrap; }
 .histlog .tm { color: var(--muted); }
-.status .cmdline input { height: 22px; width: 230px; padding: 0 6px; border: 1px solid var(--line2); border-radius: 4px; background: var(--bg); color: var(--text); font-size: 12px; text-transform: uppercase; }
+.status .cmdline input { height: 22px; flex: 1 1 120px; min-width: 80px; width: auto; padding: 0 6px; border: 0; border-radius: 4px; background: transparent; color: var(--text); font-size: 12px; text-transform: uppercase; }
 .status .cmdline input::placeholder { text-transform: none; color: var(--muted); }
-.status .cmdline input:focus { outline: none; border-color: var(--accent); }
+.status .cmdline input:focus { outline: none; }
 .cmdsug { position: absolute; left: 14px; bottom: calc(100% + 6px); min-width: 300px; background: var(--panel); border: 1px solid var(--line2); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.45); z-index: 60; }
 .cmdsug .cs { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 5px; cursor: pointer; font-size: 12.5px; color: var(--text); }
 .cmdsug .cs b { min-width: 64px; color: var(--accent); }
@@ -391,3 +405,8 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
 .ordvals { display: flex; flex-wrap: wrap; gap: 4px; }
 .ordvals input.ordv { width: 64px; text-align: center; padding: 4px; }
 .ordvals input.ordv.ov { border-color: var(--accent); }
+
+/* motion follows the system setting */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}

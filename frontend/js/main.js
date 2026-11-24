@@ -1196,6 +1196,7 @@ class App {
 
   setHint(txt) {
     $("stHint").textContent = txt || "";
+    $("stHint").title = txt || ""; // the status bar never wraps: the whole hint is in the tooltip
     const vh = $("vpHint");
     if (vh) vh.textContent = this.doc && this.tool !== "select" && this.tool !== "pan" ? txt || "" : "";
   }

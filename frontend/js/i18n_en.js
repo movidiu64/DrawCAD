@@ -805,7 +805,6 @@ export const EN = {
   "Prefix": "Prefix",
   "Material": "Material",
   "Rev.": "Rev.",
-  "Ortho (Shift)": "Ortho (Shift)",
   "Polar {}°": "Polar {}°",
   "Original PDF": "Original PDF",
   "PDF · PNG · JPG · TIFF": "PDF · PNG · JPG · TIFF",
