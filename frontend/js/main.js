@@ -2,7 +2,7 @@
 import * as api from "./api.js";
 import { build, derive, hit, holeTable, setHandle, moveAnnot, annotSnapPoints, exportPrims, K, fmtNum, newId, scaleAnchor, typeName, SCALE_MIN, SCALE_MAX } from "./annots.js";
 import { View, COLORS } from "./view.js";
-import { Snapper, MODES, DEFAULT_MODES, LABELS } from "./osnap.js";
+import { Snapper, MODES, DEFAULT_MODES, parseOverride, overrideModes, LABELS } from "./osnap.js";
 import { Panel } from "./panel.js";
 import { TOOLS, TOOL_BY_ID, finalize, promptFor, resolveOption } from "./tools.js";
 import { parsePoint, resolvePoint, toUser, defaultOrigin, orthoActive, routeKey } from "./pointin.js";
@@ -45,7 +45,11 @@ class App {
     this.noSnapper = new Snapper();
     this.snapCfg = { modes: [...DEFAULT_MODES], polar: true, polarInc: 15, tracking: true, ortho: false, on: true };
     try {
-      Object.assign(this.snapCfg, JSON.parse(localStorage.getItem("cotare.snap") || "{}"));
+      const saved = JSON.parse(localStorage.getItem("cotare.snap") || "{}");
+      Object.assign(this.snapCfg, saved);
+      // Node (annotation points) became a switchable mode in v1.1; they always snapped before
+      if (Array.isArray(saved.modes) && !(saved.v >= 2) && !saved.modes.includes("node")) this.snapCfg.modes.push("node");
+      this.snapCfg.v = 2;
     } catch (_) { /* default */ }
     this.acq = [];
     this.parDir = null;
@@ -94,6 +98,11 @@ class App {
    */
   escape(confirm = false) {
     const t = TOOL_BY_ID[this.tool];
+    if (this.snapOverride) {
+      this.snapOverride = null;
+      this.updateCmdPrompt();
+      return;
+    }
     if (this.cmdAsk) {
       // a value asked for by an option: dropped, the command goes on
       this.cmdAsk = null;
@@ -250,6 +259,8 @@ class App {
   toolClick(pt) {
     const t = TOOL_BY_ID[this.tool];
     this.lastPick = pt; // AutoCAD's LASTPOINT: what @ refers to
+    this.snapOverride = null; // a typed override (END, MID…) is for one pick
+    this.snapPick = null;
     if (this.dyn) this.dynReset();
     if (t.kind === "poly" && this.placing) {
       // ordinates: the last click places the row (and decides the axis)
@@ -311,6 +322,7 @@ class App {
 
   /** A rectangle of a drag tool (strike, cover, remove, blacken), dragged or typed. */
   commitRect(r) {
+    this.snapOverride = null;
     if (Math.abs(r[2] - r[0]) < 2 || Math.abs(r[3] - r[1]) < 2) return;
     this.lastPick = [r[2], r[3]];
     const t = TOOL_BY_ID[this.tool];
@@ -368,6 +380,7 @@ class App {
       if (!this.rectStart) {
         this.rectStart = p;
         this.lastPick = p;
+        this.snapOverride = null;
         this.view.overlay = { prims: [{ t: "C", p: [...p], r: 1.2, w: 0.6, c: "sel" }] };
         this.view.redraw();
         this.setHint(`${t.hint} · colțul opus: @lățime,înălțime sau click`);
@@ -404,6 +417,7 @@ class App {
     }
     inp.placeholder = "x,y · @dx,dy · @d<unghi · opțiune";
     const pr = promptFor(TOOL_BY_ID[this.tool], this);
+    if (this.snapOverride) pr.text += this.snapOverride === "none" ? " · fără snap" : ` · snap: ${LABELS[this.snapOverride === "node" ? "a" : this.snapOverride]}`;
     if (!box) return;
     const opts = pr.opts.map((o) => `<button type="button" data-opt="${o.key}" title="${esc(o.label)} (${o.key})">${esc(o.label)} <i>${o.key}</i></button>`).join("");
     box.innerHTML = `<b>${esc(pr.text)}</b>${opts ? ` <span class="cmdopts">${opts}</span>` : ""}`;
@@ -741,6 +755,8 @@ class App {
     this.cmdState = {};
     this.cmdAsk = null;
     this.chain = null;
+    this.snapOverride = null;
+    this.snapPick = null;
     if (this.dyn) this.dynReset();
     if ($("dynBox")) $("dynBox").hidden = true;
     this.lastMeasure = null;
@@ -1562,10 +1578,17 @@ class App {
     const v = this.view;
     const cfg = this.snapCfg;
     const ortho = orthoActive(cfg.ortho, e.shiftKey);
+    // a candidate chosen with Tab stays while the cursor stays
+    if (this.snapPick) {
+      if (Math.hypot(raw[0] - this.snapPick.raw[0], raw[1] - this.snapPick.raw[1]) * v.zoom < 3) return { pt: this.snapPick.p, sn: this.snapPick.sn };
+      this.snapPick = null;
+    }
     let pt = raw;
     let sn = null;
     if (!e.altKey) {
-      const on = cfg.on;
+      // a typed override (END, MID… NON) works for one pick, even with snap off
+      const ov = this.snapOverride;
+      const on = cfg.on || !!ov;
       const extra = { pts: [], segs: [], arcs: [] };
       if (on) {
         for (const { a, built } of this.visibleBuilt()) {
@@ -1582,7 +1605,7 @@ class App {
       const sp = on && !this.hidden.has("orig") ? this.snapper : this.noSnapper;
       sn = sp.snap(raw, {
         tol: 10 / v.zoom,
-        modes: on ? new Set(cfg.modes) : new Set(),
+        modes: ov ? overrideModes(ov) : on ? new Set(cfg.modes) : new Set(),
         anchor,
         extra,
         acq: on ? this.acq : [],
@@ -1615,6 +1638,39 @@ class App {
       s += `: ${fmtNum(L, ",", 2)} < ${fmtNum(ang, ",", 1)}°`;
     }
     return s;
+  }
+
+  /** Tab: the next snap candidate under the cursor (Shift+Tab: the previous one). */
+  cycleSnap(back = false) {
+    const raw = this.lastPt;
+    if (!raw || !this.cmdActive() || this.placing) return false;
+    const cfg = this.snapCfg;
+    const ov = this.snapOverride;
+    if (!cfg.on && !ov) return false;
+    const anchor = this.lastPoint();
+    const sp = this.hidden.has("orig") ? this.noSnapper : this.snapper;
+    const list = sp.candidates(raw, {
+      tol: 10 / this.view.zoom,
+      modes: ov ? overrideModes(ov) : new Set(cfg.modes),
+      anchor: this.clicks.length || this.rectStart ? anchor : null,
+      extra: this._extra || {},
+      acq: this.acq,
+      parDir: this.parDir,
+      polarInc: 0,
+      tracking: false,
+    });
+    if (list.length < 2) return false;
+    const key = `${raw[0].toFixed(2)},${raw[1].toFixed(2)}`;
+    if (!this.snapCyc || this.snapCyc.key !== key || this.snapCyc.n !== list.length) this.snapCyc = { key, i: 0, n: list.length };
+    this.snapCyc.i = (this.snapCyc.i + (back ? list.length - 1 : 1)) % list.length;
+    const c = { ...list[this.snapCyc.i] };
+    c.label = `${this.snapLabel(c, anchor)} (${this.snapCyc.i + 1}/${list.length}, Tab)`;
+    this.snapPick = { raw: [...raw], p: c.p, sn: c };
+    this._dynPt = c.p;
+    this._dynSn = c;
+    this.updateOverlay(this.clicks.length ? this.dynPoint(c.p, anchor) : c.p, c);
+    this.showCoords(c.p, this.clicks.length ? anchor : null);
+    return true;
   }
 
   /**
@@ -2360,6 +2416,7 @@ class App {
       this.dynRefresh();
       return true;
     }
+    if (k === "Tab" && !has && this.cycleSnap(e.shiftKey)) return true;
     if (k === "Tab") {
       // Tab switches between length and angle; the typed value stays locked
       d.active = (d.active || this.defaultDynField()) === "len" ? "ang" : "len";
@@ -2500,7 +2557,7 @@ class App {
     const show = () => {
       hIdx = -1;
       // a point being typed: no command suggestions
-      list = this.cmdAsk || (this.cmdActive() && (/^[\s@#<0-9.+\-]/.test(inp.value) || resolveOption(this.currentOptions(), inp.value))) ? [] : suggest(inp.value, this.keyCfg);
+      list = this.cmdAsk || (this.cmdActive() && (/^[\s@#<0-9.+\-]/.test(inp.value) || resolveOption(this.currentOptions(), inp.value) || parseOverride(inp.value))) ? [] : suggest(inp.value, this.keyCfg);
       pick = 0;
       if (!list.length) {
         box.hidden = true;
@@ -2573,6 +2630,17 @@ class App {
           inp.value = "";
           box.hidden = true;
           if (!this.cmdAsk) inp.blur();
+          return;
+        }
+        const ov = this.cmdActive() && e.key !== "Tab" ? parseOverride(v) : null;
+        if (ov) {
+          // END, MID, CEN… for the next pick only (NON: none)
+          this.snapOverride = ov;
+          this.logCmd(`  ${v.toUpperCase()}`);
+          inp.value = "";
+          box.hidden = true;
+          inp.blur();
+          this.updateCmdPrompt();
           return;
         }
         if (this.cmdActive() && e.key !== "Tab" && this.typedPoint(v)) {
@@ -2793,6 +2861,10 @@ class App {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       // during a command, digits go to the length next to the cursor (dynamic input)
       if (this.dyn && this.dynKey(e)) {
+        e.preventDefault();
+        return;
+      }
+      if (e.key === "Tab" && this.cycleSnap(e.shiftKey)) {
         e.preventDefault();
         return;
       }

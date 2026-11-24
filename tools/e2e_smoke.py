@@ -335,6 +335,19 @@ def main(url, out):
         assert "@0,30" in hist and "[C]" in hist and "Diametrul" in hist, hist
         page.screenshot(path=str(out / "istoric_f2.png"))
         page.keyboard.press("F2")
+        # 19. typed snap override: CEN, then a click on the edge of the Ø10 hole takes its center
+        page.evaluate("() => { const v = window.cotare.view; v.zoom = 2.2; v.panX = -125*72/25.4*2.2; v.panY = -80*72/25.4*2.2; v.afterZoom(); }")
+        page.wait_for_timeout(300)
+        page.keyboard.press("i")
+        # direct keys mode: letters are tools, so the override goes through the command line
+        page.click("#cmdIn")
+        typed("cen")
+        click(149.6, 169.5)
+        typed("@10,0")
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
+        cen = page.evaluate("window.cotare.annots.filter(a => a.type === 'shape' && a.kind === 'line').slice(-1)[0].pts[0].map(v => Math.round(v / (72/25.4) * 100) / 100)")
+        assert cen == [145, 167.5], cen
         page.keyboard.press("Escape")
         page.keyboard.press("f")
         page.wait_for_timeout(300)
@@ -346,7 +359,7 @@ def main(url, out):
         page.screenshot(path=str(out / "editor.png"))
 
         kinds = page.evaluate("window.cotare.annots.map(a => a.type)")
-        assert len(kinds) == 30, kinds
+        assert len(kinds) == 31, kinds
 
         # export
         page.click("#btnExport")
@@ -390,15 +403,15 @@ def main(url, out):
         # reopen: dimensions come back editable
         prev_id = page.evaluate("window.cotare.doc.id")
         page.set_input_files("#fileInput", str(path))
-        # wait for the new document (loading takes time), not the old one which already had 30 annotations
-        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 30")
+        # wait for the new document (loading takes time), not the old one which already had 31 annotations
+        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 31")
         # closing without changes: straight to the start page
         page.click("#btnClose")
         page.wait_for_function("window.cotare.doc === null && !document.getElementById('emptyState').hidden")
         page.wait_for_function("document.querySelectorAll('#recentList [data-doc]').length >= 1", timeout=5000)
         # reopen from Recent, one change, then close with the prompt
         page.click("#recentList [data-doc]")
-        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 30")
+        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 31")
         page.wait_for_timeout(300)
         page.keyboard.press("t")
         click(100, 30)

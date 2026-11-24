@@ -963,4 +963,8 @@ export const EN = {
   "x,y · @dx,dy · @d<unghi · opțiune": "x,y · @dx,dy · @d<angle · option",
   "Valoare nepotrivită: {}": "Unsuitable value: {}",
   "Anulează pasul": "Undo step",
+  "Nod (puncte de adnotări)": "Node (annotation points)",
+  "· fără snap": "· no snap",
+  "· snap: {}": "· snap: {}",
+  " · fără snap": " · no snap",
 };

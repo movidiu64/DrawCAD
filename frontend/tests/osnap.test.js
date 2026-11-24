@@ -112,3 +112,44 @@ test("long segments (the sheet border) take part in intersections", () => {
   const r = s.snap([2501, 1], { tol: 3, modes: ALL });
   assert.equal(r.kind, "x");
 });
+
+test("typed overrides: AutoCAD names, three letters or whole, with _ or ' prefixes", async () => {
+  const { parseOverride, overrideModes } = await import("../js/osnap.js");
+  assert.equal(parseOverride("mid"), "m");
+  assert.equal(parseOverride("_ENDPOINT"), "e");
+  assert.equal(parseOverride("'int"), "x");
+  assert.equal(parseOverride("non"), "none");
+  assert.equal(parseOverride("app"), "ax");
+  assert.equal(parseOverride("L"), null, "a command alias is not an override");
+  assert.equal(overrideModes("none").size, 0);
+  // with only Midpoint, an endpoint under the cursor is not taken
+  const s = new Snapper({ pts: [[0, 0, "e"], [50, 0, "m"], [100, 0, "e"]], segs: [[0, 0, 100, 0]] });
+  const atEnd = s.snap([2, 1], { tol: 60, modes: overrideModes("m") });
+  assert.equal(atEnd.kind, "m");
+  assert.equal(s.snap([2, 1], { tol: 3, modes: overrideModes("none") }), null);
+});
+
+test("Node: annotation points snap only with the Node mode", () => {
+  const s = new Snapper({});
+  const extra = { pts: [[10, 10]], segs: [], arcs: [] }; // annotation handle (kind "a")
+  assert.equal(s.snap([11, 10], { tol: 3, modes: new Set(["node"]), extra }).kind, "a");
+  assert.equal(s.snap([11, 10], { tol: 3, modes: new Set(["e", "m"]), extra }), null);
+});
+
+test("candidates for Tab: every snap under the cursor once, best first", () => {
+  const s = new Snapper({ pts: [[0, 0, "e"], [4, 0, "m"]], segs: [[0, 0, 8, 0], [0, -5, 0, 5]] });
+  const list = s.candidates([1, 0.5], { tol: 6, modes: ALL });
+  assert.ok(list.length >= 2, JSON.stringify(list));
+  assert.equal(list[0].kind, s.snap([1, 0.5], { tol: 6, modes: ALL }).kind, "the first is what snap() picks");
+  const keys = list.map((c) => c.p.join(","));
+  assert.equal(new Set(keys).size, keys.length, "one entry per point");
+});
+
+test("CEN override: the center of a hole from its edge", () => {
+  const s = new Snapper({ arcs: [[50, 50, 10, 0, TAU]] });
+  assert.equal(s.snap([60.5, 50.5], { tol: 2, modes: new Set(["c"]) }).kind, "c");
+  assert.ok(near(s.snap([60.5, 50.5], { tol: 2, modes: new Set(["c"]) }).p, [50, 50]));
+  // running modes: the edge is not the center (nearest / quadrant keep working there)
+  const r = s.snap([59.5, 53], { tol: 2, modes: ALL });
+  assert.ok(!r || r.kind !== "c", JSON.stringify(r));
+});

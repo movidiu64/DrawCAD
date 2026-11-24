@@ -15,8 +15,28 @@ export const MODES = [
   { id: "t", name: "Tangent" },
   { id: "par", name: "Paralel" },
   { id: "n", name: "Pe obiect" },
+  { id: "node", name: "Nod (puncte de adnotări)" },
 ];
-export const DEFAULT_MODES = ["e", "m", "c", "q", "x", "ax", "ext", "p", "t", "par", "n"];
+export const DEFAULT_MODES = ["e", "m", "c", "q", "x", "ax", "ext", "p", "t", "par", "n", "node"];
+
+// typed snap overrides at a point prompt (AutoCAD's names, three letters or whole)
+const OVERRIDES = {
+  END: "e", ENDPOINT: "e", MID: "m", MIDPOINT: "m", CEN: "c", CENTER: "c", CENTRE: "c",
+  QUA: "q", QUADRANT: "q", INT: "x", INTERSECTION: "x", APP: "ax", APPINT: "ax", APPARENT: "ax",
+  EXT: "ext", EXTENSION: "ext", PER: "p", PERPENDICULAR: "p", TAN: "t", TANGENT: "t",
+  NEA: "n", NEAREST: "n", PAR: "par", PARALLEL: "par", NOD: "node", NODE: "node", NON: "none", NONE: "none",
+};
+
+/** A typed snap override: the mode id ("none" for NON) or null. `_` and `'` prefixes allowed. */
+export function parseOverride(text) {
+  const q = String(text || "").trim().toUpperCase().replace(/^[_']+/, "");
+  return OVERRIDES[q] || null;
+}
+
+/** The snap modes for one pick with an override (none → an empty set). */
+export function overrideModes(id) {
+  return id === "none" ? new Set() : new Set([id]);
+}
 
 export const LABELS = {
   e: "Capăt",
@@ -184,6 +204,19 @@ export class Snapper {
     return { segs, arcs };
   }
 
+  /**
+   * Every snap candidate under the cursor (for Tab cycling), best first, one per point: the same
+   * options as snap().
+   */
+  candidates(cur, o) {
+    const collect = [];
+    this.snap(cur, { ...o, collect });
+    collect.sort((a, b) => a.score - b.score);
+    const out = [];
+    for (const c of collect) if (!out.some((q) => Math.hypot(q.p[0] - c.p[0], q.p[1] - c.p[1]) < 1e-6)) out.push(c);
+    return out;
+  }
+
   /** Extension directions of the lines ending at p (for extension snap). */
   dirsAt(p, extra = {}) {
     const eps = 0.05;
@@ -232,6 +265,7 @@ export class Snapper {
     let bestScore = Infinity;
     const take = (p, kind, d, prio, more = {}) => {
       const score = d + prio * tol * 0.15;
+      if (o.collect) o.collect.push({ p, kind, ...more, score });
       if (score < bestScore) {
         bestScore = score;
         best = { p, kind, ...more };
@@ -243,7 +277,8 @@ export class Snapper {
     for (const q of extra.pts || []) if (Math.abs(q[0] - x) <= tol && Math.abs(q[1] - y) <= tol) pts.add(q);
     for (const q of pts) {
       const k = q[2] || "a";
-      if (k !== "a" && !M.has(k)) continue;
+      // annotation points (kind "a") are the Node mode
+      if (!M.has(k === "a" ? "node" : k)) continue;
       const d = Math.hypot(q[0] - x, q[1] - y);
       if (d <= tol) take([q[0], q[1]], k, d, PRIO[k] ?? 2);
     }
@@ -261,6 +296,11 @@ export class Snapper {
       for (const [p, k] of cand) {
         const d = dist(p, cur);
         if (d <= tol) take(p, k, d, PRIO[k]);
+      }
+      // a typed CEN alone (override): the center also from the circle's edge, as in AutoCAD
+      if (M.size === 1 && M.has("c")) {
+        const e = Math.abs(dist(c, cur) - a[2]);
+        if (e <= tol && (full || inArc(a, Math.atan2(cur[1] - c[1], cur[0] - c[0])))) take(c, "c", e, PRIO.c);
       }
     }
 
