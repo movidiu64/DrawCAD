@@ -1083,4 +1083,10 @@ export const EN = {
   "Bara de unelte · pentru toate documentele": "Tool rail · for all documents",
   "Etichete sub iconițe": "Labels under the icons",
   "O familie ascunsă rămâne la îndemână din linia de comandă și cu tastele ei.": "A hidden family stays at hand from the command line and its keys.",
+  "Cote în lanț de aici": "Chain from here",
+  "Față de bază de aici": "Baseline from here",
+  "Legenda culorilor": "Colour legend",
+  "Original": "Original",
+  "Zoom la selecție": "Zoom to selection",
+  "{} adnotări selectate": "{} annotations selected",
 };

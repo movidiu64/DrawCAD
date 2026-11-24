@@ -125,10 +125,27 @@ button.danger { height: 34px; padding: 0 12px; border: 1px solid var(--bad-line)
 .frow.on { background: var(--accent-tint); color: var(--accent); }
 
 .center { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--canvas); }
-.pagetabs { display: flex; gap: 4px; align-items: center; min-height: 38px; padding: 0 10px; background: var(--panel2); border-bottom: 1px solid var(--line); overflow-x: auto; }
-.pagetabs button { height: 30px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: var(--text2); font-size: 13px; white-space: nowrap; }
-.pagetabs button.on { background: var(--line2); color: var(--on); }
-.pagetabs .legend { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+/* context bar (UI-D2): the active tool and its options, or the selection and its actions; pages on the right */
+.ctxbar { display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 0 8px 0 12px; background: var(--panel); border-bottom: 1px solid var(--line); min-width: 0; }
+.ctxtool { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 10px; overflow: hidden; white-space: nowrap; font-size: 13px; }
+.ctxtool svg.ti { width: 18px; height: 18px; flex: none; fill: none; stroke: var(--accent); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.ctxtool b { font-weight: 600; flex: none; }
+.ctxtool .ch { flex: 0 1 auto; min-width: 40px; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--muted); }
+.ctxtool .vs { width: 1px; height: 20px; background: var(--line); flex: none; }
+.ctxtool .ca { flex: none; height: 26px; padding: 0 10px; border: 1px solid var(--line2); border-radius: 6px; background: transparent; color: var(--text); font-size: 12px; }
+.ctxtool .ca:hover { background: var(--raised); }
+.ctxtool .ca i { font-style: normal; font-family: var(--mono); font-size: 11px; color: var(--accent); margin-left: 6px; }
+.ctxtool .ca.dng { color: var(--bad); border-color: var(--bad-line); }
+.ctxpages { flex: 0 1 auto; display: flex; align-items: center; gap: 2px; min-width: 0; max-width: 50%; overflow-x: auto; }
+.ctxpages > button { height: 26px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--text2); font-size: 12px; white-space: nowrap; flex: none; }
+.ctxpages > button:hover { background: var(--raised); }
+.ctxpages > button.on { background: var(--line2); color: var(--on); }
+.legendchip { position: absolute; left: 14px; bottom: 12px; z-index: 2; display: flex; gap: 14px; padding: 5px 10px; border-radius: 6px; background: var(--chip-bg); font-size: 11px; color: var(--text2); pointer-events: none; }
+.legendchip span { display: flex; align-items: center; gap: 6px; }
+.legendchip i { width: 8px; height: 8px; border-radius: 2px; }
+.legendchip .lo { background: var(--layer-orig); }
+.legendchip .la { background: var(--layer-add); }
+.legendchip .lr { background: var(--layer-rev); }
 .viewport { flex: 1; position: relative; overflow: hidden; touch-action: none; }
 .viewport canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .viewport.drag { outline: 3px dashed var(--accent); outline-offset: -8px; }
@@ -244,7 +261,7 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
 .coverctl button.ghost { height: 34px; }
 .coverctl svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; vertical-align: -3px; }
 .top svg.sm { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.status .hint { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.status .hint { display: none; flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
 .chk { display: flex; align-items: center; gap: 5px; cursor: pointer; }
 .chk input { accent-color: var(--accent); }
 
@@ -277,7 +294,6 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
   .panel-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px 0 14px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
   .panel-toggle { display: grid; }
   #app.panel-open .panel-toggle { background: var(--raised); color: var(--accent); }
-  .pagetabs .legend { display: none; }
 }
 
 /* icon-only tools */
@@ -311,7 +327,8 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
   .snapmenu { position: fixed; left: 8px; right: 8px; bottom: 40px; width: auto; }
   .dialog { padding: 14px; gap: 12px; max-height: calc(100vh - 16px); }
   .modal { padding: 8px; }
-  .pagetabs { min-height: 32px; }
+  .ctxbar { min-height: 36px; gap: 8px; }
+  .ctxtool .ch, .ctxtool .ca, .ctxtool .vs, .legendchip { display: none; }
 }
 
 /* radial menu (right button held / long press) */

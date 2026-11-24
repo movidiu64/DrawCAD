@@ -77,6 +77,15 @@ class App {
     };
     this.view = new View($("canvas"), this);
     this.panel = new Panel($("panel"), this);
+    {
+      // every change of selection re-renders the panel: the context bar follows it (UI-D2, UI-D10)
+      const render = this.panel.render.bind(this.panel);
+      this.panel.render = (...args) => {
+        const r = render(...args);
+        this.renderCtx();
+        return r;
+      };
+    }
     this.cursor = null;
     this.drag = null;
     this.space = false;
@@ -490,30 +499,34 @@ class App {
         this.updateCmdPrompt();
         return true;
       }
-      const d = hitDim.a;
-      const orient = d.orient === "v" ? "v" : "h";
-      this.cmdState.orient = orient;
-      if (this.tool === "dimCont") {
-        // as DIMCONTINUE: from the second extension line, on the same dimension line
-        this.clicks = [[...d.p2]];
-        this.cmdState.seriesAt = [...d.p3];
-      } else {
-        // as DIMBASELINE: from the first extension line, one step further out
-        const S = this.S();
-        const step = Math.max(7 * K, S.h * 2.4);
-        const ax = orient === "h" ? 1 : 0;
-        const dir = Math.sign(d.p3[ax] - (d.p1[ax] + d.p2[ax]) / 2) || 1;
-        const at = [...d.p3];
-        at[ax] += dir * step;
-        this.clicks = [[...d.p1]];
-        this.cmdState.seriesAt = at;
-      }
-      this.lastPick = this.clicks[0];
-      this.updateCmdPrompt();
-      if (this._dynPt) this.updateOverlay(this._dynPt, null);
+      this.seriesFrom(hitDim.a);
       return true;
     }
     return false;
+  }
+
+  /** DCO / DBA from a linear dimension: the chain (or the baseline) goes on from it. */
+  seriesFrom(d) {
+    const orient = d.orient === "v" ? "v" : "h";
+    this.cmdState.orient = orient;
+    if (this.tool === "dimCont") {
+      // as DIMCONTINUE: from the second extension line, on the same dimension line
+      this.clicks = [[...d.p2]];
+      this.cmdState.seriesAt = [...d.p3];
+    } else {
+      // as DIMBASELINE: from the first extension line, one step further out
+      const S = this.S();
+      const step = Math.max(7 * K, S.h * 2.4);
+      const ax = orient === "h" ? 1 : 0;
+      const dir = Math.sign(d.p3[ax] - (d.p1[ax] + d.p2[ax]) / 2) || 1;
+      const at = [...d.p3];
+      at[ax] += dir * step;
+      this.clicks = [[...d.p1]];
+      this.cmdState.seriesAt = at;
+    }
+    this.lastPick = this.clicks[0];
+    this.updateCmdPrompt();
+    if (this._dynPt) this.updateOverlay(this._dynPt, null);
   }
 
   // ------------------------------------------------------------ grip menu (CMD-D14)
@@ -832,6 +845,7 @@ class App {
 
   /** The prompt of the running command, with its options as buttons (CMD-D5). */
   updateCmdPrompt() {
+    this.renderCtx();
     const inp = $("cmdIn");
     const box = $("cmdPrompt");
     if (!inp || !this.keyCfg) return;
@@ -1219,6 +1233,8 @@ class App {
   hideFlyout() {
     const fly = $("railFly");
     if (!fly || fly.hidden) return;
+    // keys go back to the drawing (a focused row would keep them)
+    if (fly.contains(document.activeElement)) document.activeElement.blur();
     fly.hidden = true;
     $("tools").querySelectorAll("[aria-expanded]").forEach((b) => b.setAttribute("aria-expanded", "false"));
   }
@@ -1342,6 +1358,12 @@ class App {
   }
 
   setHint(txt) {
+    this.hintText = txt || "";
+    const ch = $("ctxHint");
+    if (ch) {
+      ch.textContent = txt || "";
+      ch.title = txt || "";
+    }
     $("stHint").textContent = txt || "";
     $("stHint").title = txt || ""; // the status bar never wraps: the whole hint is in the tooltip
     const vh = $("vpHint");
@@ -1540,7 +1562,8 @@ class App {
       <button class="mini" data-pgop="rl" title="Rotește pagina la stânga (ROTL)" aria-label="Rotește pagina la stânga">${ico("M4 4v6h6M4.6 15a8 8 0 1 0 1.9-8.3L4 10")}</button>
       <button class="mini" data-pgop="rr" title="Rotește pagina la dreapta (ROTR)" aria-label="Rotește pagina la dreapta">${ico("M20 4v6h-6M19.4 15a8 8 0 1 1-1.9-8.3L20 10")}</button>
       <button class="mini" data-pgop="dlg" title="Pagini: rotire, ordine, ștergere (PAGES)" aria-label="Pagini">${ico("M5 3h9l5 5v13H5zM14 3v5h5")}</button></span>`;
-    $("pageTabs").innerHTML = `${tabs}${ops}<span class="legend">Original: negru · Adăugat: albastru · Revizie: roșu</span>`;
+    $("pageTabs").innerHTML = `${tabs}${ops}`;
+    $("legend").hidden = false;
     $("pageTabs").querySelectorAll("[data-pg]").forEach((b) => b.addEventListener("click", () => this.setPage(Number(b.dataset.pg))));
     $("pageTabs").querySelectorAll("[data-pgop]").forEach((b) => b.addEventListener("click", () => {
       const k = b.dataset.pgop;
@@ -1647,6 +1670,8 @@ class App {
     this.view.overlay = null;
     this.view.clear();
     $("pageTabs").innerHTML = "";
+    $("legend").hidden = true;
+    this.renderCtx();
     $("docName").textContent = "Niciun document";
     $("docMeta").textContent = "";
     document.title = "DrawCAD — editor PDF pentru desene tehnice";
@@ -3191,6 +3216,52 @@ class App {
     }
     // empty area: selection rectangle
     this.drag = { kind: "marquee", start: raw, add: e.shiftKey };
+  }
+
+  // ------------------------------------------------------------ context bar (UI-D2, UI-D10)
+  /**
+   * The strip above the drawing: the active tool with its hint and the options of its prompt, or, with a
+   * selection, what is selected and the actions that fit it. Its place never changes, only its content.
+   */
+  renderCtx() {
+    const box = $("ctxTool");
+    if (!box) return;
+    if (!this.doc) {
+      box.innerHTML = "";
+      return;
+    }
+    const ico = (d, cls = "ti") => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
+    const sel = this.tool === "select" && !this.cmdActive() ? this.selectedAll().filter((a) => a.page === this.page) : [];
+    let html;
+    if (sel.length) {
+      const one = sel.length === 1 ? sel[0] : null;
+      const acts = [];
+      if (one && one.type === "dim" && one.kind === "lin") acts.push(["dco", "Cote în lanț de aici", "DCO"], ["dba", "Față de bază de aici", "DBA"]);
+      acts.push(["move", "Mută", "M"], ["copy", "Copiază", "CO"], ["zoom", "Zoom la selecție", ""], ["del", "Șterge", "E"]);
+      html = `${ico(TOOL_BY_ID.select.icon)}<b>${one ? esc(tr(typeName(one))) : `${sel.length} adnotări selectate`}</b><span class="vs"></span>${acts.map(([k, l, al]) => `<button class="ca${k === "del" ? " dng" : ""}" data-ctx="${k}">${l}${al ? `<i>${al}</i>` : ""}</button>`).join("")}`;
+    } else {
+      const t = TOOL_BY_ID[this.tool];
+      if (!t) return;
+      const opts = this.cmdActive() && !this.cmdAsk ? this.currentOptions() : [];
+      html = `${ico(t.icon)}<b>${esc(tr(t.label))}</b><span class="ch" id="ctxHint" title="${esc(this.hintText || "")}">${esc(this.hintText || "")}</span>${opts.length ? `<span class="vs"></span>${opts.map((o) => `<button class="ca" data-ctxopt="${esc(o.key)}">${esc(tr(o.label))}<i>${esc(o.key)}</i></button>`).join("")}` : ""}`;
+    }
+    if (box._html === html) return;
+    box._html = html;
+    box.innerHTML = html;
+    box.querySelectorAll("[data-ctx]").forEach((b) => b.addEventListener("click", () => this.ctxAction(b.dataset.ctx)));
+    box.querySelectorAll("[data-ctxopt]").forEach((b) => b.addEventListener("click", () => this.runOption(b.dataset.ctxopt)));
+  }
+
+  ctxAction(k) {
+    const one = this.selected();
+    if (k === "move" || k === "copy") this.moveCmd(k === "move" ? "moveSel" : "copySel");
+    else if (k === "zoom") this.zoomSelection();
+    else if (k === "del") this.deleteSelected();
+    else if ((k === "dco" || k === "dba") && one && one.type === "dim") {
+      const d = one;
+      this.setTool(k === "dco" ? "dimCont" : "dimBase");
+      this.seriesFrom(d);
+    }
   }
 
   /** At most this many selected annotations show grips. */

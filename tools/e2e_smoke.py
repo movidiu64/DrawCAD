@@ -593,6 +593,13 @@ def main(url, out):
         page.click("#cmdIn")
         typed("E")
         page.keyboard.press("Escape")
+        # 32. context bar (UI-D10): a linear dimension selected offers "Chain from here", which starts DCO from it
+        page.keyboard.press("v")
+        page.evaluate("window.cotare.select(window.cotare.annots.find(a => a.type === 'dim' && a.kind === 'lin').id)")
+        page.click('#ctxTool [data-ctx="dco"]')
+        assert page.evaluate("[window.cotare.tool, window.cotare.clicks.length]") == ["dimCont", 1], page.evaluate("[window.cotare.tool, window.cotare.clicks.length]")
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
         page.keyboard.press("f")
         page.wait_for_timeout(300)
 
