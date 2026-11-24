@@ -8,7 +8,7 @@ straightening a skewed scan and aligning nearly horizontal / vertical lines.
 
 The result is a starting point, not a clean CAD drawing: dashed lines come out as short segments,
 hatches as lines, arrows as small triangles. Runs in a separate, limited process
-(python -m app.vectorize image.png output.json scale [masks.json]).
+(python -m app.vectorize image.png output.json scale [masks.json [nodeskew]]).
 """
 from __future__ import annotations
 
@@ -705,7 +705,8 @@ def main(argv):
         if len(argv) > 4:
             with open(argv[4], encoding="utf-8") as f:
                 masks = [m for m in json.load(f) if isinstance(m, list) and len(m) == 4]
-        res = vectorize(gray, scale, masks)
+        # "nodeskew": keep the image as shown (snap on a scan), no straightening
+        res = vectorize(gray, scale, masks, deskew=not (len(argv) > 5 and argv[5] == "nodeskew"))
         with open(out, "w", encoding="utf-8") as f:
             json.dump(res, f)
         _emit(out, {"ok": True, "polys": len(res["polys"]), "circles": len(res["circles"])})

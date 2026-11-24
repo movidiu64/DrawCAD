@@ -435,6 +435,34 @@ class ApiTest(unittest.TestCase):
         # the chamfer corner (170, 180) stays within 0.4 mm, after straightening the scan
         self.assertTrue(any(abs(x / MM - 170) < 0.4 and abs(y / MM - 180) < 0.4 for x, y in plate["pts"]))
 
+    def test_snap_on_scan(self):
+        """A scanned page gets snap geometry from its vectorization (not straightened)."""
+        from app import scansnap
+
+        png = pdfcore.render_png(self.sample.read_bytes(), 0, 200 / 72)
+        meta = self.req("POST", "/api/open", png, {"X-Filename": "scan.png"})
+        self.assertEqual(meta["pages"][0]["paths"], 0)
+        # the image page has the size of the PNG at 72 DPI: drawing mm → page points × (200 / 72) / (200 / 72)
+        snap = self.req("GET", f"/api/doc/{meta['id']}/page/0/snapscan")
+        k = meta["pages"][0]["w"] / (297 * MM)  # page points per drawing point
+        arcs = [[a[0] / k / MM, a[1] / k / MM, a[2] / k / MM] for a in snap["arcs"]]
+        self.assertTrue(any(abs(x - 240) < 0.4 and abs(y - 95) < 0.4 and abs(r - 20) < 0.3 for x, y, r in arcs), "the Ø40 circle")
+        self.assertTrue(any(p[2] == "c" and abs(p[0] / k / MM - 240) < 0.4 and abs(p[1] / k / MM - 95) < 0.4 for p in snap["pts"]))
+        # the chamfer corner (170, 180) of the plate is an endpoint
+        self.assertTrue(any(p[2] == "e" and abs(p[0] / k / MM - 170) < 0.5 and abs(p[1] / k / MM - 180) < 0.5 for p in snap["pts"]))
+        self.assertTrue(snap["segs"])
+        # a vector PDF does not need it
+        doc = self.open_sample()["id"]
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            self.req("GET", f"/api/doc/{doc}/page/0/snapscan")
+        self.assertEqual(e.exception.code, 400)
+        # an arc given by its bulge: center, radius, sweep (counter-clockwise, Y up)
+        cx, cy, r, a0, sw = scansnap._bulge_arc([120, 100], [100, 80], 0.41421356)
+        self.assertAlmostEqual(cx, 100, places=3)
+        self.assertAlmostEqual(cy, 100, places=3)
+        self.assertAlmostEqual(r, 20, places=3)
+        self.assertAlmostEqual(sw, 3.14159265 / 2, places=4)
+
     def test_page_rotate_delete_move(self):
         """Rotating, deleting and moving pages shows everywhere and is kept on export."""
         import pikepdf

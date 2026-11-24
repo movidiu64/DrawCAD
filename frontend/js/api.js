@@ -33,6 +33,8 @@ export async function saveState(id, state) {
 }
 
 export const snap = (id, n, v = 0) => fetch(`api/doc/${id}/page/${n}/snap?v=${v}`).then(jsonOrThrow);
+/** Snap geometry of a scanned page, from its vectorization (slow the first time). */
+export const snapScan = (id, n) => fetch(`api/doc/${id}/page/${n}/snapscan`).then(jsonOrThrow);
 
 export function renderUrl(id, n, scale, extra = "") {
   return `api/doc/${id}/page/${n}/render?scale=${scale}${extra}`;

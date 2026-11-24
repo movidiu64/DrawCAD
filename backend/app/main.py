@@ -776,6 +776,32 @@ async def api_ocr(request: Request):
     return JSONResponse({"ocr": res, "lang": res.get("lang")})
 
 
+async def api_snap_scan(request: Request):
+    """Snap geometry of a scanned page, from its vectorization (on request: it takes a while)."""
+    from . import scansnap
+
+    doc_id = request.path_params["doc_id"]
+    try:
+        n, meta = _page_index(doc_id, request.path_params["n"])
+    except (ValueError, FileNotFoundError, IndexError):
+        return _err("Pagină inexistentă", 404)
+    if meta["pages"][n].get("paths", 1) != 0:
+        return _err("Pagina are geometrie vectorială: snap-ul obișnuit o folosește deja", 400)
+    cached = _snap_cache.get((doc_id, n, "scan"))
+    if cached is not None:
+        return Response(cached, media_type="application/json")
+    # text read confidently by OCR (if it was already run) is kept out: letters are not geometry
+    ocr = _ocr_cached(doc_id, n) or {}
+    masks = [ln["box"] for ln in ocr.get("lines", []) if ln.get("conf", 0) >= 60 and len(ln.get("text", "").replace(" ", "")) >= 2]
+    try:
+        vec = await _vectorize(doc_id, n, _original(doc_id), masks, "snap1", deskew=False)
+    except ValueError as e:
+        return _err(str(e), 500)
+    body = _json_bytes(scansnap.to_snap(vec))
+    _snap_cache.get_or((doc_id, n, "scan"), lambda: body)
+    return Response(body, media_type="application/json")
+
+
 async def api_text(request: Request):
     """Real texts of the page (for search), with their bounding boxes."""
     from . import ocr as ocrmod
@@ -789,12 +815,12 @@ async def api_text(request: Request):
     return Response(body, media_type="application/json", headers={"Cache-Control": "private, max-age=3600"})
 
 
-async def _vectorize(doc_id, n, pdf_bytes, masks, key):
+async def _vectorize(doc_id, n, pdf_bytes, masks, key, deskew=True):
     """Vectorization of a scanned page, in a separate process; the result stays in cache."""
     import hashlib
     import tempfile
 
-    h = hashlib.sha1((key + json.dumps(masks)).encode()).hexdigest()[:16]
+    h = hashlib.sha1((key + json.dumps(masks) + ("" if deskew else "|nodeskew")).encode()).hexdigest()[:16]
     path = _doc_dir(doc_id) / "vec" / f"{_pkey(doc_id, n)}_{h}.json"
     cached = _read_json(path, None)
     if cached is not None:
@@ -815,7 +841,7 @@ async def _vectorize(doc_id, n, pdf_bytes, masks, key):
             with open(mp, "w", encoding="utf-8") as f:
                 json.dump(masks, f)
             proc = await asyncio.create_subprocess_exec(
-                *_child_cmd("app.vectorize", ip, op, scale, mp),
+                *_child_cmd("app.vectorize", ip, op, scale, mp, *([] if deskew else ["nodeskew"])),
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
                 cwd=str(Path(__file__).resolve().parents[1]), **_child_kw(),
             )
@@ -1086,6 +1112,7 @@ routes = [
     Route("/api/doc/{doc_id}/page/{n:int}/render", api_render),
     Route("/api/doc/{doc_id}/page/{n:int}/preview", api_preview, methods=["POST"]),
     Route("/api/doc/{doc_id}/page/{n:int}/snap", api_snap),
+    Route("/api/doc/{doc_id}/page/{n:int}/snapscan", api_snap_scan),
     Route("/api/doc/{doc_id}/page/{n:int}/objects", api_objects, methods=["POST"]),
     Route("/api/doc/{doc_id}/page/{n:int}/ocr", api_ocr, methods=["GET", "POST"]),
     Route("/api/doc/{doc_id}/page/{n:int}/text", api_text),

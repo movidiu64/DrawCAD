@@ -1040,4 +1040,9 @@ export const EN = {
   ".X — punctul care dă X": ".X — the point that gives X",
   ".Y — punctul care dă X": ".Y — the point that gives X",
   ".Y — punctul care dă Y": ".Y — the point that gives Y",
+  "Snap pe scanare: gata — {} linii, {} arce și cercuri": "Snap on scan: ready — {} lines, {} arcs and circles",
+  "Snap pe scanare: pagina se vectorizează (o dată, poate dura un minut)…": "Snap on scan: the page is being vectorized (once, may take a minute)…",
+  "Snap pe scanare: {}": "Snap on scan: {}",
+  "Snap și pe scanări (pagina se vectorizează pe server; prima dată durează)": "Snap on scans too (the page is vectorized on the server; slow the first time)",
+  "Pagina are geometrie vectorială: snap-ul obișnuit o folosește deja": "The page has vector geometry: the normal snap already uses it",
 };

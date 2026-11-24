@@ -979,8 +979,38 @@ class App {
     this.clearAcq();
     api.snap(this.doc.id, n, this.doc.lv || 0).then((s) => {
       if (this.page === n) this.snapper = new Snapper(s);
+      if (this.page === n && this.snapCfg.scan) this.loadScanSnap(n);
     }).catch(() => {});
     if (this.showOcr && this.ocrPages.has(n)) this.loadOcr(n).catch(() => {});
+  }
+
+  /** A scanned page (no vector lines in the PDF). */
+  isScanPage(n = this.page) {
+    const p = this.doc && this.doc.pages[n];
+    return !!(p && p.paths === 0);
+  }
+
+  /** Snap on a scan (option): the page is vectorized on the server once, then cached. */
+  loadScanSnap(n = this.page) {
+    if (!this.doc || !this.isScanPage(n)) return;
+    const key = `${this.doc.id}:${n}`;
+    this.scanSnaps = this.scanSnaps || new Map();
+    const have = this.scanSnaps.get(key);
+    if (have) {
+      if (have.data && this.page === n) this.snapper = new Snapper(have.data);
+      return;
+    }
+    const entry = { data: null };
+    this.scanSnaps.set(key, entry);
+    dlg.toast("Snap pe scanare: pagina se vectorizează (o dată, poate dura un minut)…", 6000);
+    api.snapScan(this.doc.id, n).then((data) => {
+      entry.data = data;
+      if (this.page === n && this.snapCfg.scan) this.snapper = new Snapper(data);
+      dlg.toast(`Snap pe scanare: gata — ${data.segs.length} linii, ${data.arcs.length} arce și cercuri`);
+    }).catch((e) => {
+      this.scanSnaps.delete(key);
+      dlg.toast(`Snap pe scanare: ${e.message}`);
+    });
   }
 
   /** Drawn shapes are scaled about their first point (on calibration, "keep their real
@@ -2102,6 +2132,7 @@ class App {
     $("snapMenu").innerHTML = `<div class="h">Moduri de snap</div>
       ${MODES.map((m) => `<label class="chk"><input type="checkbox" data-mode="${m.id}"> ${m.name}</label>`).join("")}
       <div class="row"><button class="ghost" data-all="1">Toate</button><button class="ghost" data-all="0">Niciunul</button></div>
+      <label class="chk wide"><input type="checkbox" id="snScan" ${c.scan ? "checked" : ""}> Snap și pe scanări (pagina se vectorizează pe server; prima dată durează)</label>
       <div class="h">Polar</div>
       <label class="fld">Unghiuri suplimentare (°, despărțite prin ; ) <input type="text" id="snPolarExtra" class="mono" placeholder="ex.: 7; 22,5" value="${esc((c.polarExtra || []).join("; "))}"></label>
       <label class="chk wide"><input type="checkbox" id="snPolarRel" ${c.polarRel ? "checked" : ""}> Unghiuri față de ultimul segment</label>
@@ -2120,6 +2151,12 @@ class App {
       this.saveSnapCfg();
     });
     $("snPolarRel").addEventListener("change", (e) => { c.polarRel = e.target.checked; this.saveSnapCfg(); });
+    $("snScan").addEventListener("change", (e) => {
+      c.scan = e.target.checked;
+      this.saveSnapCfg();
+      if (c.scan) this.loadScanSnap();
+      else if (this.isScanPage()) this.snapper = new Snapper(); // back to the page's own (empty) geometry
+    });
     $("snPolarStep").addEventListener("change", (e) => {
       const v = parseFloat(String(e.target.value).replace(",", "."));
       c.polarStep = Number.isFinite(v) && v > 0 ? v : 0;
