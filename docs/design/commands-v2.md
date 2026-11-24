@@ -16,7 +16,7 @@ DrawCAD is not a CAD system: it annotates a fixed sheet (a PDF page or a scan). 
 behaviour only makes sense for model geometry (3D, UCS rotation, isometric snap, blocks), it is left
 out of the measure and listed as *not applicable*.
 
-**Headline (estimate): ≈ 42 % at the measured commit, ≈ 67 % on branch `v1.1`.** Snaps (11 running modes, tracking, extension, parallel, apparent
+**Headline (estimate): ≈ 42 % at the measured commit, ≈ 71 % on branch `v1.1`.** Snaps (11 running modes, tracking, extension, parallel, apparent
 intersection), polar and ortho, the alias table with AutoCAD names and the command line with
 autocomplete and history are real. Typed coordinates are missing entirely (no `x,y`, `@`, `<`, `#`),
 the command line knows only command names (no prompts, no options, no typed points), there are no
@@ -31,17 +31,16 @@ Re-measured on branch `v1.1` after phases 1–5, the same way and with the same 
 | Point entry | 15 % | 15 % | 72 % | the whole typed syntax, typed first point, origin and UCS, typed box corners, FROM, M2P |
 | Object snaps | 20 % | 60 % | 78 % | typed overrides, Tab cycling, Node as a mode, CEN from the edge, Geometric center, Insertion |
 | Tracking, polar, ortho | 10 % | 60 % | 63 % | Shift toggles ortho |
-| Dynamic input | 10 % | 35 % | 45 % | `@ # <` from anywhere, absolute points through the command line |
-| Command line | 15 % | 40 % | 74 % | prompts, options by letter or click (DCO / DBA Select too), typed points, transparent commands, F2 |
+| Dynamic input | 10 % | 35 % | 62 % | `@ # <` from anywhere, absolute points through the command line, the prompt and its options menu next to the cursor |
+| Command line | 15 % | 40 % | 77 % | prompts, options by letter or click (DCO / DBA Select, TEXT H / R, DIST M too), typed points, transparent commands, F2 |
 | Grips and editing | 10 % | 30 % | 45 % | MOVE and COPY with base point and displacement |
-| Selection | 10 % | 40 % | 60 % | Select objects prompt (ALL, L), AutoCAD selection option |
+| Selection | 10 % | 40 % | 72 % | Select objects prompt (W, C, F, ALL, L, P, R, A), AutoCAD selection option |
 | Keys and aliases | 10 % | 55 % | 75 % | acad.pgp import, F2, E = ERASE |
-| **Total (estimate)** | 100 % | ≈ 42 % | **≈ 67 %** | |
+| **Total (estimate)** | 100 % | ≈ 42 % | **≈ 71 %** | |
 
-Still missing, in the order they matter: snaps on scans; the prompt next to the cursor (DYNPROMPT);
-hot-grip modes and grips on several objects; W / C / F keywords at Select objects, lasso, selection
-cycling; point filters (`.x`, `.y`) and `TK`; additional and relative polar angles, PolarSnap; TEXT
-`Height` / `Rotation`, DIST `Multiple`.
+Still missing, in the order they matter: snaps on scans; hot-grip modes and grips on several objects;
+lasso and selection cycling, WP / CP; point filters (`.x`, `.y`) and `TK`; additional and relative polar
+angles, PolarSnap.
 
 ## How this was measured
 
@@ -305,7 +304,7 @@ Ovidiu's confirmation (behaviour in his AutoCAD, or a product choice) before it 
 | CMD-D2 | Drawing origin and units: bottom-left of the page, Y up, real mm; `UCS` / `ORIGIN` command | done (v1.1) | 1 |
 | CMD-D3 | Where typed text goes during a command; the comma | done (v1.1) | 1 |
 | CMD-D4 | Typed first point through the command line | done (v1.1) | 1 |
-| CMD-D5 | Prompts with options in the command line | done (v1.1), with DCO / DBA Select; TEXT H / R, DIST M planned | 2 |
+| CMD-D5 | Prompts with options in the command line | done (v1.1), with DCO / DBA Select, TEXT H / R, DIST M, and the prompt next to the cursor | 2 |
 | CMD-D6 | Typed snap overrides (`END`, `MID` … `NON`), then `FROM`, `M2P` | done (v1.1) | 3 |
 | CMD-D7 | Tab cycles snap candidates when nothing is being typed | done (v1.1) | 3 |
 | CMD-D8 | Shift toggles ortho while held | done (v1.1) | 1 |
@@ -515,6 +514,7 @@ After phases 1–5 the same weights give about **≈ 65 %** (estimate).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-24 | minor | Select objects keywords, TEXT H / R, DIST M, prompt next to the cursor on `v1.1`; ≈ 71 % (estimate) |
 | 2026-11-24 | minor | FROM, M2P, DCO / DBA Select, Geometric center and Insertion added on `v1.1`; ≈ 67 % (estimate) |
 | 2026-11-24 | minor | Phases 1–5 built on branch `v1.1`; re-measured ≈ 64 % (estimate); D1–D8, D9 Node, D10–D13, D15 done |
 | 2026-11-24 | minor | Decisions confirmed by Ovidiu as proposed (D2, D3, D7, D12 decided; scans planned); work on branch `v1.1` |

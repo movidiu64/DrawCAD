@@ -198,11 +198,14 @@ Dimensions do not change on calibration: they measure the drawing.
 - `DCO`, `DBA`: `S` (before the first point) picks an existing linear dimension to continue: the chain goes on from its second extension line on the same line, a baseline series from its first one, one step further out; Enter ends it, with no placement click.
 - `L`: `U` undoes the last segment, `C` closes the chain. `PL`: `U`, `C`.
 - `C` (circle): `D` diameter. `REC`: `D` length and width. `UCS`: `W` page corner.
+- `T` (text): `H` height in paper mm, `R` angle. `DI` (measure): `M` a chain of points with a running total, until Enter.
 - An option that needs a value asks for it in the command line; Esc or an empty Enter keeps the default.
+
+**Prompt next to the cursor:** with dynamic input on (F12), the same prompt and option letters appear next to the cursor, above L / ∠. **↓** opens the options there (also from an empty command line), ↑ / ↓ move, Enter picks, Esc closes.
 
 **F2** opens the session history: commands, typed points, options and answers.
 
-**Erase, move, copy:** `E` deletes the selection; with nothing selected it asks to select objects (click, window, `ALL`, `L` = the last one), and Enter deletes them. `M` (MOVE) and `CO` (COPY) work on the selection (or ask for one): a base point, then a second point or `@dx,dy`; COPY goes on placing copies from the same base point until Enter or Esc. The removal tool on the original is `X` / `STERGE`.
+**Erase, move, copy:** `E` deletes the selection; with nothing selected it asks to select objects, and Enter deletes them. At that prompt: click and window as usual, `W` / `C` force a window or a crossing for the next rectangle, `F` draws a fence line (clicks, then Enter) that takes what it crosses, `ALL`, `L` the last one, `P` the previous selection, `R` removes from the selection and `A` adds again; they are also buttons in the command line. `M` (MOVE) and `CO` (COPY) work on the selection (or ask for one): a base point, then a second point or `@dx,dy`; COPY goes on placing copies from the same base point until Enter or Esc. The removal tool on the original is `X` / `STERGE`.
 
 **Transparent commands:** `'Z` (or `Z`), `'ZS`, `'OS`, `'OR`, `'POLAR` work in the middle of a command without ending it. Other commands wait until the current one ends (Esc).
 
