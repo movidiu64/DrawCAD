@@ -994,4 +994,11 @@ export const EN = {
   "Punctul de bază": "Base point",
   "Punctul de bază, apoi al doilea punct (sau @dx,dy) · Esc renunță": "Base point, then the second point (or @dx,dy) · Esc cancels",
   "Punctul de bază, apoi unde pui copia (sau @dx,dy); copiile continuă până la Enter / Esc": "Base point, then where the copy goes (or @dx,dy); copies go on until Enter / Esc",
+  "Acolo nu e o cotă liniară": "There is no linear dimension there",
+  "Alege cota liniară de la care continui": "Pick the linear dimension to continue from",
+  "Din cota existentă": "From a dimension",
+  "FROM — deplasarea față de bază (@dx,dy sau @d<unghi)": "FROM — offset from the base (@dx,dy or @d<angle)",
+  "FROM — punctul de bază": "FROM — base point",
+  "M2P — al doilea punct": "M2P — second point",
+  "M2P — primul punct": "M2P — first point",
 };

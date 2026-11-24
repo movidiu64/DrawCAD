@@ -39,3 +39,10 @@ test("series: nothing to dimension", () => {
   assert.deepEqual(dimSeries([mm(10, 10)], mm(0, 0), "chain", 1), []);
   assert.deepEqual(dimSeries([mm(10, 10), mm(10, 30)], mm(10, 50), "chain", 1), []);
 });
+
+test("series: a forced direction wins over the cursor side (continuing an existing dimension)", () => {
+  // the row is beside the points (would be vertical), forced horizontal
+  const ds = dimSeries([mm(10, 50), mm(30, 50), mm(60, 50)], mm(80, 50), "chain", 8 * K, "h");
+  assert.ok(ds.every((d) => d.orient === "h"));
+  assert.equal(ds.length, 2);
+});

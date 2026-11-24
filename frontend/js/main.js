@@ -6,7 +6,7 @@ import { Snapper, MODES, DEFAULT_MODES, parseOverride, overrideModes, LABELS } f
 import { Panel } from "./panel.js";
 import { TOOLS, TOOL_BY_ID, finalize, promptFor, resolveOption } from "./tools.js";
 import { clickSelection, windowSelection } from "./selection.js";
-import { parsePoint, resolvePoint, toUser, defaultOrigin, orthoActive, routeKey } from "./pointin.js";
+import { parsePoint, parsePointMod, resolvePoint, toUser, defaultOrigin, orthoActive, routeKey } from "./pointin.js";
 import * as dlg from "./dialogs.js";
 import { VIEW_LETTERS } from "./symbols.js";
 import { markingConfig, MM_ICONS } from "./mmenu.js";
@@ -109,8 +109,9 @@ class App {
       }
       return;
     }
-    if (this.snapOverride) {
+    if (this.snapOverride || this.pointMod) {
       this.snapOverride = null;
+      this.pointMod = null;
       this.updateCmdPrompt();
       return;
     }
@@ -269,6 +270,7 @@ class App {
   /** One click of the active tool (dimension points, polyline vertices…). */
   toolClick(pt) {
     const t = TOOL_BY_ID[this.tool];
+    if (this.pointMod && this.consumePointMod(pt)) return;
     this.lastPick = pt; // AutoCAD's LASTPOINT: what @ refers to
     this.snapOverride = null; // a typed override (END, MID…) is for one pick
     this.snapPick = null;
@@ -363,9 +365,78 @@ class App {
 
   /** The point @ and a lone distance are measured from. */
   lastPoint() {
+    if (this.pointMod && this.pointMod.kind === "from" && this.pointMod.base) return this.pointMod.base;
     if (this.rectStart) return this.rectStart;
     if (this.clicks.length) return this.clicks[this.clicks.length - 1];
     return this.lastPick || null;
+  }
+
+  /**
+   * FROM, M2P and option S of DCO / DBA take the next picks before the tool does.
+   * Returns true when the pick was used here.
+   */
+  consumePointMod(pt) {
+    const m = this.pointMod;
+    if (m.kind === "from") {
+      if (!m.base) {
+        m.base = pt;
+        this.lastPick = pt;
+        this.snapOverride = null;
+        this.updateCmdPrompt();
+        return true;
+      }
+      this.pointMod = null; // the offset point (typed @ from the base, or picked) goes to the tool
+      return false;
+    }
+    if (m.kind === "m2p") {
+      if (!m.a) {
+        m.a = pt;
+        this.snapOverride = null;
+        this.updateCmdPrompt();
+        return true;
+      }
+      this.pointMod = null;
+      this.toolClick([(m.a[0] + pt[0]) / 2, (m.a[1] + pt[1]) / 2]);
+      return true;
+    }
+    if (m.kind === "pickDim") {
+      this.pointMod = null;
+      const tol = 6 / this.view.zoom;
+      const hitDim = [...this.visibleBuilt()].reverse().find(({ a, built }) => a.type === "dim" && a.kind === "lin" && hit(built, a, pt, tol));
+      if (!hitDim) {
+        dlg.toast("Acolo nu e o cotă liniară");
+        this.updateCmdPrompt();
+        return true;
+      }
+      const d = hitDim.a;
+      const orient = d.orient === "v" ? "v" : "h";
+      this.cmdState.orient = orient;
+      if (this.tool === "dimCont") {
+        // as DIMCONTINUE: from the second extension line, on the same dimension line
+        this.clicks = [[...d.p2]];
+        this.cmdState.seriesAt = [...d.p3];
+      } else {
+        // as DIMBASELINE: from the first extension line, one step further out
+        const S = this.S();
+        const step = Math.max(7 * K, S.h * 2.4);
+        const ax = orient === "h" ? 1 : 0;
+        const dir = Math.sign(d.p3[ax] - (d.p1[ax] + d.p2[ax]) / 2) || 1;
+        const at = [...d.p3];
+        at[ax] += dir * step;
+        this.clicks = [[...d.p1]];
+        this.cmdState.seriesAt = at;
+      }
+      this.lastPick = this.clicks[0];
+      this.updateCmdPrompt();
+      if (this._dynPt) this.updateOverlay(this._dynPt, null);
+      return true;
+    }
+    return false;
+  }
+
+  /** DCO / DBA, option S: the next click picks the linear dimension to continue. */
+  pickSeriesDim() {
+    this.pointMod = { kind: "pickDim" };
   }
 
   /** A point typed in the command line: false if it is not a point (then it may be a command). */
@@ -439,6 +510,11 @@ class App {
     }
     inp.placeholder = "x,y · @dx,dy · @d<unghi · opțiune";
     const pr = promptFor(TOOL_BY_ID[this.tool], this);
+    const pm = this.pointMod;
+    if (pm && pm.kind === "from") pr.text = pm.base ? "FROM — deplasarea față de bază (@dx,dy sau @d<unghi)" : "FROM — punctul de bază";
+    if (pm && pm.kind === "m2p") pr.text = pm.a ? "M2P — al doilea punct" : "M2P — primul punct";
+    if (pm && pm.kind === "pickDim") pr.text = "Alege cota liniară de la care continui";
+    if (pm) pr.opts = [];
     if (this.snapOverride) pr.text += this.snapOverride === "none" ? " · fără snap" : ` · snap: ${LABELS[this.snapOverride === "node" ? "a" : this.snapOverride]}`;
     if (!box) return;
     const opts = pr.opts.map((o) => `<button type="button" data-opt="${o.key}" title="${esc(o.label)} (${o.key})">${esc(o.label)} <i>${o.key}</i></button>`).join("");
@@ -563,7 +639,8 @@ class App {
   /** Finishes the polyline or hatch in progress. */
   finishPoly(close) {
     const t = TOOL_BY_ID[this.tool];
-    if (t.place && this.clicks.length >= (t.min || 2)) {
+    const at = this.cmdState && this.cmdState.seriesAt;
+    if (t.place && !at && this.clicks.length >= (t.min || 2)) {
       // the points are picked: now the cursor places the row, the next click sets it
       this.placing = true;
       this.setHint(t.placeHint);
@@ -575,7 +652,7 @@ class App {
     this.view.overlay = null;
     this.setHint(t.hint);
     this.clearAcq();
-    if (pts.length >= (t.min || 2)) this.addMade(t.make(pts, this, close || t.closed));
+    if (pts.length >= (t.min || 2)) this.addMade(t.make(pts, this, close || t.closed, at || undefined));
     else this.view.redraw();
   }
 
@@ -779,6 +856,7 @@ class App {
     this.cmdAsk = null;
     this.chain = null;
     this.selPrompt = null;
+    this.pointMod = null;
     this.snapOverride = null;
     this.snapPick = null;
     if (this.dyn) this.dynReset();
@@ -2693,7 +2771,7 @@ class App {
     const show = () => {
       hIdx = -1;
       // a point being typed: no command suggestions
-      list = this.cmdAsk || this.selPrompt || (this.cmdActive() && (/^[\s@#<0-9.+\-]/.test(inp.value) || resolveOption(this.currentOptions(), inp.value) || parseOverride(inp.value))) ? [] : suggest(inp.value, this.keyCfg);
+      list = this.cmdAsk || this.selPrompt || (this.cmdActive() && (/^[\s@#<0-9.+\-]/.test(inp.value) || resolveOption(this.currentOptions(), inp.value) || parseOverride(inp.value) || parsePointMod(inp.value))) ? [] : suggest(inp.value, this.keyCfg);
       pick = 0;
       if (!list.length) {
         box.hidden = true;
@@ -2775,6 +2853,16 @@ class App {
           inp.value = "";
           box.hidden = true;
           if (!this.cmdAsk) inp.blur();
+          return;
+        }
+        const pmod = this.cmdActive() && e.key !== "Tab" && TOOL_BY_ID[this.tool].kind !== "rect" ? parsePointMod(v) : null;
+        if (pmod) {
+          this.pointMod = { kind: pmod };
+          this.logCmd(`  ${v.toUpperCase()}`);
+          inp.value = "";
+          box.hidden = true;
+          inp.blur();
+          this.updateCmdPrompt();
           return;
         }
         const ov = this.cmdActive() && e.key !== "Tab" ? parseOverride(v) : null;

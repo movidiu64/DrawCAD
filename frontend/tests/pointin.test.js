@@ -79,3 +79,12 @@ test("UCS origin: editor-only symbol, follows page rotation", () => {
   // (x, y) → (H − y, x)
   assert.ok(near(r.p, [H - 150 * K, 40 * K]));
 });
+
+test("point modifiers: FROM and M2P (MTP), with the usual prefixes", async () => {
+  const { parsePointMod } = await import("../js/pointin.js");
+  assert.equal(parsePointMod("from"), "from");
+  assert.equal(parsePointMod("_FRO"), "from");
+  assert.equal(parsePointMod("m2p"), "m2p");
+  assert.equal(parsePointMod("'MTP"), "m2p");
+  assert.equal(parsePointMod("M"), null);
+});

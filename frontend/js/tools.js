@@ -30,12 +30,15 @@ function dimSeriesTool(mode) {
     make(pts, app, _closed, cur) {
       const S = app.S();
       const step = Math.max(7 * K, S.h * 2.4); // distance between baseline dimensions (paper)
-      return dimSeries(pts, cur || pts[pts.length - 1], mode, step).map((g) => ({
+      const st = app.cmdState || {};
+      return dimSeries(pts, st.seriesAt || cur || pts[pts.length - 1], mode, step, st.orient).map((g) => ({
         type: "dim", kind: "lin", ...g, prefix: "", nominal: null, tol: app.defaultTol(""),
       }));
     },
     preview(pts, cur, app) {
       if (app.placing) return this.make(pts, app, false, cur);
+      // continuing an existing dimension (option S): the row is known, show the dimensions
+      if (app.cmdState && app.cmdState.seriesAt) return this.make([...pts, cur], app, false, null);
       const r = 1.6 * K;
       const lines = [];
       pts.forEach((q, i) => {
@@ -337,8 +340,8 @@ const OPTIONS = {
     { key: "Y", label: "Pe Y", en: ["YDATUM"], run: (app) => { app.cmdState.axis = "y"; } },
     optUndo,
   ],
-  dimCont: [optUndo],
-  dimBase: [optUndo],
+  dimCont: [optUndo, { key: "S", label: "Din cota existentă", en: ["SELECT"], when: (app) => !app.clicks.length && !app.placing, run: (app) => app.pickSeriesDim() }],
+  dimBase: [optUndo, { key: "S", label: "Din cota existentă", en: ["SELECT"], when: (app) => !app.clicks.length && !app.placing, run: (app) => app.pickSeriesDim() }],
   line: [optUndo, { ...optClose, when: (app) => !!(app.chain && app.chain.ids.length >= 2) }],
   poly: [optUndo, { ...optClose, when: (app) => app.clicks.length >= 3 }],
   circle: [{

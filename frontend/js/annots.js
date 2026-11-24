@@ -255,16 +255,17 @@ function placeRuns(lab, origin, tu, up, ang, c) {
  *  - "chain": the points sorted along the axis, one dimension between each pair, all on one line;
  *  - "base": every dimension from the first point, the shortest nearest the part, the next ones
  *    `step` further away.
+ * `orient` ("h" / "v") forces the direction instead of deducing it from `at`.
  * Returns the geometry of each dimension: { orient, p1, p2, p3 }.
  */
-export function dimSeries(pts, at, mode, step) {
+export function dimSeries(pts, at, mode, step, force = null) {
   if (!Array.isArray(pts) || pts.length < 2 || !at) return [];
   const xs = pts.map((q) => q[0]);
   const ys = pts.map((q) => q[1]);
   const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
   const dxo = at[0] < x0 ? x0 - at[0] : at[0] > x1 ? at[0] - x1 : 0;
   const dyo = at[1] < y0 ? y0 - at[1] : at[1] > y1 ? at[1] - y1 : 0;
-  const orient = dyo > dxo ? "h" : dxo > dyo ? "v" : x1 - x0 >= y1 - y0 ? "h" : "v";
+  const orient = force === "h" || force === "v" ? force : dyo > dxo ? "h" : dxo > dyo ? "v" : x1 - x0 >= y1 - y0 ? "h" : "v";
   const ax = orient === "h" ? 0 : 1; // the coordinate the dimensions measure
   const eps = 0.05 * K;
   const out = [];

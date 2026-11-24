@@ -391,6 +391,37 @@ def main(url, out):
         page.keyboard.press("Escape")
         page.keyboard.press("Escape")
         assert page.evaluate("window.cotare.annots.length") == n0 + 1
+        # 22. FROM and M2P while picking; DCO continuing an existing linear dimension (option S)
+        uy = lambda v: page.evaluate(f"window.cotare.doc.pages[0].h / (72/25.4) - ({v})")
+        lastln = "window.cotare.annots.filter(a => a.type === 'shape' && a.kind === 'line').slice(-1)[0].pts.map(p => [Math.round(p[0] / (72/25.4) * 100) / 100, Math.round((window.cotare.doc.pages[0].h - p[1]) / (72/25.4) * 100) / 100])"
+        page.keyboard.press("i")
+        page.click("#cmdIn")
+        typed("FROM", "100,50", "@10,0", "@0,10")
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
+        assert page.evaluate(lastln) == [[110, 50], [110, 60]], page.evaluate(lastln)
+        page.keyboard.press("i")
+        page.click("#cmdIn")
+        typed("M2P", "0,0", "20,0", "@0,5")
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
+        assert page.evaluate(lastln) == [[10, 0], [10, 5]], page.evaluate(lastln)
+        page.evaluate("() => { const v = window.cotare.view; v.zoom = 2.2; v.panX = -10*72/25.4*2.2; v.panY = -40*72/25.4*2.2; v.afterZoom(); }")
+        page.wait_for_timeout(300)
+        page.click("#cmdIn")
+        typed("DLI", "20,150", "@30,0", "@0,-10")
+        page.keyboard.press("Escape")
+        page.click("#cmdIn")
+        typed("DCO", "S")
+        click(35, uy(140))
+        page.click("#cmdIn")
+        typed("@20,0")
+        page.click("#cmdIn")
+        page.keyboard.press("Enter")
+        dco = page.evaluate("(() => { const a = window.cotare.annots.filter(a => a.type === 'dim').slice(-1)[0]; return [Math.round(window.cotare.builtOf(a).measured * 100) / 100, a.orient, Math.round((window.cotare.doc.pages[0].h - a.p3[1]) / (72/25.4) * 100) / 100, Math.round(a.p1[0] / (72/25.4) * 100) / 100]; })()")
+        assert dco == [20, "h", 140, 50], dco
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
         page.keyboard.press("Escape")
         page.keyboard.press("f")
         page.wait_for_timeout(300)
@@ -402,7 +433,7 @@ def main(url, out):
         page.screenshot(path=str(out / "editor.png"))
 
         kinds = page.evaluate("window.cotare.annots.map(a => a.type)")
-        assert len(kinds) == 32, kinds
+        assert len(kinds) == 36, kinds
 
         # export
         page.click("#btnExport")
@@ -446,15 +477,15 @@ def main(url, out):
         # reopen: dimensions come back editable
         prev_id = page.evaluate("window.cotare.doc.id")
         page.set_input_files("#fileInput", str(path))
-        # wait for the new document (loading takes time), not the old one which already had 32 annotations
-        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 32")
+        # wait for the new document (loading takes time), not the old one which already had 36 annotations
+        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 36")
         # closing without changes: straight to the start page
         page.click("#btnClose")
         page.wait_for_function("window.cotare.doc === null && !document.getElementById('emptyState').hidden")
         page.wait_for_function("document.querySelectorAll('#recentList [data-doc]').length >= 1", timeout=5000)
         # reopen from Recent, one change, then close with the prompt
         page.click("#recentList [data-doc]")
-        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 32")
+        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 36")
         page.wait_for_timeout(300)
         page.keyboard.press("t")
         click(100, 30)

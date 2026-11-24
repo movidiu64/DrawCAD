@@ -102,6 +102,14 @@ export function resolvePoint(q, ctx) {
   }
 }
 
+/** Point modifiers typed at a point prompt: FROM (base + offset), M2P / MTP (midpoint of two). */
+export function parsePointMod(text) {
+  const q = String(text || "").trim().toUpperCase().replace(/^[_']+/, "");
+  if (q === "FROM" || q === "FRO") return "from";
+  if (q === "M2P" || q === "MTP") return "m2p";
+  return null;
+}
+
 /** Ortho while Shift is held: Shift turns it on when off and off when on (as in AutoCAD). */
 export function orthoActive(orthoOn, shift) {
   return !!orthoOn !== !!shift;
