@@ -529,13 +529,7 @@ class App {
       return;
     }
     inp.placeholder = "x,y · @dx,dy · @d<unghi · opțiune";
-    const pr = promptFor(TOOL_BY_ID[this.tool], this);
-    const pm = this.pointMod;
-    if (pm && pm.kind === "from") pr.text = pm.base ? "FROM — deplasarea față de bază (@dx,dy sau @d<unghi)" : "FROM — punctul de bază";
-    if (pm && pm.kind === "m2p") pr.text = pm.a ? "M2P — al doilea punct" : "M2P — primul punct";
-    if (pm && pm.kind === "pickDim") pr.text = "Alege cota liniară de la care continui";
-    if (pm) pr.opts = [];
-    if (this.snapOverride) pr.text += this.snapOverride === "none" ? " · fără snap" : ` · snap: ${LABELS[this.snapOverride === "node" ? "a" : this.snapOverride]}`;
+    const pr = this.currentPrompt();
     if (!box) return;
     const opts = pr.opts.map((o) => `<button type="button" data-opt="${o.key}" title="${esc(o.label)} (${o.key})">${esc(o.label)} <i>${o.key}</i></button>`).join("");
     box.innerHTML = `<b>${esc(pr.text)}</b>${opts ? ` <span class="cmdopts">${opts}</span>` : ""}`;
@@ -544,6 +538,18 @@ class App {
       e.preventDefault();
       this.runOption(b.dataset.opt);
     }));
+  }
+
+  /** Prompt text and options of the running command (command line and cursor). */
+  currentPrompt() {
+    const pr = promptFor(TOOL_BY_ID[this.tool], this);
+    const pm = this.pointMod;
+    if (pm && pm.kind === "from") pr.text = pm.base ? "FROM — deplasarea față de bază (@dx,dy sau @d<unghi)" : "FROM — punctul de bază";
+    if (pm && pm.kind === "m2p") pr.text = pm.a ? "M2P — al doilea punct" : "M2P — primul punct";
+    if (pm && pm.kind === "pickDim") pr.text = "Alege cota liniară de la care continui";
+    if (pm) pr.opts = [];
+    if (this.snapOverride) pr.text += this.snapOverride === "none" ? " · fără snap" : ` · snap: ${LABELS[this.snapOverride === "node" ? "a" : this.snapOverride]}`;
+    return pr;
   }
 
   /** The options of the running command, available now. */
@@ -560,6 +566,7 @@ class App {
     this.frame++;
     if (this._dynPt) this.updateOverlay(this._dynPt, null);
     this.updateCmdPrompt();
+    this.renderDyn(this._dynPt, this.clicks[this.clicks.length - 1]);
     return true;
   }
 
@@ -2794,8 +2801,27 @@ class App {
   renderDyn(pt, anchor) {
     const box = $("dynBox");
     if (!box) return;
-    if (!pt || !anchor || !this.dynTool()) {
+    // as AutoCAD's dynamic prompt: what the command asks, next to the cursor (F12 turns it off)
+    const promptOn = !!(pt && this.dyn.on && this.cmdActive() && !this.cmdAsk);
+    const fields = !!(pt && anchor && this.dynTool());
+    if (!promptOn && !fields) {
       box.hidden = true;
+      this.dynMenu = null;
+      return;
+    }
+    let head = "";
+    if (promptOn) {
+      const pr = this.currentPrompt();
+      if (this.dynMenu && pr.opts.length) {
+        const i = Math.min(this.dynMenu.i, pr.opts.length - 1);
+        head = `<div class="dmenu">${pr.opts.map((o, j) => `<div class="${j === i ? "on" : ""}">${esc(tr(o.label))} <i>${o.key}</i></div>`).join("")}</div>`;
+      } else {
+        head = `<div class="dp">${esc(tr(pr.text))}${pr.opts.length ? ` <i>↓ ${pr.opts.map((o) => o.key).join(" ")}</i>` : ""}</div>`;
+      }
+    }
+    if (!fields) {
+      box.innerHTML = head;
+      this.placeDyn(box, pt);
       return;
     }
     const d = this.dyn;
@@ -2805,18 +2831,25 @@ class App {
     const dy = (-(pt[1] - anchor[1]) / K) * k;
     const live = { dx, dy, len: Math.hypot(dx, dy), ang: ((((Math.atan2(dy, dx) * 180) / Math.PI) % 360) + 360) % 360 };
     const names = { dx: "X", dy: "Y", len: "L", ang: "∠" };
-    box.innerHTML = ["len", "ang"].map((f) => {
+    const row = ["len", "ang"].map((f) => {
       const on = d.active === f;
       const lock = !on && d.vals[f] != null;
       const txt = on ? d.text.replace(".", sep) : fmtNum(lock ? d.vals[f] : live[f], sep, f === "ang" ? 1 : 2) + (f === "ang" ? "°" : "");
       return `<span class="df${on ? " on" : ""}${lock ? " lock" : ""}"><i>${names[f]}</i><b>${txt}</b></span>`;
     }).join("");
-    // next to the cursor, below the snap / polar label (that one is at +16, +18 and is 20 px tall)
+    box.innerHTML = `${head}<div class="drow">${row}</div>`;
+    this.placeDyn(box, pt);
+  }
+
+  /** Next to the cursor, below the snap / polar label (that one is at +16, +18 and is 20 px tall). */
+  placeDyn(box, pt) {
     const [sx, sy] = this.view.toScreen(this._dynPt || pt);
     const vp = $("viewport");
-    box.style.left = `${Math.max(4, Math.min(sx + 16, vp.clientWidth - 190))}px`;
-    box.style.top = `${Math.min(sy + 42, vp.clientHeight - 28)}px`;
     box.hidden = false;
+    const h = box.offsetHeight || 28;
+    const w = box.offsetWidth || 190;
+    box.style.left = `${Math.max(4, Math.min(sx + 16, vp.clientWidth - w - 4))}px`;
+    box.style.top = `${Math.min(sy + 42, vp.clientHeight - h - 4)}px`;
   }
 
   showCoords(pt, anchor) {
@@ -2916,6 +2949,15 @@ class App {
         inp.value = "";
         inp.blur();
         this.escape();
+        return;
+      }
+      if (e.key === "ArrowDown" && !inp.value.trim() && hIdx < 0 && this.dyn.on && this.currentOptions().length) {
+        // during a command with options, ↓ on the empty line opens them next to the cursor
+        e.preventDefault();
+        inp.blur();
+        box.hidden = true;
+        this.dynMenu = { i: 0 };
+        this.renderDyn(this._dynPt, this.clicks[this.clicks.length - 1]);
         return;
       }
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -3215,6 +3257,25 @@ class App {
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // ↓ at the cursor: the options of the prompt (dynamic prompt), ↑ / ↓ move, Enter picks
+      if (this.dynMenu && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === "Escape")) {
+        e.preventDefault();
+        const opts = this.currentOptions();
+        if (e.key === "Escape" || !opts.length) this.dynMenu = null;
+        else if (e.key === "Enter") {
+          const o = opts[Math.min(this.dynMenu.i, opts.length - 1)];
+          this.dynMenu = null;
+          this.runOption(o.key);
+        } else this.dynMenu.i = (this.dynMenu.i + (e.key === "ArrowDown" ? 1 : opts.length - 1)) % opts.length;
+        this.renderDyn(this._dynPt, this.clicks[this.clicks.length - 1]);
+        return;
+      }
+      if (e.key === "ArrowDown" && this.dyn.on && this.cmdActive() && !this.sel.size && this.currentOptions().length) {
+        e.preventDefault();
+        this.dynMenu = { i: 0 };
+        this.renderDyn(this._dynPt, this.clicks[this.clicks.length - 1]);
+        return;
+      }
       // during a command, digits go to the length next to the cursor (dynamic input)
       if (this.dyn && this.dynKey(e)) {
         e.preventDefault();

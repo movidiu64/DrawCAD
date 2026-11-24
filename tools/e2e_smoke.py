@@ -443,6 +443,18 @@ def main(url, out):
         assert tot == 70, tot
         page.keyboard.press("Escape")
         page.keyboard.press("Escape")
+        # 24. dynamic prompt: ↓ opens the options next to the cursor, Enter picks one
+        page.evaluate("window.cotare.select(null)")
+        page.click("#cmdIn")
+        typed("DLI", "30,100", "@20,0")
+        sx, sy = scr(60, uy(90))
+        page.mouse.move(sx, sy)
+        page.wait_for_selector("#dynBox .dp")
+        for key in ["ArrowDown", "ArrowDown", "ArrowDown", "Enter"]:
+            page.keyboard.press(key)
+        assert page.evaluate("window.cotare.cmdState.orient") == "v", page.evaluate("window.cotare.cmdState")
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
         page.keyboard.press("Escape")
         page.keyboard.press("f")
         page.wait_for_timeout(300)

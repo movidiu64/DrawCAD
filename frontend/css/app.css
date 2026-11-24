@@ -364,7 +364,13 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
 .pgcard select.sheet { height: 26px; font-size: 12px; padding: 0 4px; border: 1px solid var(--line2); border-radius: 5px; background: var(--raised); color: var(--text2); width: 100%; }
 
 /* dynamic input (like AutoCAD DYN): the values next to the cursor, editable */
-.dynbox { position: absolute; z-index: 4; display: flex; gap: 4px; pointer-events: none; font: 12px var(--mono); }
+.dynbox { position: absolute; z-index: 4; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; pointer-events: none; font: 12px var(--mono); }
+.dynbox .drow { display: flex; gap: 4px; }
+.dynbox .dp { background: rgba(21,24,28,0.92); border: 1px solid var(--line2); border-radius: 4px; padding: 2px 6px; color: var(--text); font: 11.5px var(--sans); white-space: nowrap; }
+.dynbox .dp i, .dynbox .dmenu i { font-style: normal; font-family: var(--mono); color: var(--accent); }
+.dynbox .dmenu { background: rgba(21,24,28,0.96); border: 1px solid var(--line2); border-radius: 4px; padding: 2px 0; font: 11.5px var(--sans); color: var(--text2); }
+.dynbox .dmenu div { padding: 2px 10px; white-space: nowrap; }
+.dynbox .dmenu div.on { background: var(--accent-bg); color: var(--text); }
 .dynbox .df { display: flex; align-items: center; gap: 3px; background: rgba(21,24,28,0.92); border: 1px solid var(--line2); border-radius: 4px; padding: 2px 6px; color: var(--text2); white-space: nowrap; }
 .dynbox .df i { font-style: normal; color: var(--muted); }
 .dynbox .df b { font-weight: 500; color: var(--text); min-width: 34px; text-align: right; }
