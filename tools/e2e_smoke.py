@@ -798,6 +798,16 @@ def main(url, out):
         page.wait_for_selector("#spane-sheet:not([hidden])")
         page.keyboard.press("Escape")
         page.wait_for_function("document.getElementById('modal').hidden")
+        # rectangle: typed sizes are its length on X and width on Y (Tab), the cursor picks the side
+        page.evaluate("window.cotare.setTool('rect')")
+        page.mouse.click(*scr(150, 100))
+        page.mouse.move(*scr(190, 160), steps=4)
+        for k in ("5", "0", "Tab", "3", "0", "Enter"):
+            page.keyboard.press(k)
+        rect = page.evaluate("(() => { const a = window.cotare.annots[window.cotare.annots.length - 1]; return [a.kind, (a.pts[1][0] - a.pts[0][0]) / (72/25.4), (a.pts[1][1] - a.pts[0][1]) / (72/25.4)]; })()")
+        assert rect[0] == "rect" and abs(rect[1] - 50) < 1e-6 and abs(rect[2] - 30) < 1e-6, rect
+        page.keyboard.press("Control+z")
+        page.evaluate("window.cotare.setTool('select')")
         # F1 opens the sheet wherever the focus is (? too, unless something is typed in a field)
         page.keyboard.press("F1")
         page.wait_for_selector("#ssGrid")

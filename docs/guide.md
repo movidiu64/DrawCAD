@@ -384,7 +384,7 @@ Every cell can be edited in the panel. **Update from dimensions** rebuilds the t
 **Drawing:**
 - **Line (I):** start → end; the next line starts at the end of the previous one, like LINE in AutoCAD. Esc or Enter stops the chain.
 - **Polyline (P):** click each vertex; Enter, double click or Esc finishes. Clicking the first point closes the outline.
-- **Rectangle (J), Circle (Y):** two clicks; the exact width, height or diameter can then be typed in the panel.
+- **Rectangle (J), Circle (Y):** two clicks; the exact width, height or diameter can then be typed in the panel. After the first corner of a rectangle, digits typed at the cursor are its length on X, Tab goes to its width on Y, Enter places it (as AutoCAD's RECTANG): the cursor's side decides which way each goes, and a value left empty follows the cursor.
 - **Arc (Z):** center → start → end. The direction is the one in which you move the cursor after the second click; "Complementary arc" in the panel flips it.
 - **Center mark:** the center (snap ○) → a point on the circle. The chain lines extend past the outline by 3 mm (2 / 3 / 5 mm in the panel) and cross on dashes.
 - **Break:** the ends of the line; a zigzag in the middle or wavy (from the panel), thin line type 01.1.

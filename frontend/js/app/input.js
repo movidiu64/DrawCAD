@@ -159,6 +159,12 @@ export class PointInput {
     return !!(this.doc && this.dyn.on && this.clicks.length && !this.placing && t && (t.kind === "clicks" || t.kind === "poly"));
   }
 
+  /** Rectangle: the fields are its length on X and width on Y (as AutoCAD's RECTANG), not length and
+   *  angle; the cursor's side picks the direction of each. */
+  dynRect() {
+    return !this.hotGrip && this.tool === "rect";
+  }
+
   dynReset() {
     this.dyn.vals = {};
     this.dyn.active = null;
@@ -173,6 +179,13 @@ export class PointInput {
     const toPt = (mm) => (mm / k) * K;
     const lx = ((pt[0] - anchor[0]) / K) * k;
     const ly = (-(pt[1] - anchor[1]) / K) * k;
+    if (this.dynRect()) {
+      const sx = lx < 0 ? -1 : 1;
+      const sy = ly < 0 ? -1 : 1;
+      const X = v.dx != null ? sx * Math.abs(v.dx) : lx;
+      const Y = v.dy != null ? sy * Math.abs(v.dy) : ly;
+      return [anchor[0] + toPt(X), anchor[1] - toPt(Y)];
+    }
     if (v.len != null || v.ang != null) {
       const L = v.len ?? Math.hypot(lx, ly);
       const th = ((v.ang != null ? v.ang : (Math.atan2(ly, lx) * 180) / Math.PI) * Math.PI) / 180;
@@ -182,8 +195,8 @@ export class PointInput {
   }
 
   defaultDynField() {
-    // length along the cursor direction first; Tab → angle
-    return "len";
+    // length along the cursor direction first; Tab → angle (a rectangle: length on X, Tab → width on Y)
+    return this.dynRect() ? "dx" : "len";
   }
 
   dynParse() {
@@ -219,8 +232,9 @@ export class PointInput {
     }
     if (k === "Tab" && !has && this.cycleSnap(e.shiftKey)) return true;
     if (k === "Tab") {
-      // Tab switches between length and angle; the typed value stays locked
-      d.active = (d.active || this.defaultDynField()) === "len" ? "ang" : "len";
+      // Tab switches between length and angle (X and Y for a rectangle); the typed value stays locked
+      const cur = d.active || this.defaultDynField();
+      d.active = this.dynRect() ? (cur === "dx" ? "dy" : "dx") : cur === "len" ? "ang" : "len";
       d.text = d.vals[d.active] != null ? String(d.vals[d.active]) : "";
       this.dynRefresh();
       return true;
@@ -295,10 +309,15 @@ export class PointInput {
     const dy = (-(pt[1] - anchor[1]) / K) * k;
     const live = { dx, dy, len: Math.hypot(dx, dy), ang: ((((Math.atan2(dy, dx) * 180) / Math.PI) % 360) + 360) % 360 };
     const names = { dx: "X", dy: "Y", len: "L", ang: "∠" };
-    const row = ["len", "ang"].map((f) => {
+    const rect = this.dynRect();
+    if (rect) {
+      live.dx = Math.abs(dx);
+      live.dy = Math.abs(dy);
+    }
+    const row = (rect ? ["dx", "dy"] : ["len", "ang"]).map((f) => {
       const on = d.active === f;
       const lock = !on && d.vals[f] != null;
-      const txt = on ? d.text.replace(".", sep) : fmtNum(lock ? d.vals[f] : live[f], sep, f === "ang" ? 1 : 2) + (f === "ang" ? "°" : "");
+      const txt = on ? d.text.replace(".", sep) : fmtNum(lock ? (rect ? Math.abs(d.vals[f]) : d.vals[f]) : live[f], sep, f === "ang" ? 1 : 2) + (f === "ang" ? "°" : "");
       return `<span class="df${on ? " on" : ""}${lock ? " lock" : ""}"><i>${names[f]}</i><b>${txt}</b></span>`;
     }).join("");
     box.innerHTML = `${head}<div class="drow">${row}</div>`;
