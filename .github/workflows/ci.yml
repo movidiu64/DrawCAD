@@ -114,7 +114,11 @@ jobs:
         if: failure()
         run: |
           for f in e2e_out/e2e.log e2e_out/security.log; do
-            [ -f "$f" ] && grep -v '^ ' "$f" | tail -n 3 | sed "s|^|::error title=$f::|"
+            [ -f "$f" ] || continue
+            # the step that failed (line in e2e_smoke.py), what it waited for, then the last lines
+            grep -m1 'E2E FAILED' "$f" | sed "s|^|::error title=$f (step)::|"
+            grep -m2 'waiting for' "$f" | sed 's|^ *||' | sed "s|^|::error title=$f (waiting for)::|"
+            grep -v '^ ' "$f" | tail -n 3 | sed "s|^|::error title=$f::|"
           done
           docker ps -a --format '{{.Names}} {{.Status}}' | sed 's|^|::error title=docker ps::|'
           docker logs drawcad 2>&1 | grep -v '" 200' | tail -n 5 | sed 's|^|::error title=container::|'
