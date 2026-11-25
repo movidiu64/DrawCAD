@@ -7,13 +7,20 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends build-essential ca-certificates curl xz-utils \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
-RUN curl -fsSL -o libredwg.tar.xz "https://github.com/LibreDWG/libredwg/releases/download/${LIBREDWG_VERSION}/libredwg-${LIBREDWG_VERSION}.tar.xz" \
+# one step each, so a failure says where; configure and make show their own error lines (the same base
+# as the image below: dwg2dxf needs only its C library)
+RUN curl -fsSL --retry 3 -o libredwg.tar.xz \
+      "https://github.com/LibreDWG/libredwg/releases/download/${LIBREDWG_VERSION}/libredwg-${LIBREDWG_VERSION}.tar.xz" \
+ && ls -l libredwg.tar.xz \
  && echo "${LIBREDWG_SHA256}  libredwg.tar.xz" | sha256sum -c - \
- && tar xf libredwg.tar.xz \
- && cd "libredwg-${LIBREDWG_VERSION}" \
- && ./configure --disable-bindings --disable-python --disable-docs --disable-shared --enable-static --enable-release \
- && make -j"$(nproc)" -C src \
- && make -C programs dwg2dxf \
+ && tar xf libredwg.tar.xz
+WORKDIR /build/libredwg-${LIBREDWG_VERSION}
+RUN ./configure --disable-bindings --disable-python --disable-docs --disable-werror \
+      --disable-shared --enable-static --enable-release > configure.out 2>&1 \
+ || { tail -n 40 configure.out; echo "--- config.log"; tail -n 60 config.log; exit 1; }
+RUN make -j"$(nproc)" -C src > make.out 2>&1 \
+ || { grep -n -m 20 -E "error|Error" make.out; tail -n 30 make.out; exit 1; }
+RUN make -C programs dwg2dxf \
  && strip programs/dwg2dxf \
  && install -m 0755 programs/dwg2dxf /usr/local/bin/dwg2dxf \
  && install -m 0644 COPYING /usr/local/share/libredwg-COPYING \
