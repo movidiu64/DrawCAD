@@ -9,7 +9,7 @@ Built on the `v1.3` branch, one phase per commit (or a few), `VERSION` = `1.3.0-
 | V13-2 | Page operations in undo / redo | built |
 | V13-3 | ISO 2768-1 general tolerances | built |
 | V13-4 | Measure: area and perimeter | built |
-| V13-5 | Text at any angle, rotated linear dimension | planned |
+| V13-5 | Text at any angle, rotated linear dimension | built |
 | V13-6 | Command search (Ctrl+K), shortcut sheet (? / F1), first-run tips | planned |
 | V13-7 | Revision compare: two-point alignment | planned |
 | V13-8 | Light theme | planned |
@@ -67,10 +67,12 @@ OCR in strips), documents as tabs, recent-document thumbnails, user accounts.
   shown in a toast and in the command history (F2).
 - The measured outline stays highlighted until the next pick or Esc; nothing is added to the drawing.
 
-## V13-5 — Text at any angle, rotated linear dimension
+## V13-5 — Text at any angle, rotated linear dimension · built
 
-- Text, notes and leader text get an angle field (any value, degrees) beside Horizontal / Vertical;
-  the rotate hot grip turns text by any angle instead of snapping to 0 / 90.
+- Text gets an angle field (any value, degrees) beside Horizontal / Vertical (`TEXT R` already took
+  any angle at creation). The rotate hot grip turns texts, stamps, dimensions and drawn shapes (line,
+  polyline, hatch, circle, arc, break) by any angle; a selection with anything else (tables, symbols,
+  GD&T, rectangles) still turns by quarter turns. Notes and leaders stay horizontal (ISO 129).
 - Linear dimension: the **Rotated** option of DIMLINEAR (`R` at the first prompt, then the angle):
   the dimension measures along that direction, as AutoCAD's rotated dimension.
 - PDF and DXF export keep the angle (DXF TEXT rotation, dimension geometry as today).

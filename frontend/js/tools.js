@@ -378,6 +378,13 @@ const OPTIONS = {
     optText,
     { key: "H", label: "Orizontal", en: ["HORIZONTAL"], run: (app) => { app.cmdState.orient = "h"; } },
     { key: "V", label: "Vertical", en: ["VERTICAL"], run: (app) => { app.cmdState.orient = "v"; } },
+    { key: "R", label: "Rotit", en: ["ROTATED"], run: (app) => app.askValue("Unghiul liniei de cotă (grade, în sens trigonometric)", (v) => {
+      const a = parseNum(v);
+      if (a == null) return false;
+      app.cmdState.rotA = Math.round((((a % 180) + 180) % 180) * 1000) / 1000;
+      app.cmdState.orient = null;
+      return true;
+    }) },
   ],
   dimAli: [optText],
   dimDia: [optText],
@@ -439,6 +446,7 @@ export function promptFor(t, app) {
     text = app.cmdState.areaObj ? "Click pe un contur închis" : n >= 3 ? `Punctul ${n + 1} al conturului (Enter = închide)` : `Punctul ${n + 1} al conturului`;
   }
   if (app.cmdState && app.cmdState.orient) text += app.cmdState.orient === "h" ? " (orizontal)" : " (vertical)";
+  else if (app.cmdState && app.cmdState.rotA != null && t.id === "dimLin") text += ` (rotit ${String(app.cmdState.rotA).replace(".", ",")}°)`;
   if (app.cmdState && app.cmdState.axis) text += ` (pe ${app.cmdState.axis.toUpperCase()})`;
   const opts = (OPTIONS[t.id] || []).filter((o) => !o.when || o.when(app));
   return { text, opts };
@@ -457,6 +465,12 @@ export function resolveOption(opts, text) {
 function applyDimState(a, st, cur) {
   if (!a || Array.isArray(a) || !st) return a;
   if (st.orient && a.type === "dim" && a.kind === "lin") a.orient = st.orient;
+  // Rotated: measures along a direction at rotA degrees (counter-clockwise), as AutoCAD's rotated dimension
+  if (st.rotA != null && a.type === "dim" && a.kind === "lin") {
+    a.kind = "rot";
+    a.rotA = st.rotA;
+    delete a.orient;
+  }
   if (st.axis && a.type === "ord") {
     a.axis = st.axis;
     const at = cur || a.pts[a.pts.length - 1] || a.base;

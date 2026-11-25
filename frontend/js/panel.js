@@ -435,7 +435,8 @@ export class Panel {
     const b = this.app.builtOf(a);
     const prefixes = ["", "Ø", "R", "SØ", "SR", "M", "□"];
     const popts = prefixes.map((p) => `<option value="${p}" ${p === (a.prefix || "") ? "selected" : ""}>${p || "—"}</option>`).join("");
-    const orient = a.kind === "ali" ? "" : `<div class="field" style="flex:0 0 auto"><span class="lbl">Direcție</span><div class="seg">
+    const rot = a.kind === "rot" ? `<div class="field" style="flex:0 0 96px"><label for="dRot">Unghi (°)</label><input type="text" class="mono" id="dRot" data-f="rotA" value="${fmtNum(Number(a.rotA) || 0, ",", 3)}"></div>` : "";
+    const orient = a.kind === "ali" ? "" : `${rot}<div class="field" style="flex:0 0 auto"><span class="lbl">Direcție</span><div class="seg">
         <button data-act="orient" data-v="h" class="${a.orient === "h" ? "on" : ""}">Orizontal</button>
         <button data-act="orient" data-v="v" class="${a.orient === "v" ? "on" : ""}">Vertical</button></div></div>`;
     return `<div class="sec"><div class="h">Valoare</div>
@@ -625,9 +626,11 @@ export class Panel {
       ${this.symRow("#tTxt")}
       <div class="row"><div class="field"><span class="lbl">Înălțime text (mm)</span><div class="seg">
         ${this.textHeights(a)}</div></div></div>
-      <div class="field"><span class="lbl">Orientare</span><div class="seg">
+      <div class="row"><div class="field" style="flex:0 0 auto"><span class="lbl">Orientare</span><div class="seg">
         <button data-act="tangle" data-v="0" class="${!a.angle ? "on" : ""}">Orizontal</button>
-        <button data-act="tangle" data-v="90" class="${a.angle === 90 ? "on" : ""}">Vertical</button></div></div></div>`;
+        <button data-act="tangle" data-v="90" class="${a.angle === 90 ? "on" : ""}">Vertical</button></div></div>
+        <div class="field"><label for="tAng">Unghi (°)</label><input type="text" class="mono" id="tAng" data-f="angle" value="${fmtNum(Number(a.angle) || 0, ",", 3)}"></div></div>
+      <div class="sub">Orice unghi, în sens trigonometric; îl poți roti și din grip (Space până la Rotire).</div></div>`;
   }
 
   html_gdt(a) {
@@ -1057,6 +1060,12 @@ export class Panel {
         const v = parseNum(raw);
         if (f === "nominal") a.nominal = v;
         else a.tol = { ...(a.tol || {}), [f]: v };
+      } else if (f === "angle" || f === "rotA") {
+        // any angle, counter-clockwise: text in (-180, 180], a dimension's direction in [0, 180)
+        const v = parseNum(raw);
+        if (v == null) return;
+        if (f === "angle") a.angle = Math.round(((((v + 180) % 360) + 360) % 360 - 180) * 1000) / 1000 || 0;
+        else a.rotA = Math.round((((v % 180) + 180) % 180) * 1000) / 1000;
       } else if (f === "fit") {
         a.tol = { ...(a.tol || {}), fit: raw.trim() };
       } else {
@@ -1064,13 +1073,13 @@ export class Panel {
       }
     }, f);
     // fields that change the computed information re-render only the tolerance area
-    if (f === "fit" || f === "nominal" || f === "prefix") this.refreshTol();
+    if (["fit", "nominal", "prefix", "angle", "rotA"].includes(f)) this.refreshTol();
     this.drawPreview(app.selected());
   }
 
   refreshTol() {
     const a = this.app.selected();
-    if (!a || !["dim", "rad", "ang"].includes(a.type)) return;
+    if (!a || !["dim", "rad", "ang", "text"].includes(a.type)) return;
     const active = document.activeElement && document.activeElement.id;
     const pos = document.activeElement && document.activeElement.selectionStart;
     this.render();
@@ -1222,7 +1231,14 @@ export class Panel {
         });
         break;
       case "orient":
-        upd((a) => { a.orient = v; });
+        upd((a) => {
+          a.orient = v;
+          // a rotated dimension goes back to horizontal / vertical
+          if (a.kind === "rot") {
+            a.kind = "lin";
+            delete a.rotA;
+          }
+        });
         break;
       case "pages":
         dlgPages(this.app);

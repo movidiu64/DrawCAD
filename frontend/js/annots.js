@@ -317,7 +317,11 @@ function buildDim(a, S, measure) {
   const { p1, p2, p3 } = a;
   let u;
   if (a.kind === "ali") u = norm(sub(p2, p1)) || [1, 0];
-  else u = a.orient === "v" ? [0, 1] : [1, 0];
+  else if (a.kind === "rot") {
+    // rotated: along rotA degrees, counter-clockwise on the sheet (y grows down)
+    const t = ((Number(a.rotA) || 0) * Math.PI) / 180;
+    u = [Math.cos(t), -Math.sin(t)];
+  } else u = a.orient === "v" ? [0, 1] : [1, 0];
   const n = [-u[1], u[0]];
   const A = add(p1, mul(n, dot(sub(p3, p1), n)));
   const B = add(p2, mul(n, dot(sub(p3, p2), n)));

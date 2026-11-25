@@ -209,6 +209,11 @@ export const EN = {
   "Documentul nu mai există: {}": "The document no longer exists: {}",
   "Documentul trebuie să păstreze cel puțin o pagină": "The document must keep at least one page",
   "Două puncte (cu snap) → distanța, Δx, Δy și unghiul, la scara desenului · A = arie și perimetru · nu se adaugă nimic pe desen": "Two points (with snap) → distance, Δx, Δy and angle at drawing scale · A = area and perimeter · nothing is added to the drawing",
+  // any angle (V13-5)
+  "Rotit": "Rotated",
+  "Unghiul liniei de cotă (grade, în sens trigonometric)": "Angle of the dimension line (degrees, counter-clockwise)",
+  "(rotit {}°)": "(rotated {}°)",
+  "Orice unghi, în sens trigonometric; îl poți roti și din grip (Space până la Rotire).": "Any angle, counter-clockwise; you can also turn it from a grip (Space until Rotate).",
   // measure: area (V13-4)
   "Arie": "Area",
   "Obiect": "Object",

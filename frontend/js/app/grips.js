@@ -8,7 +8,7 @@ import { TOOL_BY_ID, promptFor, resolveOption } from "../tools.js";
 import { parsePoint, resolvePoint } from "../pointin.js";
 import * as dlg from "../dialogs.js";
 import { keyConfig } from "../commands.js";
-import { rotateAbout, scaleAbout, mirrorAbout } from "../pages.js";
+import { rotateAbout, scaleAbout, mirrorAbout, rotateFree, freeRotatable } from "../pages.js";
 import { hasVertices, addVertex, removeVertex } from "../shapes.js";
 import { startI18n, tr } from "../i18n.js";
 import { esc, $, gripKey } from "./util.js";
@@ -199,10 +199,17 @@ export class Grips {
       for (const c of out) moveAnnot(c, pt[0] - b[0], pt[1] - b[1]);
     } else if (g.mode === "rotate") {
       const ang = value != null ? value : (Math.atan2(-(pt[1] - b[1]), pt[0] - b[0]) * 180) / Math.PI;
-      const q = ((Math.round(ang / 90) % 4) + 4) % 4; // quarter turns, counter-clockwise
-      const cw = (360 - q * 90) % 360;
-      for (const c of out) rotateAbout(c, cw, b, this.S(), this.measure);
-      info = `${q * 90}°`;
+      if (out.every(freeRotatable)) {
+        // texts, drawn shapes, dimensions…: any angle (0.1°; polar and ortho act on the cursor)
+        const deg = Math.round(ang * 10) / 10;
+        for (const c of out) rotateFree(c, deg, b);
+        info = `${fmtNum(deg, ",", 1)}°`;
+      } else {
+        const q = ((Math.round(ang / 90) % 4) + 4) % 4; // quarter turns, counter-clockwise
+        const cw = (360 - q * 90) % 360;
+        for (const c of out) rotateAbout(c, cw, b, this.S(), this.measure);
+        info = `${q * 90}°`;
+      }
     } else if (g.mode === "scale") {
       const k = value != null ? value : Math.hypot(pt[0] - b[0], pt[1] - b[1]) / g.ref;
       const kk = Math.max(0.05, Math.min(20, Math.round(k * 100) / 100));

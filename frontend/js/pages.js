@@ -27,6 +27,42 @@ export function rotatePoint(p, deg, W, H) {
 }
 
 export const normDeg = (d) => ((Math.round(d) % 360) + 360) % 360;
+// a direction angle in [0, 180), three decimals
+const wrapHalf = (d) => Math.round((((d % 180) + 180) % 180) * 1000) / 1000;
+
+/** Annotations that can be turned by any angle (the others only by quarter turns): their geometry is
+ *  points, plus an angle where they have one. */
+export function freeRotatable(a) {
+  if (!a) return false;
+  if (a.type === "shape") return ["line", "poly", "hatch", "circle", "arc", "break"].includes(a.kind);
+  if (a.type === "cloud") return Array.isArray(a.pts);
+  return ["text", "stamp", "dim", "mark", "comment"].includes(a.type);
+}
+
+/** Rotation by any angle (deg counter-clockwise on the sheet) about the base point. A linear
+ *  dimension becomes a rotated one, so it keeps measuring the same distance. */
+export function rotateFree(a, deg, base) {
+  const t = (-deg * Math.PI) / 180; // y grows down: counter-clockwise on the sheet
+  const c = Math.cos(t);
+  const s = Math.sin(t);
+  const R = (p) => {
+    if (!Array.isArray(p) || p.length < 2) return p;
+    const x = p[0] - base[0];
+    const y = p[1] - base[1];
+    return [base[0] + x * c - y * s, base[1] + x * s + y * c];
+  };
+  for (const k of POINT_KEYS) if (a[k]) a[k] = R(a[k]);
+  if (Array.isArray(a.pts)) a.pts = a.pts.map(R);
+  if (a.type === "shape" && a.kind === "hatch") a.angle = wrapHalf((a.angle ?? 45) + deg);
+  else if (a.type === "text" || a.type === "stamp") a.angle = Math.round((((Number(a.angle) || 0) + deg + 540) % 360 - 180) * 1000) / 1000;
+  if (a.type === "dim" && a.kind !== "ali") {
+    const from = a.kind === "rot" ? Number(a.rotA) || 0 : a.orient === "v" ? 90 : 0;
+    a.kind = "rot";
+    a.rotA = wrapHalf(from + deg);
+    delete a.orient;
+  }
+  return a;
+}
 
 const wrap180 = (a) => {
   let v = ((a % 360) + 360) % 360;
@@ -72,7 +108,8 @@ export function rotateAnnot(a, deg, W, H, S = null, measure = null) {
   } else if (typeof a.angle === "number") {
     a.angle = wrap180(a.angle - deg);
   }
-  if (quarter && (a.orient === "h" || a.orient === "v")) a.orient = a.orient === "h" ? "v" : "h";
+  if (a.type === "dim" && a.kind === "rot") a.rotA = wrapHalf((Number(a.rotA) || 0) - deg);
+  else if (quarter && (a.orient === "h" || a.orient === "v")) a.orient = a.orient === "h" ? "v" : "h";
   else if (quarter && a.type === "dim" && a.kind !== "ali" && !a.orient) a.orient = "v";
   if (quarter && a.type === "rough" && !a.pos) a.rot = a.rot ? 0 : 90;
   if (a.type === "image") a.rot = ((a.rot || 0) + deg) % 360;
@@ -124,6 +161,7 @@ export function mirrorAbout(a, axis, base, S = null, measure = null) {
   if (UPRIGHT.has(a.type) && S && moveCenter(a, M, S, measure)) return a;
   for (const k of POINT_KEYS) if (a[k]) a[k] = M(a[k]);
   if (Array.isArray(a.pts)) a.pts = a.pts.map(M);
+  if (a.type === "dim" && a.kind === "rot") a.rotA = wrapHalf(axis === "v" ? 180 - (Number(a.rotA) || 0) : -(Number(a.rotA) || 0));
   if (Array.isArray(a.r) && a.r.length === 4) {
     const p = M([a.r[0], a.r[1]]);
     const q = M([a.r[2], a.r[3]]);

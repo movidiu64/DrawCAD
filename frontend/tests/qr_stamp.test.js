@@ -77,3 +77,35 @@ test("area and perimeter of an outline and of closed shapes", async () => {
   assert.equal(closedOutline({ type: "shape", kind: "poly", closed: true, pts: [[0, 0], [1, 0], [1, 1]] }).pts.length, 3);
   assert.equal(closedOutline({ type: "dim" }), null);
 });
+
+test("any angle: rotated linear dimension, free rotation of text, shapes and dimensions", async () => {
+  const { rotateFree, freeRotatable, mirrorAbout, rotateAnnot } = await import("../js/pages.js");
+  const S = derive({});
+  const K = 72 / 25.4;
+  const ms = (t, s) => String(t).length * s * 0.5;
+  // a rotated dimension at 30° between two points 40 mm apart along 30° measures 40
+  const t = (30 * Math.PI) / 180;
+  const p1 = [100, 300];
+  const p2 = [100 + 40 * K * Math.cos(t), 300 - 40 * K * Math.sin(t)];
+  const rot = { type: "dim", kind: "rot", rotA: 30, p1, p2, p3: [80, 250] };
+  assert.ok(Math.abs(build(rot, S, ms).measured - 40) < 1e-6);
+  // a horizontal dimension turned by 30° becomes rotated and measures the same
+  const lin = { type: "dim", kind: "lin", orient: "h", p1: [0, 0], p2: [50 * K, 20 * K], p3: [0, -20] };
+  const m0 = build(lin, S, ms).measured;
+  rotateFree(lin, 30, [0, 0]);
+  assert.equal(lin.kind, "rot");
+  assert.equal(lin.rotA, 30);
+  assert.ok(Math.abs(build(lin, S, ms).measured - m0) < 1e-6);
+  // text: the angle adds up, the anchor turns about the base
+  const tx = { type: "text", p: [10, 0], angle: 170, text: "x" };
+  rotateFree(tx, 30, [0, 0]);
+  assert.equal(tx.angle, -160);
+  assert.ok(Math.abs(tx.p[0] - 10 * Math.cos(t)) < 1e-9 && Math.abs(tx.p[1] + 10 * Math.sin(t)) < 1e-9);
+  assert.equal(freeRotatable({ type: "shape", kind: "rect" }), false);
+  assert.equal(freeRotatable({ type: "shape", kind: "poly" }), true);
+  assert.equal(freeRotatable({ type: "gdt" }), false);
+  // mirror and page rotation keep a rotated dimension's direction right
+  assert.equal(mirrorAbout({ type: "dim", kind: "rot", rotA: 30, p1: [0, 0], p2: [1, 1], p3: [2, 2] }, "v", [0, 0]).rotA, 150);
+  assert.equal(mirrorAbout({ type: "dim", kind: "rot", rotA: 30, p1: [0, 0], p2: [1, 1], p3: [2, 2] }, "h", [0, 0]).rotA, 150);
+  assert.equal(rotateAnnot({ type: "dim", kind: "rot", rotA: 30, p1: [0, 0], p2: [1, 1], p3: [2, 2] }, 90, 100, 100).rotA, 120);
+});
