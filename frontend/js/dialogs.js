@@ -2,13 +2,14 @@
 import * as api from "./api.js";
 import { K, fmtNum, parseNum, DEFAULT_SETTINGS, derive, build, primsBBox } from "./annots.js";
 import { MM_POSITIONS, MM_DEFAULT, MM_SPECIAL, markingConfig } from "./mmenu.js";
-import { TOOLS, FAMILIES } from "./tools.js";
+import { TOOLS, FAMILIES, TOOL_BY_ID } from "./tools.js";
+import { EN } from "./i18n_en.js";
 import { lang as uiLang, setLang, LANGS } from "./i18n.js";
 import { SHEETS } from "./pages.js";
 import { revName } from "./revision.js";
 import { isoTemplate, cleanTemplate, templateFields } from "./tblock.js";
 import { COLORS, drawPrims } from "./view.js";
-import { commandList, conflicts, defaultKeyConfig, keyConfig, saveKeyConfig, labelOf, RESERVED_KEYS, DEFAULT_ALIASES, ACTIONS, parsePgp, importPgp } from "./commands.js";
+import { searchCommands, commandList, conflicts, defaultKeyConfig, keyConfig, saveKeyConfig, labelOf, RESERVED_KEYS, DEFAULT_ALIASES, ACTIONS, parsePgp, importPgp } from "./commands.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
@@ -672,7 +673,7 @@ function drawStylePreview(cv, settings, measure) {
   drawPrims(ctx, prims, z, () => COLORS.inkDefault, 0.6 * dpr);
 }
 
-export function settingsDialog(app) {
+export function settingsDialog(app, startPane = null) {
   const S = app.settings;
   const rail = app.railCfg();
   const ws = app.mode && app.mode !== "personal";
@@ -687,7 +688,7 @@ export function settingsDialog(app) {
   ];
   let cur = "style";
   try {
-    const last = localStorage.getItem("cotare.stab");
+    const last = startPane || localStorage.getItem("cotare.stab");
     if (PANES.some((p) => p.id === last)) cur = last;
   } catch (_) { /* storage unavailable */ }
   const navItem = (p) => `<button role="tab" id="stab-${p.id}" data-stab="${p.id}" aria-controls="spane-${p.id}">${p.label}</button>`;
@@ -1222,6 +1223,171 @@ export function historyDialog(app) {
       closeModal();
     }
   });
+}
+
+// ------------------------------------------------------------------ command search, shortcut sheet, tips (UI-D9, UI-D14)
+const SETTINGS_PAGES = [
+  ["style", "Stil cote", "înălțime text săgeți separator zecimal afișare ISO 286"],
+  ["sheet", "Foaie și revizii", "scară revizie nume toleranțe generale ISO 2768 limba desenului"],
+  ["ui", "Interfață", "limbă bara de unelte etichete temă"],
+  ["cmds", "Comenzi și meniu", "taste directe comenzi AutoCAD meniu radial"],
+];
+
+/** Ctrl+K: finds a tool, an action or a settings page by name (Romanian or English), alias or what it
+ *  does; ↑ ↓ Enter runs it, Esc closes. */
+export function commandSearch(app) {
+  const cfg = keyConfig();
+  const extra = SETTINGS_PAGES.map(([id, label, desc]) => ({ id: `settings:${id}`, kind: "settings", label: `Setări → ${label}`, group: "Setări", key: "", aliases: [], desc }));
+  const dlg = showModal(`
+    <div class="palette">
+      <input type="search" id="pkQ" class="pk" placeholder="Caută o comandă: cotă, rază, DLI, export, scară…" autocomplete="off" spellcheck="false" aria-label="Caută o comandă">
+      <div class="pklist" id="pkList" role="listbox"></div>
+      <div class="pkfoot muted">↑ ↓ alege · Enter pornește · Esc închide · <button class="link" id="pkSheet">Toate tastele (?)</button></div>
+    </div>`);
+  const q = dlg.querySelector("#pkQ");
+  const list = dlg.querySelector("#pkList");
+  let items = [];
+  let sel = 0;
+  const run = (c) => {
+    closeModal();
+    if (c.kind === "settings") settingsDialog(app, c.id.slice(9));
+    else app.runCommand(c.id);
+  };
+  const draw = () => {
+    const t = q.value.trim();
+    items = t ? searchCommands(t, cfg, { extra, en: EN, max: 10 }) : [];
+    sel = Math.min(sel, Math.max(0, items.length - 1));
+    list.innerHTML = items.map((c, i) => {
+      const tool = TOOL_BY_ID[c.id];
+      const icon = tool ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${tool.icon}"/></svg>` : `<span class="pkdot" aria-hidden="true"></span>`;
+      return `<button class="pkrow${i === sel ? " on" : ""}" role="option" aria-selected="${i === sel}" data-i="${i}">${icon}<span class="pkl">${esc(c.label)}</span><span class="pkg">${esc(c.group || "")}</span>${c.aliases[0] ? `<i class="mono">${esc(c.aliases[0])}</i>` : ""}${c.key ? `<kbd class="mono">${esc(c.key)}</kbd>` : ""}</button>`;
+    }).join("") || (t ? `<div class="pkempty muted">Nicio comandă pentru „${esc(t)}”.</div>` : `<div class="pkempty muted">Scrie numele uneltei (în română sau engleză), prescurtarea AutoCAD sau ce vrei să faci.</div>`);
+    list.querySelectorAll(".pkrow").forEach((b) => b.addEventListener("click", () => run(items[Number(b.dataset.i)])));
+  };
+  q.addEventListener("input", () => {
+    sel = 0;
+    draw();
+  });
+  q.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!items.length) return;
+      sel = (sel + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length;
+      draw();
+    } else if (e.key === "Enter" && items[sel]) {
+      e.preventDefault();
+      run(items[sel]);
+    }
+  });
+  dlg.querySelector("#pkSheet").addEventListener("click", () => shortcutSheet(app));
+  draw();
+}
+
+/** The keys that are not a tool's (shared by the start screen and the shortcut sheet). */
+export function generalKeysHtml(ac) {
+  return `${ac ? "comanda + <b>Spațiu</b> / <b>Enter</b> · Spațiu sau Enter singur <b>repetă</b> · <b>U</b> anulează · <b>Z</b> potrivește · <b>E</b> cu selecție șterge" : "<b>Enter</b> linie de comandă (L, C, DLI…) · <b>Enter</b> termină polilinia"} · <b>ALIASEDIT</b> sau Setări → Taste și comenzi<br>
+      <b>Ctrl+K</b> caută o comandă · <b>?</b> sau <b>F1</b> toate tastele · <b>F2</b> istoricul comenzilor<br>
+      <b>Shift</b> ortho · <b>Alt</b> fără snap · <b>Esc</b> renunță · <b>Del</b> șterge selecția<br>
+      <b>Ctrl+C / Ctrl+V</b> copiază / lipește la cursor · <b>Ctrl+D</b> duplică · <b>Ctrl+A</b> selectează tot · <b>Ctrl+F</b> caută text / OCR<br>
+      <b>Shift+click</b> sau dreptunghi pe zonă goală = selecție multiplă · <b>săgeți</b> mută 0,5 mm<br>
+      <b>Ctrl+Z / Ctrl+Y</b> anulează / refă · <b>F</b> potrivește · <b>Shift+F</b> zoom pe selecție · <b>dublu-click</b> editează · rotița = zoom · Space+tragere = mută`;
+}
+
+/** ? / F1: every tool by family with its key and commands, the general keys, a filter. */
+export function shortcutSheet(app) {
+  const cfg = keyConfig();
+  const ac = cfg.mode === "autocad";
+  const cl = Object.fromEntries(commandList(cfg).map((c) => [c.id, c]));
+  const row = (c) => `<div class="ssrow" data-q="${esc(`${c.label} ${EN[c.label] || ""} ${c.aliases.join(" ")}`.toLowerCase())}"><span>${esc(c.label)}</span><i class="mono">${esc(c.aliases.slice(0, 2).join(" · "))}</i>${!ac && c.key ? `<kbd class="mono">${esc(c.key)}</kbd>` : "<kbd></kbd>"}</div>`;
+  const fams = FAMILIES.map((f) => `<div class="ssfam"><div class="ssh">${esc(f.label)}</div>${f.tools.map((id) => cl[id] && row(cl[id])).filter(Boolean).join("")}</div>`).join("");
+  const acts = commandList(cfg).filter((c) => c.kind === "action");
+  const dlg = showModal(`
+    <h2>Taste și comenzi${ac ? " · comenzi AutoCAD" : ""}</h2>
+    <div class="field"><label for="ssQ">Filtrează</label><input type="search" id="ssQ" placeholder="ex.: cerc, DLI, rază" autocomplete="off"></div>
+    <div class="sheetgrid" id="ssGrid">${fams}<div class="ssfam"><div class="ssh">Comenzi</div>${acts.map(row).join("")}</div></div>
+    <div class="keys">${generalKeysHtml(ac)}</div>
+    <div class="foot"><button class="ghost" id="ssTips">Arată din nou sfaturile</button><button class="ghost" id="ssKeys">Schimbă tastele…</button><span class="muted" style="flex:1"></span><button class="primary" data-close>Închide</button></div>`, (e) => {
+    if (e.key === "F1") {
+      e.preventDefault();
+      closeModal();
+    }
+  });
+  dlg.querySelector("#ssQ").addEventListener("input", (e) => {
+    const v = e.target.value.trim().toLowerCase();
+    dlg.querySelectorAll(".ssrow").forEach((r) => { r.hidden = !!v && !r.dataset.q.includes(v); });
+    dlg.querySelectorAll(".ssfam").forEach((f) => { f.hidden = !f.querySelector(".ssrow:not([hidden])"); });
+  });
+  dlg.querySelector("#ssKeys").addEventListener("click", () => keysDialog(app));
+  dlg.querySelector("#ssTips").addEventListener("click", () => {
+    closeModal();
+    firstRunTips(true);
+  });
+}
+
+const TIPS_KEY = "drawcad.tips";
+const TIPS = [
+  ["tools", "right", "Uneltele sunt grupate pe familii. Un click pornește unealta afișată și deschide lista familiei; ultima folosită rămâne pe buton."],
+  ["cmdIn", "top", "Linia de comandă: scrii comenzi ca în AutoCAD (DLI, L, C…), puncte (10,20 sau @30<45) și opțiuni. Ctrl+K caută orice comandă după nume."],
+  ["panelWrap", "left", "Proprietățile selecției: valoarea, toleranța, mărimea. Straturile și lista adnotărilor sunt în tab-urile de sus. ? arată toate tastele."],
+];
+
+/** First document opened: three tips (rail, command line, panel), one after the other, shown once.
+ *  `again` shows them even if they were seen. Bubbles next to their target, not modal. */
+export function firstRunTips(again = false) {
+  try {
+    if (!again && localStorage.getItem(TIPS_KEY)) return;
+    localStorage.setItem(TIPS_KEY, "1");
+  } catch (_) {
+    if (!again) return;
+  }
+  let i = 0;
+  let bub = null;
+  const close = () => {
+    if (bub) bub.remove();
+    bub = null;
+    window.removeEventListener("resize", place);
+  };
+  function place() {
+    if (!bub) return;
+    const [id, side] = TIPS[i];
+    const t = document.getElementById(id);
+    const r = t ? t.getBoundingClientRect() : { left: innerWidth / 2, right: innerWidth / 2, top: innerHeight / 2, bottom: innerHeight / 2, width: 0, height: 0 };
+    const b = bub.getBoundingClientRect();
+    let x;
+    let y;
+    if (side === "right") [x, y] = [r.right + 12, r.top + Math.min(r.height / 3, 160)];
+    else if (side === "left") [x, y] = [r.left - b.width - 12, r.top + 80];
+    else [x, y] = [r.left + 24, r.top - b.height - 12];
+    bub.style.left = `${Math.max(8, Math.min(innerWidth - b.width - 8, x)) + scrollX}px`;
+    bub.style.top = `${Math.max(8, Math.min(innerHeight - b.height - 8, y)) + scrollY}px`;
+    bub.dataset.side = side;
+  }
+  const show = () => {
+    close();
+    if (i >= TIPS.length) return;
+    bub = document.createElement("div");
+    bub.className = "tipbub";
+    bub.setAttribute("role", "dialog");
+    bub.setAttribute("aria-label", "Sfat");
+    bub.innerHTML = `<div class="tipn mono">${i + 1} / ${TIPS.length}</div><p>${esc(TIPS[i][2])}</p>
+      <div class="btns"><button class="ghost" data-tip="skip">${i + 1 < TIPS.length ? "Sari peste" : ""}</button><button class="primary" data-tip="ok">Am înțeles</button></div>`;
+    if (i + 1 >= TIPS.length) bub.querySelector('[data-tip="skip"]').remove();
+    document.body.append(bub);
+    place();
+    window.addEventListener("resize", place);
+    bub.querySelector('[data-tip="ok"]').addEventListener("click", () => {
+      i += 1;
+      show();
+    });
+    const sk = bub.querySelector('[data-tip="skip"]');
+    if (sk) sk.addEventListener("click", close);
+    bub.querySelector('[data-tip="ok"]').focus();
+    bub.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") close();
+      e.stopPropagation();
+    });
+  };
+  show();
 }
 
 export function keysDialog(app) {

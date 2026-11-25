@@ -266,6 +266,8 @@ Default direct keys:
 - **Only some lines.** The **Blacken** tool in the Revision group: drag an area and check the objects that become black.
 
 **General keys:**
+- Ctrl+K (or *Search* at the bottom of the rail): command search: type a tool's name in Romanian or English, its AutoCAD alias or what it does ("raza", "radius", "DRA", "area", "scale"); ↑ ↓ and Enter run it, settings pages open at their section
+- ? or F1: the sheet of all keys and commands by family, with a filter; from there *Change the keys…* and *Show the tips again* (the three tips shown when the first document is opened)
 - Ctrl+Z / Ctrl+Y: undo / redo
 - Ctrl+C / Ctrl+V: copy the selected annotation / paste it at the cursor
 - Ctrl+D: duplicate the selected annotation, offset by 5 mm

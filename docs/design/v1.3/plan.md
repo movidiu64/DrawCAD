@@ -10,7 +10,7 @@ Built on the `v1.3` branch, one phase per commit (or a few), `VERSION` = `1.3.0-
 | V13-3 | ISO 2768-1 general tolerances | built |
 | V13-4 | Measure: area and perimeter | built |
 | V13-5 | Text at any angle, rotated linear dimension | built |
-| V13-6 | Command search (Ctrl+K), shortcut sheet (? / F1), first-run tips | planned |
+| V13-6 | Command search (Ctrl+K), shortcut sheet (? / F1), first-run tips | built |
 | V13-7 | Revision compare: two-point alignment | planned |
 | V13-8 | Light theme | planned |
 
@@ -78,11 +78,12 @@ OCR in strips), documents as tabs, recent-document thumbnails, user accounts.
 - PDF and DXF export keep the angle (DXF TEXT rotation, dimension geometry as today).
 - The known limitation "annotations only horizontal or vertical" leaves the guide.
 
-## V13-6 — Command search, shortcut sheet, first-run tips (UI-D9, UI-D14)
+## V13-6 — Command search, shortcut sheet, first-run tips (UI-D9, UI-D14) · built
 
-- **Ctrl+K** (and a magnifier on the rail): a search field at the cursor that finds tools, actions and
-  settings pages by name in Romanian and English, by alias and by description; ↑ ↓ Enter runs, Esc
-  closes. Same ranking as the command-line suggestions (`suggest()`).
+- **Ctrl+K** (and *Search* at the bottom of the rail): a search dialog near the top (overlays live in
+  dialogs.js, so not at the cursor) that finds tools, actions and settings pages by name in Romanian
+  and English, by alias and by description (the tool's hint); ↑ ↓ Enter runs, Esc closes. Ranking:
+  exact alias, alias prefix, name prefix, a word of the name, the description (`searchCommands()`).
 - **? / F1**: the shortcut sheet: keys and commands in columns by family, from `TOOLS`, the aliases
   and the user's own aliases, with a filter; link to the Keys dialog.
 - First document opened: three tips (rail, command line, panel), one after the other, each with

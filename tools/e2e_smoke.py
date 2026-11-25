@@ -39,6 +39,13 @@ def main(url, out):
         page.set_input_files("#fileInput", str(sample))
         page.wait_for_function("document.getElementById('docName').textContent.includes('arbore')")
         page.wait_for_timeout(800)
+        # first document: three tips, one after the other, then never again
+        for n in range(3):
+            page.wait_for_selector(".tipbub")
+            assert page.inner_text(".tipbub .tipn").strip() == f"{n + 1} / 3"
+            page.click(".tipbub [data-tip=ok]")
+        assert page.query_selector(".tipbub") is None
+        assert page.evaluate("localStorage.getItem('drawcad.tips')") == "1"
 
         def scr(mmx, mmy):
             return page.evaluate(
@@ -776,6 +783,26 @@ def main(url, out):
         assert page.evaluate("window.cotare.doc.pages.length") == 1
         page_step("Control+z")
         assert page.evaluate("window.cotare.doc.pages.length") == 2 and page.evaluate("window.cotare.annots.length") == 42
+        # Ctrl+K: command search by name (Romanian, without diacritics), Enter runs it; ? opens the sheet
+        page.keyboard.press("Control+k")
+        page.wait_for_selector("#pkQ")
+        page.fill("#pkQ", "raza")
+        page.wait_for_selector(".pkrow.on")
+        page.keyboard.press("Enter")
+        page.wait_for_function("window.cotare.tool === 'dimRad' && !document.getElementById('pkQ')")
+        page.keyboard.press("Escape")
+        page.keyboard.press("Control+k")
+        page.fill("#pkQ", "foaie")
+        page.wait_for_selector(".pkrow.on")
+        page.keyboard.press("Enter")
+        page.wait_for_selector("#spane-sheet:not([hidden])")
+        page.keyboard.press("Escape")
+        page.keyboard.press("Shift+Slash")
+        page.wait_for_selector("#ssGrid")
+        page.fill("#ssQ", "cerc")
+        assert page.evaluate("[...document.querySelectorAll('.ssrow')].filter(r => !r.hidden).length") >= 1
+        page.keyboard.press("Escape")
+        page.evaluate("window.cotare.setTool('select')")
         page.keyboard.press("t")
         click(100, 30)
         page.press("#tTxt", "Escape")

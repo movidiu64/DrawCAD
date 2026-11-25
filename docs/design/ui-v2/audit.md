@@ -133,12 +133,12 @@ UI-D1 … D8 are in `README.md` and unchanged. New:
 
 | # | Decision | Status |
 |---|---|---|
-| UI-D9 | Command search at the cursor | *check* (key) |
+| UI-D9 | Command search at the cursor | built in v1.3 (Ctrl+K, a dialog near the top) |
 | UI-D10 | Selection actions in the context bar | built (6f08861) |
 | UI-D11 | Rail you can trim | built (e2dad48) |
 | UI-D12 | One-line status bar; toasts out of the way | built (452f1cc) |
 | UI-D13 | Compact properties: collapsible sections | built (b49c869) |
-| UI-D14 | Shortcut sheet and first-run tips | decided |
+| UI-D14 | Shortcut sheet and first-run tips | built in v1.3 (? / F1) |
 | UI-D15 | Motion, contrast, light theme | motion built (452f1cc); light theme *planned* |
 | UI-D16 | Phone and tablet layout | built (5f27a88) |
 

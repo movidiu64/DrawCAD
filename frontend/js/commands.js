@@ -180,6 +180,51 @@ export function suggest(input, cfg, max = 12) {
   return scored.slice(0, max);
 }
 
+// words of a label: lowercase, without diacritics, split on anything that is not a letter or digit
+const words = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/[^a-z0-9ø]+/).filter(Boolean);
+
+/**
+ * Command search (Ctrl+K, UI-D9): tools, actions and `extra` items (settings pages…) by alias, by name
+ * in Romanian and English (`en` = the English dictionary) and by description (the tool's hint).
+ * Ranking: exact alias, alias prefix, name prefix, a word of the name, name contains, description.
+ * Every word typed must match somewhere (alias, name or description).
+ */
+export function searchCommands(query, cfg, { extra = [], en = {}, max = 12 } = {}) {
+  const qWords = words(query);
+  if (!qWords.length) return [];
+  const qUp = String(query).trim().toUpperCase();
+  const out = [];
+  for (const c of [...commandList(cfg), ...extra]) {
+    const t = TOOL_BY_ID[c.id];
+    if (t && t.hidden && !c.aliases.length) continue;
+    const names = [c.label, en[c.label]].filter(Boolean);
+    const nameWords = names.flatMap(words);
+    const nameFlat = names.map(norm);
+    const hint = t && t.hint ? [t.hint, en[t.hint]].filter(Boolean).join(" ") : [c.desc, en[c.desc]].filter(Boolean).join(" ");
+    const hintWords = words(hint);
+    let s = 9;
+    if (c.aliases.includes(qUp)) s = 0;
+    else if (qUp.length && c.aliases.some((a) => a.startsWith(qUp))) s = 1;
+    else if (nameFlat.some((n) => n.startsWith(norm(query)))) s = 2;
+    // every typed word: the start of a word of the name (or an alias), else anywhere in the description
+    let all = true;
+    let inName = true;
+    for (const w of qWords) {
+      const nm = nameWords.some((x) => x.startsWith(w)) || c.aliases.some((a) => a.toLowerCase().startsWith(w));
+      const nc = nm || nameFlat.some((n) => w.length >= 3 && n.includes(w));
+      if (!nc) inName = false;
+      if (!nc && !(w.length >= 3 && hintWords.some((x) => x.startsWith(w)))) all = false;
+    }
+    if (s > 2) {
+      if (!all) continue;
+      s = inName ? 3 : 4;
+    }
+    out.push({ ...c, score: s });
+  }
+  out.sort((a, b) => a.score - b.score || a.label.length - b.label.length || a.label.localeCompare(b.label));
+  return out.slice(0, max);
+}
+
 /** Duplicates: the same key on two tools or the same alias on two commands. */
 export function conflicts(cfg) {
   const keys = {};

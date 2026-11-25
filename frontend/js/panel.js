@@ -9,7 +9,7 @@ import { drawPrims, COLORS } from "./view.js";
 import { TOOL_BY_ID, DRAW_TOOLS } from "./tools.js";
 import { commandList, keyConfig } from "./commands.js";
 import { tr } from "./i18n.js";
-import { pagesDialog as dlgPages, toast, compareDialog } from "./dialogs.js";
+import { pagesDialog as dlgPages, toast, compareDialog, generalKeysHtml } from "./dialogs.js";
 
 const ORIG_EDIT = new Set(["white", "redact", "ink"]); // changes to the original, no layer
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -253,11 +253,7 @@ export class Panel {
     const list = items.map((c) => `<b>${ac ? c.aliases[0] : c.key}</b> ${tr(c.label).toLowerCase()}`).join(" · ");
     return `<div class="sec"><div class="h">Taste${ac ? " · comenzi AutoCAD" : ""}</div><div class="keys">
       ${list}<br>
-      ${ac ? "comanda + <b>Spațiu</b> / <b>Enter</b> · Spațiu sau Enter singur <b>repetă</b> · <b>U</b> anulează · <b>Z</b> potrivește · <b>E</b> cu selecție șterge" : "<b>Enter</b> linie de comandă (L, C, DLI…) · <b>Enter</b> termină polilinia"} · <b>ALIASEDIT</b> sau Setări → Taste și comenzi<br>
-      <b>Shift</b> ortho · <b>Alt</b> fără snap · <b>Esc</b> renunță · <b>Del</b> șterge selecția<br>
-      <b>Ctrl+C / Ctrl+V</b> copiază / lipește la cursor · <b>Ctrl+D</b> duplică · <b>Ctrl+A</b> selectează tot · <b>Ctrl+F</b> caută text / OCR<br>
-      <b>Shift+click</b> sau dreptunghi pe zonă goală = selecție multiplă · <b>săgeți</b> mută 0,5 mm<br>
-      <b>Ctrl+Z / Ctrl+Y</b> anulează / refă · <b>F</b> potrivește · <b>Shift+F</b> zoom pe selecție · <b>dublu-click</b> editează · rotița = zoom · Space+tragere = mută</div></div>`;
+      ${generalKeysHtml(ac)}</div></div>`;
   }
 
   layersHtml() {

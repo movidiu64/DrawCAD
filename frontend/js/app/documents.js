@@ -58,6 +58,8 @@ export class Documents {
     document.title = `${meta.name} — DrawCAD`;
     this.setPage(0);
     this.updateButtons();
+    // the first document ever opened here: three short tips (rail, command line, panel), once
+    setTimeout(() => dlg.firstRunTips(), 600);
   }
 
   setPage(n) {

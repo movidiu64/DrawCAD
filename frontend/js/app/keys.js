@@ -340,6 +340,17 @@ export class Keyboard {
       if (dlg.isModalOpen()) return;
       // the rail's flyout handles its own keys (arrows, Enter on a row, Esc)
       if (e.target && e.target.closest && e.target.closest("#railFly")) return;
+      // Ctrl+K: command search (UI-D9), also from the command line; F1: the shortcut sheet (UI-D14)
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        dlg.commandSearch(this);
+        return;
+      }
+      if (e.key === "F1") {
+        e.preventDefault();
+        dlg.shortcutSheet(this);
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key === "0") {
         // as AutoCAD's Clean Screen: hide the rail, the context bar and the panel
         e.preventDefault();
@@ -373,6 +384,11 @@ export class Keyboard {
       }
       const tag = document.activeElement && document.activeElement.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      if (e.key === "?" && !e.ctrlKey && !e.metaKey && !this.mmenu) {
+        e.preventDefault();
+        dlg.shortcutSheet(this);
+        return;
+      }
       const k = e.key.toLowerCase();
       // @ # < start a typed point in the command line (AltGr on some layouts sets Ctrl+Alt)
       if (this.cmdActive() && (e.key === "@" || e.key === "#" || e.key === "<") && !e.metaKey && !this.mmenu) {

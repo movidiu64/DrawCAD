@@ -50,7 +50,11 @@ export class Interface {
     nav.innerHTML = fams.map((f, i) => {
       const t = TOOL_BY_ID[this.familyTool(f, cfg)];
       return `${f.sep && i ? '<div class="rsep" aria-hidden="true"></div>' : ""}<button class="slot${f.tools.length > 1 ? " fly" : ""}" data-fam="${f.id}" aria-label="${f.label}"${f.tools.length > 1 ? ' aria-haspopup="menu" aria-expanded="false"' : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${t.icon}"/></svg><span>${f.label}</span></button>`;
-    }).join("");
+    }).join("") + `<div class="rsep" aria-hidden="true"></div><button class="slot" id="railSearch" aria-label="Caută o comandă (Ctrl+K)" title="Caută o comandă (Ctrl+K)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13M15.2 15.2L20 20"/></svg><span>Caută</span></button>`;
+    nav.querySelector("#railSearch").addEventListener("click", (e) => {
+      if (e.detail > 0) e.currentTarget.blur();
+      dlg.commandSearch(this);
+    });
     // the flyout sits next to the rail (in .body: the rail itself scrolls and would clip it)
     let fly = $("railFly");
     if (!fly) {
