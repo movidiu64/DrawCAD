@@ -140,7 +140,7 @@ def is_ui(s):
 
 def main():
     found = {}
-    for f in sorted(ROOT.glob("js/*.js")):
+    for f in sorted(ROOT.glob("js/**/*.js")):
         if f.name in SKIP_FILES:
             continue
         for kind, lit in literals(f.read_text("utf-8")):

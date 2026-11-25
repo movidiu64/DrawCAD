@@ -41,7 +41,7 @@ EXCEPTIONS = [
     ("i18n", "js/annots.js", "Qty", "English table header for drawings in English (dlang = en)"),
     ("i18n", "js/annots.js", "Remarks", "English table header for drawings in English (dlang = en)"),
     ("i18n", "js/annots.js", "Hole", "English table header for drawings in English (dlang = en)"),
-    ("i18n", "js/main.js", "Modified dimensions", "revision table text for drawings in English (dlang = en)"),
+    ("i18n", "js/app/edit.js", "Modified dimensions", "revision table text for drawings in English (dlang = en)"),
     ("i18n", "js/tblock.js", "Approved", "title block label for drawings in English (dlang = en)"),
     ("i18n", "js/tblock.js", "Checked", "title block label for drawings in English (dlang = en)"),
     ("i18n", "js/tblock.js", "Date", "title block label for drawings in English (dlang = en)"),
@@ -69,15 +69,20 @@ EXCEPTIONS = [
     ("i18n", "js/dialogs.js", "DrawCAD {}", "product name + version (translate=\"no\")"),
     # i18n: not interface text
     ("i18n", "*", "Escape", "KeyboardEvent.key value"),
-    ("i18n", "js/main.js", "Arrow", "KeyboardEvent.key prefix (ArrowUp…)"),
-    ("i18n", "js/main.js", "Backspace", "KeyboardEvent.key value"),
-    ("i18n", "js/main.js", "Delete", "KeyboardEvent.key value"),
-    ("i18n", "js/main.js", "Tab", "KeyboardEvent.key value"),
+    ("i18n", "js/app/keys.js", "Arrow", "KeyboardEvent.key prefix (ArrowUp…)"),
+    ("i18n", "js/app/keys.js", "Backspace", "KeyboardEvent.key value"),
+    ("i18n", "js/app/input.js", "Backspace", "KeyboardEvent.key value"),
+    ("i18n", "js/app/keys.js", "Delete", "KeyboardEvent.key value"),
+    ("i18n", "js/app/keys.js", "Tab", "KeyboardEvent.key value"),
+    ("i18n", "js/app/input.js", "Tab", "KeyboardEvent.key value"),
+    ("i18n", "js/app/mouse.js", "Tab", "selection cycling label: name (i/n, Tab), the same in English"),
     ("i18n", "js/dialogs.js", "Home", "KeyboardEvent.key value (settings tab list)"),
     ("i18n", "js/dialogs.js", "End", "KeyboardEvent.key value (settings tab list)"),
     ("i18n", "js/view.js", "no ImageBitmap", "internal error message, caught right away, never shown"),
     # overlays
-    ("overlay", "js/main.js", 'createElement("div")', "radial marking menu: absolute inside the viewport, follows the cursor, closes on release; not a modal"),
+    ("overlay", "js/app/radial.js", 'createElement("div")', "radial marking menu: absolute inside the viewport, follows the cursor, closes on release; not a modal"),
+    ("overlay", "js/app/grips.js", 'createElement("div")', "grip menu: absolute inside the viewport next to the grip, closes on the next click; not a modal"),
+    ("overlay", "js/app/ui.js", 'createElement("div")', "tool rail flyout: absolute next to its rail slot, closes when the pointer leaves; not a modal"),
     ("overlay", "css/app.css", ".snapmenu", "snap-mode popover pinned above the status bar on phones; not a modal"),
 ]
 
@@ -111,8 +116,8 @@ def check_colors():
         text = css.splitlines()[ln - 1].strip()
         if not excepted("color", css_path, text):
             out.append(f"{css_path}:{ln}: color {h.group(0)} outside :root — add a token in :root and use var(--…): {text[:100]}")
-    for f in sorted((FRONT / "js").glob("*.js")):
-        rel = f"js/{f.name}"
+    for f in sorted((FRONT / "js").rglob("*.js")):
+        rel = f.relative_to(FRONT).as_posix()
         if f.name in ("i18n_en.js", "iso286_data.js"):
             continue
         src = f.read_text("utf-8")
@@ -178,14 +183,14 @@ def check_i18n():
             out.append(f"js/i18n_en.js: duplicate key {k!r} ({n}×)")
     look = make_lookup(keys)
     found = {}
-    for f in sorted((FRONT / "js").glob("*.js")):
+    for f in sorted((FRONT / "js").rglob("*.js")):
         if f.name in i18n_extract.SKIP_FILES:
             continue
         for _kind, lit in i18n_extract.literals(f.read_text("utf-8")):
             for seg in i18n_extract.segments(lit):
                 if i18n_extract.is_ui(seg):
                     key = re.sub(r"\s+", " ", seg.replace("\x00", "{}")).strip()
-                    found.setdefault(key, set()).add(f"js/{f.name}")
+                    found.setdefault(key, set()).add(f.relative_to(FRONT).as_posix())
     for seg in i18n_extract.segments((FRONT / "index.html").read_text("utf-8")):
         if i18n_extract.is_ui(seg):
             found.setdefault(re.sub(r"\s+", " ", seg).strip(), set()).add("index.html")
@@ -210,10 +215,10 @@ OVERLAY_JS = re.compile(
 
 def check_overlays():
     out = []
-    for f in sorted((FRONT / "js").glob("*.js")):
+    for f in sorted((FRONT / "js").rglob("*.js")):
         if f.name == "dialogs.js":
             continue
-        rel = f"js/{f.name}"
+        rel = f.relative_to(FRONT).as_posix()
         src = f.read_text("utf-8")
         for m in OVERLAY_JS.finditer(src):
             ln = line_of(src, m.start())

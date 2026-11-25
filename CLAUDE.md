@@ -8,6 +8,8 @@ exported as vector PDF or DXF. License: **AGPL-3.0** (see `LICENSE`); keep new d
 - **Backend:** Python, Starlette + uvicorn (`backend/app`). PDFium (pypdfium2), pikepdf, reportlab, ezdxf,
   Tesseract. Untrusted files are read in separate, limited processes (`ingest.py`, `vectorize.py`).
 - **Frontend:** plain ES modules, **no build step** (`frontend/js`, `frontend/css/app.css`, `frontend/index.html`).
+  The editor object `App` is in `js/main.js`; its methods live by area in `js/app/*.js` (classes whose
+  methods are copied onto `App.prototype`), so `this` is the app everywhere.
 - **Desktop (Windows):** pywebview + PyInstaller (`desktop/drawcad.spec`), Inno Setup installer.
 - **Docker:** `Dockerfile`, `compose.yaml` (prebuilt image), `compose.build.yaml` (build from source).
 
@@ -24,8 +26,8 @@ python tools/security_smoke.py http://127.0.0.1:8765      # crafted files, CSP, 
 
 ## Version
 
-`VERSION` holds the version being developed (`1.2.0-dev.N`). Bump `N` with every push to a development
-branch, and set it to the plain version (`1.2.0`) in the commit that is tagged for a release. Settings shows
+`VERSION` holds the version being developed (`1.3.0-dev.N`). Bump `N` with every push to a development
+branch, and set it to the plain version (`1.3.0`) in the commit that is tagged for a release. Settings shows
 it: the release tag in CI images, `VERSION` + build time in images built from source (git stacks), and
 `VERSION (commit)` when run from a checkout.
 

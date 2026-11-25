@@ -32,7 +32,7 @@ description: Use when adding or changing a DrawCAD annotation — dimensions, to
 - **ISO 1101 (GD&T):** the 14 characteristics in `GDT_SYMBOLS` (`gdt.js`) with the datum rule of each
   (form tolerances take no datum), modifiers in `MODIFIERS` (Ⓜ Ⓛ Ⓟ Ⓕ CZ…), frame row height = 2 × text height,
   leader to the feature or to the dimension line.
-- **ISO 5459 (datums):** letters without I, O and Q (`DATUM_LETTERS` in main.js, `VIEW_LETTERS` in
+- **ISO 5459 (datums):** letters without I, O and Q (`DATUM_LETTERS` in js/app/util.js, `VIEW_LETTERS` in
   symbols.js for views).
 - **ISO 1302 / ISO 21920-1 (roughness):** symbol variants (any process, removal, no removal), parameter
   (Ra, Rz…) above the long leg, on the surface or on a leader; surfaces seen from below or from the right

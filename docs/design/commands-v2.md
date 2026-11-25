@@ -193,7 +193,7 @@ comma rule is a deliberate deviation (see CMD-D3).
 | Resize | SCALE | box corners of the selection scale text and symbols | `main.js:1874` `edgeAt` |
 | Hot grip: Space cycles Stretch / Move / Rotate / Scale / Mirror; Base point, Copy | yes | **no** | — |
 | Several hot grips (Shift) | yes | **no** (grips only with one annotation selected) | `main.js:1907` |
-| Multifunctional grip menus | yes | **no** | — |
+| Multifunctional grip menus | yes | **no** (done in v1.1: modes, add / remove vertex) | — |
 | MOVE / COPY / ROTATE / MIRROR with base point and displacement | yes | **no**; arrows nudge 0.5 mm (Shift 5 mm), Ctrl+C / V / D copy at the cursor | `main.js:2557`, `main.js:1104`, `main.js:1118` |
 | Double-click edits | yes | yes: selects and focuses the first field in the panel | `main.js:1836` |
 
@@ -316,7 +316,7 @@ Ovidiu's confirmation (behaviour in his AutoCAD, or a product choice) before it 
 | CMD-D11 | Transparent commands with `'` | done (v1.1) | 4 |
 | CMD-D12 | `E` without a selection asks "Select objects:"; PICKADD option | done (v1.1) | 5 |
 | CMD-D13 | MOVE / COPY with base point and typed displacement | done (v1.1) | 5 |
-| CMD-D14 | Hot-grip modes, grip input, grips on several objects, several hot grips | done (v1.1); grip menus not done | 6 |
+| CMD-D14 | Hot-grip modes, grip input, grips on several objects, several hot grips, grip menus | done (v1.1) | 6 |
 | CMD-D15 | F2 history window with prompts and messages | done (v1.1) | 2 |
 | CMD-D16 | Additional and relative polar angles, PolarSnap | done (v1.1) | 6 |
 

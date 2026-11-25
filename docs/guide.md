@@ -536,7 +536,10 @@ frontend/   HTML + ES modules, no build step (canvas 2D, osifont font)
   js/annots.js   annotation model → drawing primitives (lines, polygons, text)
   js/gdt.js      ISO 1101 symbols
   js/view.js     display, zoom, snap
-  js/main.js     tools, history, autosave, export
+  js/main.js     the editor object (App): state, start-up; its methods are grouped in js/app/
+  js/app/        state.js (history, autosave), mouse.js, keys.js (command line), input.js (typed
+                 points), grips.js, edit.js (erase, move, copy, paste), ui.js (rail, panels),
+                 contextbar.js, documents.js, review.js, sheet.js, radial.js, util.js
 backend/    Starlette
   app/pdfcore.py rendering (PDFium), geometry for snap, objects in an area,
                  object removal, vector overlay (reportlab + pikepdf), attachments
