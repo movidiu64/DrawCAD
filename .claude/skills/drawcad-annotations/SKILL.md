@@ -29,6 +29,10 @@ description: Use when adding or changing a DrawCAD annotation — dimensions, to
   never invent values outside 0 < D ≤ 500 mm — say the range is not covered.
 - **Tolerance modes** (`a.tol.mode`): `none`, `pm` (±), `dev` (upper/lower deviation), `iso` (class with
   computed limits). Deviations are written in mm with at least 3 decimals.
+- **ISO 2768-1 (general tolerances):** `frontend/js/iso2768.js` holds Tables 1–3 (linear, broken edges,
+  angular by the shorter side) for classes f / m / c / v (`settings.gtol`; `gtol2` = the ISO 2768-2 letter,
+  text only). Ranges are "over … up to", the first closed at 0.5 mm; where the standard has no value
+  (below 0.5, f over 2000, v up to 3, over 4000) return null, never extrapolate.
 - **ISO 1101 (GD&T):** the 14 characteristics in `GDT_SYMBOLS` (`gdt.js`) with the datum rule of each
   (form tolerances take no datum), modifiers in `MODIFIERS` (Ⓜ Ⓛ Ⓟ Ⓕ CZ…), frame row height = 2 × text height,
   leader to the feature or to the dimension line.

@@ -737,6 +737,12 @@ export function settingsDialog(app) {
             <div class="sub"><span>${S.exportedRev ? `Ultimul export: rev ${esc(S.exportedRev)}.` : "Documentul nu a fost încă exportat."}</span> <span>Numărul intră în numele fișierului (_rev${esc(S.revNo || "1")}), în metadatele PDF, la cotele tăiate și în tabelul de revizii.</span></div>
           </div>
           <div class="sec">
+            <div class="h">Toleranțe generale (ISO 2768)</div>
+            <div class="lbl">ISO 2768-1 — cote liniare și unghiulare</div><div class="seg">${opt("gtol", S.gtol || "", [["", "Fără"], ["f", "f · fin"], ["m", "m · mediu"], ["c", "c · grosier"], ["v", "v · foarte grosier"]])}</div>
+            <div class="lbl">ISO 2768-2 — forme și poziții (doar în text)</div><div class="seg">${opt("gtol2", S.gtol2 || "", [["", "—"], ["H", "H"], ["K", "K"], ["L", "L"]])}</div>
+            <div class="sub">O cotă fără toleranță proprie arată în panou abaterea care i se aplică, cu un buton care o scrie pe cotă. Câmpul din indicator și nota implicită preiau clasa (ex.: ISO 2768-mK).</div>
+          </div>
+          <div class="sec">
             <div class="h">Limba textelor din desen</div>
             <div class="seg">${opt("dlang", S.dlang || "ro", [["ro", "Română"], ["en", "English"]])}</div>
             <div class="sub">Antete de tabel, note implicite, tabelul de revizii. Nu schimbă limba interfeței.</div>

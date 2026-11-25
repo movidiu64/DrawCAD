@@ -2,6 +2,7 @@
 import { typeName, newId, fmtNum, parseNum, build, derive, K, SCALABLE, SCALE_MIN, SCALE_MAX, qrText } from "./annots.js";
 import { LTYPES, LTYPE_BY_ID, WIDTHS, PRESETS, resizeShape } from "./shapes.js";
 import { fmtDev } from "./iso286.js";
+import { gtolFor, gtolLabel, fmtMinutes } from "./iso2768.js";
 import { GDT_SYMBOLS, GDT_BY_ID, MODIFIERS, symbolPrims, diaAllowed } from "./gdt.js";
 import { templateFields, fieldValues, FIELD_LABELS, AUTO_FIELDS } from "./tblock.js";
 import { drawPrims, COLORS } from "./view.js";
@@ -378,7 +379,7 @@ export class Panel {
       .map(([k, l]) => `<button data-act="tolmode" data-v="${k}" class="${t.mode === k ? "on" : ""}">${l}</button>`)
       .join("");
     let body = "";
-    if (t.mode === "none") body = `<div class="sub">Se aplică toleranța generală din cartuș.</div>`;
+    if (t.mode === "none") body = this.gtolHtml(a, b);
     if (t.mode === "pm") {
       body = `<div class="field"><label for="tPm">Toleranță simetrică ± (${u})</label><input type="text" class="mono" id="tPm" data-f="pm" value="${t.pm != null ? fmtNum(t.pm, ",", 4) : ""}" placeholder="${deg ? "0,5" : "0,1"}"></div>`;
     }
@@ -408,6 +409,26 @@ export class Panel {
         ${info}<div class="lbl">Afișare pe desen</div><div class="opts">${opts}</div>`;
     }
     return `<div class="sec"><div class="h">Toleranță</div><div class="seg">${seg}</div>${body}${t.mode !== "none" ? this.previewBox() : ""}</div>`;
+  }
+
+  /** Without its own tolerance: the ISO 2768-1 general tolerance that applies, with a button to write it. */
+  gtolHtml(a, b) {
+    const S = this.app.settings;
+    const lab = gtolLabel(S);
+    if (!lab) return `<div class="sub">Se aplică toleranța generală din cartuș. Alege clasa ISO 2768 în Setări → Foaie și revizii ca s-o vezi aici.</div>`;
+    if (a.textOverride && String(a.textOverride).trim()) return `<div class="sub">Se aplică ${esc(lab)} (textul înlocuitor nu are o valoare de verificat).</div>`;
+    const g = gtolFor(a, b, S);
+    const edge = a.type === "rad" && !a.dia
+      ? `<label class="chk"><input type="checkbox" data-act-chk="gtoledge" ${a.edge ? "checked" : ""}> Muchie teșită / rază exterioară (tabelul 2)</label>`
+      : "";
+    if (!g) {
+      const size = a.type === "ang" ? null : b && Math.abs(b.nominal);
+      return `<div class="sub">${size != null && size < 0.5 ? "Sub 0,5 mm ISO 2768 nu dă o abatere: scrie toleranța pe cotă." : `${esc(lab)} nu dă o abatere pentru această valoare: scrie toleranța pe cotă.`}</div>${edge}`;
+    }
+    const v = g.unit === "min" ? `±${fmtMinutes(g.pm)}` : `±${fmtNum(g.pm, ",", 3)} mm`;
+    const why = g.kind === "ang" ? `latura scurtă ${fmtNum(g.size, ",", 1)} mm` : `${fmtNum(g.range[0], ",", 1)}…${Number.isFinite(g.range[1]) ? fmtNum(g.range[1], ",", 1) : "∞"} mm${g.kind === "edge" ? ", muchie" : ""}`;
+    return `<div class="kv gtol"><span>Toleranță generală</span><span class="mono">${v}</span><span>${esc(lab)}</span><span>${why}</span></div>
+      ${edge}<div class="btns"><button class="ghost" data-act="gtolwrite">Scrie pe cotă</button></div>`;
   }
 
   html_dim(a) {
@@ -493,7 +514,7 @@ export class Panel {
     const tpl = [
       "Muchiile nespecificate se teșesc 0,5×45°",
       "Razele nespecificate R0,5",
-      "Toleranțe generale ISO 2768-mK",
+      `Toleranțe generale ${gtolLabel(this.app.settings) || "ISO 2768-mK"}`,
       "Toate dimensiunile în mm",
       "Călire + revenire 48–52 HRC",
       "Fără bavuri și muchii tăietoare",
@@ -647,7 +668,7 @@ export class Panel {
       ${typed.map((k) => fld(k, false)).join("") || `<div class="sub">Șablonul nu are câmpuri de completat.</div>`}</div>
       ${auto.length ? `<div class="sec"><div class="h">Completate automat</div>
       ${auto.map((k) => `<div class="field"><label for="tbf_${k}">${esc(FIELD_LABELS[k] || k)}</label><input type="text" id="tbf_${k}" data-tbf="${k}" value="${esc((a.vals || {})[k] || "")}" placeholder="${esc(vals[k])}"></div>`).join("")}
-      <div class="sub">Revizia, data reviziei, scara, formatul și foaia vin din document; scrie ceva doar ca să le înlocuiești.</div></div>` : ""}
+      <div class="sub">Revizia, data reviziei, scara, formatul, foaia și toleranțele generale (clasa ISO 2768 din Setări) vin din document; scrie ceva doar ca să le înlocuiești.</div></div>` : ""}
       <div class="sec"><div class="btns"><button class="ghost" data-act="tblib">Bibliotecă de indicatoare…</button></div></div>`;
   }
 
@@ -961,6 +982,7 @@ export class Panel {
       const k = cb.dataset.actChk;
       if (k === "cloudtri") app.updateSel((a) => { a.tri = cb.checked; });
       if (k === "stampsub") app.updateSel((a) => { a.sub = cb.checked; });
+      if (k === "gtoledge") app.updateSel((a) => { a.edge = cb.checked; });
       this.render();
     }));
     const ss = el.querySelector("#scaleSel");
@@ -1091,6 +1113,11 @@ export class Panel {
       case "layer":
         upd((a) => { a.layer = v; });
         break;
+      case "gtolwrite": {
+        const g = gtolFor(this.app.selected(), this.app.builtOf(this.app.selected()), this.app.settings);
+        if (g) upd((a) => { a.tol = g.unit === "min" ? { mode: "pm", pm: g.pm / 60, dms: true } : { mode: "pm", pm: g.pm }; });
+        break;
+      }
       case "tolmode":
         upd((a) => { a.tol = { ...(a.tol || {}), mode: v }; });
         break;

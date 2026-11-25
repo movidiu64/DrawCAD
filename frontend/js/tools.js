@@ -1,6 +1,7 @@
 // Tool definitions: icon, key, steps and the annotation they produce.
 import { newId, K, dimSeries, parseNum, gdtAnchor } from "./annots.js";
 import { trackSweep } from "./shapes.js";
+import { gtolLabel } from "./iso2768.js";
 
 const shape = (app, kind, pts, extra = {}) => ({ type: "shape", kind, pts, ...app.drawStyle, ...extra });
 const arcState = { key: null };
@@ -196,9 +197,13 @@ export const TOOLS = [
 
   { id: "note", label: "Note", key: "N", group: "Documentare", icon: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5", kind: "clicks", n: 1,
     hint: "Click pe colțul stânga-sus al blocului de note · textul (pe mai multe rânduri) se scrie în panou",
-    make: (pts, app) => (app && app.settings && app.settings.dlang === "en"
-      ? { type: "note", p: pts[0], title: "NOTES", text: "Break all sharp edges 0.5×45°\nGeneral tolerances ISO 2768-mK", numbered: true, frame: false, size: 1 }
-      : { type: "note", p: pts[0], title: "NOTE", text: "Muchiile nespecificate se teșesc 0,5×45°\nToleranțe generale ISO 2768-mK", numbered: true, frame: false, size: 1 }),
+    // the general tolerances line follows the document's ISO 2768 class (mK when none is set)
+    make: (pts, app) => {
+      const g = (app && gtolLabel(app.settings)) || "ISO 2768-mK";
+      return app && app.settings && app.settings.dlang === "en"
+        ? { type: "note", p: pts[0], title: "NOTES", text: `Break all sharp edges 0.5×45°\nGeneral tolerances ${g}`, numbered: true, frame: false, size: 1 }
+        : { type: "note", p: pts[0], title: "NOTE", text: `Muchiile nespecificate se teșesc 0,5×45°\nToleranțe generale ${g}`, numbered: true, frame: false, size: 1 };
+    },
   },
   { id: "revtab", label: "Tabel rev.", key: "E", group: "Documentare", icon: "M3 6h18v12H3zM3 10h18M3 14h18M8 6v12M17 6v12", kind: "clicks", n: 1,
     hint: "Click pe colțul dreapta-sus al cartușului: tabelul se așază deasupra, aliniat la dreapta",

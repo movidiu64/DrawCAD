@@ -7,7 +7,7 @@ Built on the `v1.3` branch, one phase per commit (or a few), `VERSION` = `1.3.0-
 |---|---|---|
 | V13-1 | `main.js` split by area into `js/app/*.js` | built |
 | V13-2 | Page operations in undo / redo | built |
-| V13-3 | ISO 2768-1 general tolerances | planned |
+| V13-3 | ISO 2768-1 general tolerances | built |
 | V13-4 | Measure: area and perimeter | planned |
 | V13-5 | Text at any angle, rotated linear dimension | planned |
 | V13-6 | Command search (Ctrl+K), shortcut sheet (? / F1), first-run tips | planned |
@@ -40,7 +40,7 @@ OCR in strips), documents as tabs, recent-document thumbnails, user accounts.
 - Tests: backend (set page state, deleted page restored), e2e (rotate, delete, undo, redo; annotations
   back in place).
 
-## V13-3 — ISO 2768-1 general tolerances
+## V13-3 — ISO 2768-1 general tolerances · built
 
 - Document setting (Settings → Sheet and revisions): general tolerance class **none / f / m / c / v**,
   and optionally the ISO 2768-2 class **H / K / L** (text only). Default for new documents: none; the
@@ -49,8 +49,10 @@ OCR in strips), documents as tabs, recent-document thumbnails, user accounts.
   angular dimensions by the length of the shorter side (Table 3). Below 0.5 mm the standard gives no
   value: nothing is shown.
 - A dimension without its own tolerance shows its general tolerance in the panel (for example
-  "±0,3 · ISO 2768-m") and in the hover label; *Write it on the dimension* turns it into an explicit
-  ± tolerance. Dimensions with their own tolerance or fit are left alone.
+  "±0,3 mm · ISO 2768-mK · 30…120 mm"); *Write it on the dimension* turns it into an explicit
+  ± tolerance (angles in degrees and minutes). Dimensions with their own tolerance or fit are left
+  alone. Radii take Table 1, or Table 2 when marked as a broken edge. (The hover label was left out:
+  the panel shows it as soon as the dimension is selected.)
 - The title block's general-tolerances field and the default note text follow the class
   ("ISO 2768-mK").
 - Tests: unit tests for every table row edge (3 / 3.0001, 6, 30, 120, 400, 1000, 2000, 4000), the

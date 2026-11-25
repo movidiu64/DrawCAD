@@ -69,6 +69,9 @@ EXCEPTIONS = [
     ("i18n", "js/dialogs.js", "DrawCAD {}", "product name + version (translate=\"no\")"),
     # i18n: not interface text
     ("i18n", "*", "Escape", "KeyboardEvent.key value"),
+    ("i18n", "js/iso2768.js", "ISO 2768-", "standard designation (ISO 2768-mK), the same in every language"),
+    ("i18n", "js/panel.js", "ISO 2768-mK", "standard designation, the same in every language"),
+    ("i18n", "js/tools.js", "ISO 2768-mK", "standard designation, the same in every language"),
     ("i18n", "js/app/keys.js", "Arrow", "KeyboardEvent.key prefix (ArrowUp…)"),
     ("i18n", "js/app/keys.js", "Backspace", "KeyboardEvent.key value"),
     ("i18n", "js/app/input.js", "Backspace", "KeyboardEvent.key value"),

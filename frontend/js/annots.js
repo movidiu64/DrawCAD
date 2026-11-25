@@ -23,6 +23,8 @@ export const DEFAULT_SETTINGS = {
   revNo: "1",
   extGap: 0.5,
   extOver: 2,
+  gtol: "", // ISO 2768-1 general tolerance class: "", f, m, c, v
+  gtol2: "", // ISO 2768-2 class for the designation text: "", H, K, L
 };
 
 export const TYPE_NAMES = {
@@ -159,7 +161,12 @@ export function labelRuns(a, S, measure, nominal, prefix) {
   const space = S.codeSpace ? " " : "";
 
   if (t.mode === "pm" && t.pm) {
-    push(main + "±" + fabs(t.pm));
+    // an angle written from a general tolerance: degrees and minutes (±0°30')
+    if (deg && t.dms) {
+      const min = Math.round(Math.abs(t.pm) * 60);
+      const d = Math.floor(min / 60);
+      push(main + "±" + (min % 60 ? `${d}°${min % 60}'` : `${d}°`));
+    } else push(main + "±" + fabs(t.pm));
   } else if (t.mode === "dev" && (t.up != null || t.lo != null)) {
     const up = t.up || 0;
     const lo = t.lo || 0;

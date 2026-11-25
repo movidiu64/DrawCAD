@@ -3,11 +3,13 @@
 // the corner that sits on the corner of the drawing frame. Texts may hold fields: {titlu}, {rev}…
 // Pure module (tested in Node): no DOM, no storage.
 
+import { gtolLabel } from "./iso2768.js";
+
 const K = 72 / 25.4; // pt per mm
 const CAP = 1515 / 2048; // cap height of osifont, relative to the em
 
 /** Fields filled by DrawCAD itself; the others are typed in the panel. */
-export const AUTO_FIELDS = ["rev", "data", "scara", "format", "foaia"];
+export const AUTO_FIELDS = ["rev", "data", "scara", "format", "foaia", "tol"];
 
 /** Names of the known fields, for the panel (Romanian in the source, translated like the interface). */
 export const FIELD_LABELS = {
@@ -66,6 +68,7 @@ export function fieldValues(a, S, ctx = {}) {
     scara: scaleText(S.scale),
     format: ctx.page ? sheetOf(ctx.page[0], ctx.page[1]) : "",
     foaia: ctx.total ? `${(a.page || 0) + 1}/${ctx.total}` : "",
+    tol: gtolLabel(S),
   };
   for (const k of AUTO_FIELDS) if (v[k] == null || v[k] === "") v[k] = auto[k];
   return v;
