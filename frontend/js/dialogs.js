@@ -1346,6 +1346,8 @@ const TIPS = [
 /** First document opened: three tips (rail, command line, panel), one after the other, shown once.
  *  `again` shows them even if they were seen. Bubbles next to their target, not modal. */
 export function firstRunTips(again = false) {
+  // on a phone the rail is a bar at the bottom and the panel a drawer: the tips would point at nothing
+  if (!again && window.innerWidth < 700) return;
   try {
     if (!again && localStorage.getItem(TIPS_KEY)) return;
     localStorage.setItem(TIPS_KEY, "1");
