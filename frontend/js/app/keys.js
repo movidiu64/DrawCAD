@@ -99,6 +99,20 @@ export class Keyboard {
     }, 120));
     inp.addEventListener("keydown", (e) => {
       e.stopPropagation();
+      const ctl = (e.ctrlKey || e.metaKey) && !e.altKey;
+      // from the command line too: Ctrl+K searches commands; Ctrl+Z / Ctrl+Y with nothing typed are the
+      // drawing's undo / redo, as in AutoCAD (with text typed they stay the field's own)
+      if (ctl && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        dlg.commandSearch(this);
+        return;
+      }
+      if (ctl && !inp.value && (e.key.toLowerCase() === "z" || e.key.toLowerCase() === "y")) {
+        e.preventDefault();
+        if (e.key.toLowerCase() === "z" && !e.shiftKey) this.doUndo();
+        else this.doRedo();
+        return;
+      }
       if (e.key === "Escape") {
         inp.value = "";
         inp.blur();
