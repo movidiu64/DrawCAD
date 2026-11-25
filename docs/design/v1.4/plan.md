@@ -9,7 +9,7 @@ DWG through **LibreDWG**, inside DrawCAD (Docker image and Windows executable), 
 |---|---|---|
 | V14-1 | DXF → vector PDF on the server (ezdxf drawing add-on, ReportLab backend) | done |
 | V14-2 | Open DXF in the editor: pages, scale, the original kept | done |
-| V14-3 | DWG through LibreDWG (`dwg2dxf`): Docker image and Windows executable | planned |
+| V14-3 | DWG through LibreDWG (`dwg2dxf`): Docker image and Windows executable | done (CI to confirm the image and exe builds) |
 | V14-4 | DXF export of a DXF / DWG: the original entities, the DrawCAD annotations on their layers | planned |
 | V14-5 | Guide, limits, tests on real files | planned |
 
@@ -44,8 +44,13 @@ DWG through **LibreDWG**, inside DrawCAD (Docker image and Windows executable), 
 
 - `dwg2dxf` from LibreDWG (GPL-3.0-or-later, compatible with DrawCAD's AGPL-3.0) converts DWG → DXF, then
   V14-2. It runs in the limited process too, with a time limit.
-- Docker: built from a release tarball in a build stage, only the binary and its library copied into the
-  image. Windows: the release's win64 build, shipped next to the executable (as Tesseract).
+- Docker: LibreDWG 0.14 built from the release tarball (SHA-256 checked) in a build stage, statically:
+  only `dwg2dxf` (≈15 MB, needs just libc) goes into the image. Windows: the release's win64 build
+  (checksum checked), `dwg2dxf.exe` + `libredwg-0.dll` in `libredwg/` next to the executable, with the
+  GPL text and the source link. `DRAWCAD_DWG2DXF` points to the binary; `/api/health` says `dwg: true`.
+- Plotting: colors come out black (as monochrome.ctb: yellow and cyan are unreadable on paper), except
+  white fills (wipeouts). A model space with a few far-away strays is fitted on the drawing itself (the
+  97 % of entities nearest the median), the strays left off the sheet.
 - LibreDWG reads R13…2018 well; newer versions and custom objects can come out partly. The open dialog
   says when the conversion lost entities (ezdxf audit counts).
 

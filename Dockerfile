@@ -1,3 +1,24 @@
+# LibreDWG's dwg2dxf (GPL-3.0-or-later) for opening DWG drawings, built from the release tarball;
+# only the static binary goes into the image
+FROM python:3.13-slim AS libredwg
+ARG LIBREDWG_VERSION=0.14
+ARG LIBREDWG_SHA256=62ebb73b984f865960f20ed26619ea5f8789d5e3fd088fa40a2598384da81275
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends build-essential ca-certificates curl xz-utils \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+RUN curl -fsSL -o libredwg.tar.xz "https://github.com/LibreDWG/libredwg/releases/download/${LIBREDWG_VERSION}/libredwg-${LIBREDWG_VERSION}.tar.xz" \
+ && echo "${LIBREDWG_SHA256}  libredwg.tar.xz" | sha256sum -c - \
+ && tar xf libredwg.tar.xz \
+ && cd "libredwg-${LIBREDWG_VERSION}" \
+ && ./configure --disable-bindings --disable-python --disable-docs --disable-shared --enable-static --enable-release \
+ && make -j"$(nproc)" -C src \
+ && make -C programs dwg2dxf \
+ && strip programs/dwg2dxf \
+ && install -m 0755 programs/dwg2dxf /usr/local/bin/dwg2dxf \
+ && install -m 0644 COPYING /usr/local/share/libredwg-COPYING \
+ && /usr/local/bin/dwg2dxf --version
+
 FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -14,6 +35,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apt-get update \
  && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-ron tesseract-ocr-eng \
  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=libredwg /usr/local/bin/dwg2dxf /usr/local/bin/dwg2dxf
+COPY --from=libredwg /usr/local/share/libredwg-COPYING /usr/share/doc/libredwg/COPYING
 
 WORKDIR /app/backend
 COPY backend/requirements.txt ./
@@ -32,7 +56,7 @@ RUN if [ -n "$DRAWCAD_VERSION" ]; then v="$DRAWCAD_VERSION"; else v="$(cat /app/
  && printf '%s' "$v" > /app/frontend/version.txt
 
 LABEL org.opencontainers.image.title="DrawCAD" \
-      org.opencontainers.image.description="Self-hosted PDF editor for technical drawings: dimensions, tolerances, GD&T, revisions, OCR, DXF export" \
+      org.opencontainers.image.description="Self-hosted PDF editor for technical drawings: dimensions, tolerances, GD&T, revisions, OCR, opens DXF / DWG, DXF export" \
       org.opencontainers.image.source="https://github.com/movidiu64/DrawCAD" \
       org.opencontainers.image.licenses="AGPL-3.0-only"
 RUN chmod 0755 /entrypoint.sh && mkdir -p /data

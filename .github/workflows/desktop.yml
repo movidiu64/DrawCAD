@@ -73,6 +73,24 @@ jobs:
           Write-Host "::notice::Tesseract in the package: $mb MB"
           "TESSERACT_DIR=$dst" >> $env:GITHUB_ENV
 
+      - name: LibreDWG (dwg2dxf, for opening DWG) for the package
+        run: |
+          $v = "0.14"
+          $sha = "1ad7e15344d20b3426c3435b078d82fb84b35062815946b2cca9c5fc9810fea8"
+          $zip = Join-Path $env:RUNNER_TEMP "libredwg.zip"
+          Invoke-WebRequest "https://github.com/LibreDWG/libredwg/releases/download/$v/libredwg-$v-win64.zip" -OutFile $zip
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() -ne $sha) { Write-Host "::error::LibreDWG zip checksum mismatch"; exit 1 }
+          $tmp = Join-Path $env:RUNNER_TEMP "libredwg-all"
+          Expand-Archive $zip -DestinationPath $tmp -Force
+          $dst = Join-Path $env:RUNNER_TEMP "libredwg"
+          New-Item -ItemType Directory -Force $dst | Out-Null
+          # dwg2dxf.exe needs only libredwg-0.dll (and Windows' own kernel32 / msvcrt)
+          Copy-Item "$tmp\dwg2dxf.exe", "$tmp\libredwg-0.dll", "$tmp\README.txt" $dst
+          Copy-Item "desktop\licenses\LibreDWG-COPYING.txt" "$dst\COPYING.txt"
+          Set-Content -Path "$dst\SOURCE.txt" -Encoding ascii -Value "GNU LibreDWG $v (GPL-3.0-or-later), unmodified Windows build from https://github.com/LibreDWG/libredwg/releases/tag/$v`r`nSource: https://github.com/LibreDWG/libredwg/releases/download/$v/libredwg-$v.tar.xz"
+          & "$dst\dwg2dxf.exe" --version
+          "LIBREDWG_DIR=$dst" >> $env:GITHUB_ENV
+
       - name: PyInstaller
         run: pyinstaller desktop/drawcad.spec --noconfirm --distpath dist --workpath build
 

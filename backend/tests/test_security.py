@@ -156,6 +156,9 @@ class SecurityTest(unittest.TestCase):
         st, res = self.upload(b"0\nSECTION\n2\nENTITIES\n" + os.urandom(5000), "stricat.dxf")
         self.assertEqual(st, 400)
         self.assertIn("error", res)
+        # a "DWG" that is not one: refused (converted or not, depending on LibreDWG being here)
+        st, res = self.upload(b"AC1032" + os.urandom(20000), "stricat.dwg")
+        self.assertEqual(st, 400)
 
         def text(doc):
             s = io.StringIO()

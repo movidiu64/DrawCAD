@@ -30,6 +30,10 @@ for pkg in ("pypdfium2", "pypdfium2_raw", "ezdxf", "reportlab", "webview", "pike
 tess = os.environ.get("TESSERACT_DIR")
 if tess and os.path.isdir(tess):
     datas.append((tess, "tesseract"))
+# LIBREDWG_DIR (optional): dwg2dxf.exe and libredwg-0.dll, for opening DWG drawings
+ldwg = os.environ.get("LIBREDWG_DIR")
+if ldwg and os.path.isdir(ldwg):
+    datas.append((ldwg, "libredwg"))
 
 a = Analysis(
     [os.path.join(SPECPATH, "drawcad_desktop.py")],

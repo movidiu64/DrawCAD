@@ -1347,13 +1347,19 @@ async def _ocr_lang(wait: float | None = None):
         return None
 
 
+def _dwg_available() -> bool:
+    """LibreDWG's dwg2dxf is here (Docker image, desktop app): DWG files can be opened."""
+    p = os.environ.get("DRAWCAD_DWG2DXF")
+    return bool((p and os.path.isfile(p)) or shutil.which("dwg2dxf"))
+
+
 async def api_health(request: Request):
     from . import ocr as ocrmod
 
     # the interface waits for this answer at startup: no more than one second for OCR
     lang = await _ocr_lang(wait=1.0)
     return JSONResponse({"ok": True, "retentionDays": RETENTION_DAYS, "mode": MODE, "ocr": lang,
-                         "ocrPending": lang is None and not ocrmod.langs_known(), "dxf": True, "desktop": DESKTOP,
+                         "ocrPending": lang is None and not ocrmod.langs_known(), "dxf": True, "dwg": _dwg_available(), "desktop": DESKTOP,
                          "version": VERSION})
 
 

@@ -39,7 +39,7 @@ export class Documents {
     else what = `planșe: ${pg.map((p) => p.name).join(", ")}; scara ${sc}`;
     const n = (meta.dxf.fixes || 0) + (meta.dxf.errors || 0);
     const fix = n ? ` Fișierul avea ${n} erori, reparate la citire.` : "";
-    return `Deschis: ${meta.name} — ${what}. Scara desenului e luată din DXF.${fix}`;
+    return `Deschis: ${meta.name} — ${what}. Scara desenului e luată din fișier.${fix}`;
   }
 
   async loadDoc(id, silent) {
@@ -75,7 +75,7 @@ export class Documents {
     this.revPending = true;
     this.setSaveState(state ? "saved" : "");
     $("docName").textContent = meta.name;
-    $("docMeta").textContent = `${{ image: "imagine", dxf: "DXF" }[meta.kind] || "PDF"} · ${meta.pages.length} ${meta.pages.length === 1 ? "pagină" : "pagini"}`;
+    $("docMeta").textContent = `${{ image: "imagine", dxf: "DXF", dwg: "DWG" }[meta.kind] || "PDF"} · ${meta.pages.length} ${meta.pages.length === 1 ? "pagină" : "pagini"}`;
     document.title = `${meta.name} — DrawCAD`;
     this.setPage(0);
     this.updateButtons();

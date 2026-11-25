@@ -62,6 +62,9 @@ def setup_env():
         os.environ.setdefault("DRAWCAD_TESSERACT", str(exe))
         os.environ.setdefault("TESSDATA_PREFIX", str(tess / "tessdata"))
         os.environ["PATH"] = str(tess) + os.pathsep + os.environ.get("PATH", "")
+    dwg = base / "libredwg" / ("dwg2dxf.exe" if sys.platform == "win32" else "dwg2dxf")
+    if dwg.is_file():
+        os.environ.setdefault("DRAWCAD_DWG2DXF", str(dwg))
     backend = base / "backend"
     if backend.is_dir() and str(backend) not in sys.path:
         sys.path.insert(0, str(backend))

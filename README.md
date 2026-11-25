@@ -118,7 +118,7 @@ cd frontend && npm test                                 # ISO 286 tables, geomet
 python tools/e2e_smoke.py http://127.0.0.1:8080 out     # end-to-end in Chromium (Playwright)
 ```
 
-Built with [PDFium](https://pdfium.googlesource.com/pdfium/) (pypdfium2), [pikepdf](https://github.com/pikepdf/pikepdf), [ReportLab](https://www.reportlab.com/), [ezdxf](https://github.com/mozman/ezdxf), [Tesseract](https://github.com/tesseract-ocr/tesseract) and the [osifont](https://github.com/hikikomori82/osifont) ISO 3098 font. Third-party licenses are listed in the [guide](docs/guide.md#architecture).
+Built with [PDFium](https://pdfium.googlesource.com/pdfium/) (pypdfium2), [pikepdf](https://github.com/pikepdf/pikepdf), [ReportLab](https://www.reportlab.com/), [ezdxf](https://github.com/mozman/ezdxf), [Tesseract](https://github.com/tesseract-ocr/tesseract), [LibreDWG](https://www.gnu.org/software/libredwg/) and the [osifont](https://github.com/hikikomori82/osifont) ISO 3098 font. Third-party licenses are listed in the [guide](docs/guide.md#architecture).
 
 ## License
 

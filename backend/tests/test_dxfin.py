@@ -58,7 +58,7 @@ def pdf_pages(data):
 
 
 def red(data, page=0):
-    """Pixels drawn red (the hatch, ACI 1): colors come through."""
+    """Pixels drawn red: none, colors are plotted black (monochrome)."""
     pdf = pdfium.PdfDocument(data)
     img = pdf[page].render(scale=1).to_pil().convert("RGB")
     pdf.close()
@@ -72,6 +72,44 @@ def ink(data, page=0):
     pdf.close()
     hist = img.histogram()
     return 1 - sum(hist[250:]) / sum(hist)
+
+
+DWG = Path(__file__).parent / "data" / "piesa_r2000.dwg"  # make_doc() saved as R2000 DWG by LibreDWG
+
+
+class DwgTest(unittest.TestCase):
+    @unittest.skipUnless(dxfin.dwg_exe(), "LibreDWG dwg2dxf not installed")
+    def test_dwg_opens(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as d:
+            dxf = dxfin.dwg_to_dxf(DWG.read_bytes(), d)
+            self.assertEqual(list(Path(d).iterdir()), [])  # its temporary files are gone
+        pdf, info = dxfin.dxf_to_pdf(dxf)
+        self.assertEqual(info["pages"][0]["iso"], "A4")
+        doc = pdfium.PdfDocument(pdf)
+        txt = doc[0].get_textpage().get_text_range()
+        doc.close()
+        self.assertIn("ȘURUB Ø20", txt)  # R2000 code page and \U+ escapes come through
+
+    @unittest.skipUnless(dxfin.dwg_exe(), "LibreDWG dwg2dxf not installed")
+    def test_bad_dwg(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as d, self.assertRaises(ValueError):
+            dxfin.dwg_to_dxf(b"AC1032" + bytes(range(256)) * 40, d)
+
+    def test_missing_converter(self):
+        from app import ingest
+
+        old = dxfin.dwg_exe
+        dxfin.dwg_exe = lambda: None
+        try:
+            with self.assertRaises(ingest.Rejected) as cm:
+                ingest.dwg_dxf(DWG.read_bytes(), ".")
+            self.assertIn("LibreDWG", str(cm.exception))
+        finally:
+            dxfin.dwg_exe = old
 
 
 class FitSheetTest(unittest.TestCase):
@@ -96,7 +134,7 @@ class DxfToPdfTest(unittest.TestCase):
         self.assertAlmostEqual(w, 297, 0)
         self.assertAlmostEqual(h, 210, 0)
         self.assertGreater(ink(pdf), 0.01)
-        self.assertGreater(red(pdf), 50)
+        self.assertEqual(red(pdf), 0)
 
     def test_layout_with_viewport(self):
         pdf, info = dxfin.dxf_to_pdf(to_bytes(make_doc(layout=True)))

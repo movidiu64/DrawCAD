@@ -11,6 +11,11 @@ from __future__ import annotations
 
 import io
 import math
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 import ezdxf
@@ -31,6 +36,50 @@ DRAWCAD_VARS = ("DRAWCAD_SHEET_W", "DRAWCAD_SHEET_H", "DRAWCAD_SCALE")
 UNIT_MM = {0: 1.0, 1: 25.4, 2: 304.8, 4: 1.0, 5: 10.0, 6: 1000.0, 14: 100.0}  # $INSUNITS → mm
 
 
+def _ink(color: str) -> float:
+    """Plotted as with monochrome.ctb: every color black (yellow or cyan lines are unreadable on paper),
+    except the white of wipeouts and background fills, which hides what is under it. → gray level."""
+    r, g, b = RGB.from_hex(color[:7]).to_floats()
+    return 1.0 if min(r, g, b) > 0.98 else 0.0
+
+
+class NoDwg(Exception):
+    """LibreDWG's dwg2dxf is not installed here."""
+
+
+def dwg_exe() -> str | None:
+    """LibreDWG's dwg2dxf: the given path (the desktop app bundles it) or the one on PATH."""
+    p = os.environ.get("DRAWCAD_DWG2DXF")
+    if p and os.path.isfile(p):
+        return p
+    return shutil.which("dwg2dxf")
+
+
+def dwg_to_dxf(data: bytes, work: str, timeout: float = 90) -> bytes:
+    """DWG → DXF with LibreDWG (`dwg2dxf`), in a temporary folder under `work`. The DXF keeps the DWG's
+    version (R2000 text in its code page, 2007+ in UTF-8), as ezdxf expects."""
+    exe = dwg_exe()
+    if not exe:
+        raise NoDwg()
+    with tempfile.TemporaryDirectory(dir=work) as tmp:
+        src = os.path.join(tmp, "in.dwg")
+        dst = os.path.join(tmp, "out.dxf")
+        with open(src, "wb") as f:
+            f.write(data)
+        kw = {"creationflags": 0x08000000} if sys.platform == "win32" else {}  # no console window
+        try:
+            res = subprocess.run([exe, "-y", "-o", dst, src], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.PIPE, timeout=timeout, cwd=tmp, check=False, **kw)
+        except subprocess.TimeoutExpired as e:
+            raise ValueError(f"Conversia DWG a durat peste {timeout:g} s") from e
+        # dwg2dxf answers ≠ 0 for warnings too: what counts is a DXF that ezdxf can read
+        if not os.path.isfile(dst) or os.path.getsize(dst) < 64:
+            msg = res.stderr.decode("utf-8", "replace").strip().splitlines()[-1:] if res.stderr else []
+            raise ValueError("DWG imposibil de convertit" + (f": {msg[0][:200]}" if msg else ""))
+        with open(dst, "rb") as f:
+            return f.read()
+
+
 class TooLarge(Exception):
     """More entities than the limit (the count is the message)."""
 
@@ -47,13 +96,11 @@ class _Canvas(BackendInterface):
 
     # --- state
     def _stroke(self, props):
-        r, g, b = RGB.from_hex(props.color).to_floats()
-        self.c.setStrokeColorRGB(r, g, b)
+        self.c.setStrokeGray(_ink(props.color))
         self.c.setLineWidth(max(self._min_lw, props.lineweight) * MM)
 
     def _fill(self, props):
-        r, g, b = RGB.from_hex(props.color).to_floats()
-        self.c.setFillColorRGB(r, g, b)
+        self.c.setFillGray(_ink(props.color))
 
     @staticmethod
     def _add(p, path, close):
@@ -304,9 +351,8 @@ def _place(drw: _Drawing, c, page_mm: tuple[float, float], box: BoundingBox2d) -
         pdfcore._register_font()
         for text, tm, color, _pts in drw.texts:
             t = tm @ m
-            r, g, b = RGB.from_hex(color).to_floats()
             c.saveState()
-            c.setFillColorRGB(r, g, b)
+            c.setFillGray(_ink(color))
             c.transform(t[0, 0], t[0, 1], t[1, 0], t[1, 1], t[3, 0], t[3, 1])
             c.setFont(pdfcore.FONT_NAME, 1)
             c.drawString(0, 0, text)
@@ -339,6 +385,41 @@ def fit_sheet(width: float, height: float) -> tuple[str, float, float, float]:
     name, sw, sh = SHEETS[-1]
     sc = min((sw - 2 * MARGIN) / max(width, 1e-9), (sh - 2 * MARGIN) / max(height, 1e-9))
     return name, sw, sh, sc
+
+
+def core_extents(msp, full: BoundingBox2d, max_entities: int = 50000):
+    """Model space without a few far-away strays (a point or block lost kilometres away, which makes
+    "zoom extents" useless): the extents of the 97 % of entities nearest to the median, if the rest makes
+    the drawing over 5× larger. → (extents, number of entities left out) or None."""
+    from ezdxf import bbox as ebbox
+
+    cache = ebbox.Cache()
+    items = []
+    for i, e in enumerate(msp):
+        if i >= max_entities:
+            return None
+        try:
+            eb = ebbox.extents([e], cache=cache, fast=True)
+        except Exception:  # noqa: BLE001
+            continue
+        if eb.has_data:
+            items.append(BoundingBox2d([Vec2(eb.extmin), Vec2(eb.extmax)]))
+    if len(items) < 10:
+        return None
+    xs = sorted(b.center.x for b in items)
+    ys = sorted(b.center.y for b in items)
+    med = Vec2(xs[len(xs) // 2], ys[len(ys) // 2])
+    items.sort(key=lambda b: (b.center - med).magnitude)
+    keep = items[: max(1, math.ceil(len(items) * 0.97))]
+    core = BoundingBox2d()
+    for b in keep:
+        core.extend([b.extmin, b.extmax])
+    big = max(full.size.x, full.size.y)
+    small = max(core.size.x, core.size.y, 1e-9)
+    if big <= 5 * small:
+        return None
+    out = sum(1 for b in items[len(keep):] if not (core.inside(b.extmin) and core.inside(b.extmax)))
+    return core, out
 
 
 def expanded_count(doc, limit: int) -> int:
@@ -441,9 +522,13 @@ def dxf_to_pdf(data: bytes, max_entities: int = 0) -> tuple[bytes, dict]:
             pages.append({"name": lay.name, "space": "paper", "sheet": [round(wmm, 2), round(hmm, 2)], "scale": round(scale, 6)})
     if not pages:
         rec = _record(doc, doc.modelspace())
+        outliers = 0
         b = rec.bbox()
         if b is None:
             raise ValueError("Desenul DXF nu are nimic de afișat")
+        core = core_extents(doc.modelspace(), b)
+        if core is not None:
+            b, outliers = core
         wmm, hmm = b.size.x * unit, b.size.y * unit
         name, sw, sh, sc = fit_sheet(wmm, hmm)
         cx, cy = b.center.x, b.center.y
@@ -451,6 +536,8 @@ def dxf_to_pdf(data: bytes, max_entities: int = 0) -> tuple[bytes, dict]:
         box = BoundingBox2d([Vec2(cx, cy) - half, Vec2(cx, cy) + half])
         _place(rec, c, (sw, sh), box)
         pages.append({"name": "Model", "space": "model", "sheet": [sw, sh], "scale": round(1 / sc, 6), "iso": name})
+        if outliers:
+            pages[-1]["outliers"] = outliers
     c.save()
     info = {"pages": pages, "fixes": len(auditor.fixes), "errors": len(auditor.errors), "units_mm": unit}
     return buf.getvalue(), info

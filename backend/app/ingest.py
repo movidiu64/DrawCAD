@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 
 
@@ -33,6 +34,11 @@ class Rejected(Exception):
     pass
 
 
+def is_dwg(head: bytes) -> bool:
+    """A DWG by its version string: AC1012 (R13) … AC1032 (2018+), the old AC1.40 … AC2.10 too."""
+    return re.match(rb"AC(1\d{3}|[12]\.\d\d)", head[:6]) is not None
+
+
 def is_dxf(head: bytes) -> bool:
     """A DXF by its content (the upload's name is not trusted): binary DXF sentinel, or an ASCII file
     that starts with group code 0 SECTION (after optional 999 comments)."""
@@ -43,6 +49,22 @@ def is_dxf(head: bytes) -> bool:
     while i + 1 < len(lines) and lines[i] == "999":
         i += 2
     return i + 1 < len(lines) and lines[i] == "0" and lines[i + 1].upper() == "SECTION"
+
+
+DWG_TIMEOUT = float(_env("DWG_TIMEOUT", "90"))
+
+
+def dwg_dxf(data: bytes, out_dir: str) -> bytes:
+    """A DWG converted to DXF by LibreDWG (dwg2dxf), in this limited process (its limits apply to the
+    converter too)."""
+    from . import dxfin
+
+    try:
+        return dxfin.dwg_to_dxf(data, out_dir, DWG_TIMEOUT)
+    except dxfin.NoDwg as e:
+        raise Rejected("Deschiderea DWG nu e disponibilă aici (lipsește LibreDWG). Salvează desenul ca DXF.") from e
+    except ValueError as e:
+        raise Rejected(str(e)) from e
 
 
 def dxf_pdf(data: bytes, out_dir: str) -> tuple[bytes, dict]:
@@ -163,9 +185,12 @@ def process(path: str, out_dir: str, dpi: float | None) -> dict:
     removed = {}
     head = data[:1024]
     dxf = None
-    if is_dxf(data[:4096]):
-        data, dxf = dxf_pdf(data, out_dir)
+    if is_dwg(head) or is_dxf(data[:4096]):
         kind = "dxf"
+        if is_dwg(head):
+            data = dwg_dxf(data, out_dir)
+            kind = "dwg"
+        data, dxf = dxf_pdf(data, out_dir)
         data, removed = sanitize_pdf(data)  # our own PDF: nothing to remove, but every PDF goes through it
     elif b"%PDF-" not in head:
         try:

@@ -759,7 +759,7 @@ def main(url, out):
         # a DXF (V14): opened as a drawing, on an ISO sheet at its scale; the 1:2 layout sets the scale
         dxf = out / "placa.dxf"
         _make_dxf(dxf)
-        prev_id = page.evaluate("window.cotare.doc.id")
+        export_id = prev_id = page.evaluate("window.cotare.doc.id")
         page.set_input_files("#fileInput", str(dxf))
         page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.kind === 'dxf'")
         assert "DXF" in page.inner_text("#docMeta"), page.inner_text("#docMeta")
@@ -767,12 +767,22 @@ def main(url, out):
         # snap comes from the DXF geometry: the Ø30 hole at 1:2 is a 7.5 mm radius on the sheet
         page.wait_for_function("window.cotare.snapper.arcs.some((a) => Math.abs(a[2] - 7.5 * 72 / 25.4) < 0.2)")
         page.screenshot(path=str(out / "dxf_open.png"))
+        # a DWG, where LibreDWG is installed (Docker image, desktop app): converted, then like a DXF
+        if page.evaluate("fetch('api/health').then((r) => r.json()).then((h) => !!h.dwg)"):
+            prev_id = page.evaluate("window.cotare.doc.id")
+            page.set_input_files("#fileInput", str(Path(__file__).resolve().parents[1] / "backend" / "tests" / "data" / "piesa_r2000.dwg"))
+            page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.kind === 'dwg'")
+            assert "DWG" in page.inner_text("#docMeta"), page.inner_text("#docMeta")
+            page.wait_for_function("window.cotare.snapper.arcs.some((a) => Math.abs(a[2] - 25 * 72 / 25.4) < 0.2)")
+            print("DWG: OK")
+        else:
+            print("DWG: LibreDWG not installed, skipped")
         # closing without changes: straight to the start page
         page.click("#btnClose")
         page.wait_for_function("window.cotare.doc === null && !document.getElementById('emptyState').hidden")
         page.wait_for_function("document.querySelectorAll('#recentList [data-doc]').length >= 1", timeout=5000)
         # reopen the export from Recent (the DXF is the newest), one change, then close with the prompt
-        page.click(f'#recentList [data-doc="{prev_id}"]')
+        page.click(f'#recentList [data-doc="{export_id}"]')
         page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 42")
         page.wait_for_timeout(300)
         # page operations are history steps: rotate, Ctrl+Z; delete a page, Ctrl+Z, Ctrl+Y, Ctrl+Z
