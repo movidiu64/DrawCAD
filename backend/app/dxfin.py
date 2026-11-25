@@ -18,7 +18,7 @@ from ezdxf.addons.drawing import config, frontend, layout, recorder
 from ezdxf.addons.drawing.backend import BackendInterface
 from ezdxf.addons.drawing.properties import RenderContext
 from ezdxf.colors import RGB
-from ezdxf.math import BoundingBox2d, Vec2
+from ezdxf.math import BoundingBox2d, Matrix44, Vec2
 from ezdxf.path import Command
 
 MM = 72 / 25.4  # pt per mm
@@ -29,6 +29,10 @@ MARGIN = 10  # mm of paper around a model-space drawing
 # custom header properties of a DXF exported by DrawCAD: its page (paper mm) and drawing scale
 DRAWCAD_VARS = ("DRAWCAD_SHEET_W", "DRAWCAD_SHEET_H", "DRAWCAD_SCALE")
 UNIT_MM = {0: 1.0, 1: 25.4, 2: 304.8, 4: 1.0, 5: 10.0, 6: 1000.0, 14: 100.0}  # $INSUNITS → mm
+
+
+class TooLarge(Exception):
+    """More entities than the limit (the count is the message)."""
 
 
 class _Canvas(BackendInterface):
@@ -190,19 +194,103 @@ def _config() -> config.Configuration:
     )
 
 
-def _record(doc, layout_obj) -> recorder.Recorder:
+class _Texts:
+    """Texts drawn in osifont, kept as text (searchable, snapped at their insertion point, not glyph by
+    glyph) instead of the outlines ezdxf makes: (string, matrix to drawing units of the em-size-1 text,
+    color, corners)."""
+
+    def __init__(self, pipe):
+        from ezdxf.addons.drawing.pipeline import prepare_string_for_rendering
+        from ezdxf.fonts import fonts
+
+        self.items = []
+        self._pipe = pipe
+        self._orig = pipe.draw_text
+        self._prep = prepare_string_for_rendering
+        self._fm = fonts.font_manager
+        pipe.draw_text = self.draw_text
+
+    def _is_osifont(self, face) -> bool:
+        fm = self._fm
+        name = face.filename
+        if not name:
+            return False
+        try:
+            fb = fm.fallback_font_name()
+            entry = fm._font_cache.get(name if fm.has_font(name) else fb, fb)
+            return entry.file_path.name.lower() == "osifont.ttf"
+        except Exception:  # noqa: BLE001
+            return False
+
+    def draw_text(self, text, transform, properties, cap_height, dxftype="TEXT"):
+        pipe = self._pipe
+        face = properties.font or pipe.default_font_face
+        if not text.strip() or face is None or not self._is_osifont(face):
+            return self._orig(text, transform, properties, cap_height, dxftype)
+        text = self._prep(text, dxftype)
+        eng = pipe.text_engine
+        try:
+            meas = eng.get_font_measurements(face, cap_height)
+            width = eng.get_text_line_width(text, face, cap_height)
+        except Exception:  # noqa: BLE001
+            return self._orig(text, transform, properties, cap_height, dxftype)
+        m = Matrix44.scale(cap_height / _OSI_CAP) @ transform
+        # through the viewport(s) the text is seen in: the model → paper transforms; a text cut by a
+        # viewport's edge stays outlines (they are clipped, a PDF text would not be)
+        portal = pipe.clipping_portal
+        corners = [Vec2(0, -meas.descender_height), Vec2(width, -meas.descender_height),
+                   Vec2(width, meas.cap_height), Vec2(0, meas.cap_height)]
+        pts = [Vec2(q) for q in transform.transform_vertices(corners)]
+        if portal.is_active:
+            seen = [portal.clip_point(q) for q in pts]
+            if any(q is None for q in seen):
+                return self._orig(text, transform, properties, cap_height, dxftype)
+
+            def through(stage):
+                nonlocal m
+                if stage.transform:
+                    m = m @ stage.transform
+                return True
+
+            portal.foreach_stage(through)
+            pts = seen
+        self.items.append((text, m, properties.color, pts))
+
+
+_OSI_CAP = 1515 / 2048  # osifont: cap height / em (the size given to the PDF font)
+
+
+class _Drawing:
+    """A layout as recorded by ezdxf (geometry) plus its texts."""
+
+    def __init__(self, rec, texts):
+        self.rec = rec
+        self.texts = texts
+
+    def bbox(self) -> BoundingBox2d | None:
+        b = self.rec.player().bbox()
+        for *_x, pts in self.texts:
+            b.extend(pts)
+        return b if b.has_data else None
+
+
+def _record(doc, layout_obj) -> _Drawing:
     _use_fonts()
     rec = recorder.Recorder()
     ctx = RenderContext(doc)
-    frontend.Frontend(ctx, rec, config=_config()).draw_layout(layout_obj, finalize=True)
-    return rec
+    fe = frontend.Frontend(ctx, rec, config=_config())
+    texts = _Texts(fe.pipeline)
+    fe.draw_layout(layout_obj, finalize=True)
+    return _Drawing(rec, texts.items)
 
 
-def _place(rec: recorder.Recorder, c, page_mm: tuple[float, float], box: BoundingBox2d) -> None:
+def _place(drw: _Drawing, c, page_mm: tuple[float, float], box: BoundingBox2d) -> None:
     """The recorded drawing, its `box` (drawing units) filling the page (no margins: the box already has
     the sheet's proportions), on a new page of the canvas."""
+    from . import pdfcore
+
     wmm, hmm = page_mm
-    player = rec.player()
+    player = drw.rec.player()
     page = layout.Page(wmm, hmm, layout.Units.mm)
     out = layout.Layout(box, flip_y=False)
     settings = layout.Settings(fit_page=True, output_coordinate_space=max(wmm, hmm) * MM)
@@ -212,6 +300,17 @@ def _place(rec: recorder.Recorder, c, page_mm: tuple[float, float], box: Boundin
     be = _Canvas(c, wmm * MM, hmm * MM)
     be.configure(_config())
     player.replay(be)
+    if drw.texts:
+        pdfcore._register_font()
+        for text, tm, color, _pts in drw.texts:
+            t = tm @ m
+            r, g, b = RGB.from_hex(color).to_floats()
+            c.saveState()
+            c.setFillColorRGB(r, g, b)
+            c.transform(t[0, 0], t[0, 1], t[1, 0], t[1, 1], t[3, 0], t[3, 1])
+            c.setFont(pdfcore.FONT_NAME, 1)
+            c.drawString(0, 0, text)
+            c.restoreState()
     c.showPage()
 
 
@@ -242,12 +341,53 @@ def fit_sheet(width: float, height: float) -> tuple[str, float, float, float]:
     return name, sw, sh, sc
 
 
-def _bbox(rec: recorder.Recorder) -> BoundingBox2d | None:
-    b = rec.player().bbox()
-    return b if b.has_data else None
+def expanded_count(doc, limit: int) -> int:
+    """Entities drawn once block references are expanded (nested blocks, insert arrays, dimension
+    blocks): a few inserts can stand for billions of lines. Stops counting past `limit`; a block that
+    contains itself counts as over the limit."""
+    memo: dict[str, int] = {}
+    busy: set[str] = set()
+
+    def block(name: str) -> int:
+        key = name.lower()
+        if key in memo:
+            return memo[key]
+        if key in busy:
+            return limit + 1  # recursion
+        blk = doc.blocks.get(name)
+        if blk is None:
+            return 0
+        busy.add(key)
+        n = count(blk)
+        busy.discard(key)
+        memo[key] = n
+        return n
+
+    def count(entities) -> int:
+        n = 0
+        for e in entities:
+            t = e.dxftype()
+            n += 1
+            if t == "INSERT":
+                reps = max(1, int(e.dxf.get("row_count", 1))) * max(1, int(e.dxf.get("column_count", 1)))
+                n += reps * block(e.dxf.name)
+            elif t == "DIMENSION" or t.startswith("ARC_DIMENSION"):
+                g = e.dxf.get("geometry")
+                if g:
+                    n += block(g)
+            if n > limit:
+                return limit + 1
+        return n
+
+    total = 0
+    for lay in doc.layouts:
+        total += count(lay)
+        if total > limit:
+            return limit + 1
+    return total
 
 
-def dxf_to_pdf(data: bytes) -> tuple[bytes, dict]:
+def dxf_to_pdf(data: bytes, max_entities: int = 0) -> tuple[bytes, dict]:
     """DXF (ASCII or binary) → (PDF, info). info: pages [{name, space, sheet, scale}] where scale is the
     drawing scale for DrawCAD (real mm per paper mm), and the audit counts."""
     from reportlab.pdfgen import canvas as rl
@@ -262,6 +402,10 @@ def dxf_to_pdf(data: bytes) -> tuple[bytes, dict]:
         from ezdxf import recover
 
         doc, auditor = recover.read(io.BytesIO(data))
+    if max_entities:
+        n = expanded_count(doc, max_entities)
+        if n > max_entities:
+            raise TooLarge(n)
     unit = UNIT_MM.get(int(doc.header.get("$INSUNITS", 4) or 4), 1.0)
     buf = io.BytesIO()
     c = rl.Canvas(buf, pageCompression=1)
@@ -270,19 +414,19 @@ def dxf_to_pdf(data: bytes) -> tuple[bytes, dict]:
     # a DXF exported by DrawCAD: its page frame and scale, exactly
     dc = drawcad_page(doc)
     if dc:
+        # a DXF exported by DrawCAD: its page, exactly ((0, 0)…sheet × scale in model space)
         sw, sh, scale = dc
         rec = _record(doc, doc.modelspace())
-        frame = _drawcad_frame(doc)
-        if frame is not None:
-            _place(rec, c, (sw, sh), frame)
-            pages.append({"name": "Model", "space": "model", "sheet": [sw, sh], "scale": scale})
+        box = BoundingBox2d([Vec2(0, 0), Vec2(sw * scale / unit, sh * scale / unit)])
+        _place(rec, c, (sw, sh), box)
+        pages.append({"name": "Model", "space": "model", "sheet": [round(sw, 3), round(sh, 3)], "scale": round(scale, 6)})
     if not pages:
         # paper-space layouts with something on them, in tab order
         for lay in sorted(doc.layouts, key=lambda x: x.dxf.get("taborder", 0)):
             if lay.is_modelspace or not len(lay):
                 continue
             rec = _record(doc, lay)
-            if _bbox(rec) is None:
+            if rec.bbox() is None:
                 continue
             page = layout.Page.from_dxf_layout(lay)
             wmm, hmm = page.width_in_mm, page.height_in_mm
@@ -297,7 +441,7 @@ def dxf_to_pdf(data: bytes) -> tuple[bytes, dict]:
             pages.append({"name": lay.name, "space": "paper", "sheet": [round(wmm, 2), round(hmm, 2)], "scale": round(scale, 6)})
     if not pages:
         rec = _record(doc, doc.modelspace())
-        b = _bbox(rec)
+        b = rec.bbox()
         if b is None:
             raise ValueError("Desenul DXF nu are nimic de afișat")
         wmm, hmm = b.size.x * unit, b.size.y * unit
@@ -323,15 +467,6 @@ def drawcad_page(doc) -> tuple[float, float, float] | None:
     if not (1 <= sw <= 20000 and 1 <= sh <= 20000 and 1e-6 <= sc <= 1e6):
         return None
     return vals
-
-
-def _drawcad_frame(doc) -> BoundingBox2d | None:
-    """The PAGINA rectangle of a DrawCAD export (its page border)."""
-    for e in doc.modelspace().query('LWPOLYLINE[layer=="PAGINA"]'):
-        pts = [Vec2(p[0], p[1]) for p in e.get_points("xy")]
-        if len(pts) >= 4:
-            return BoundingBox2d(pts)
-    return None
 
 
 if __name__ == "__main__":  # quick manual check: python -m app.dxfin file.dxf out.pdf

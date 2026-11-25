@@ -152,8 +152,8 @@ export async function openDialog(app) {
     <h2>Deschide desen</h2>
     <div class="cols">
       <div class="drop" id="dDrop" style="width:auto">
-        <strong>Trage aici un PDF sau o imagine</strong>
-        <span class="muted">PDF · PNG · JPG · TIFF</span>
+        <strong>Trage aici un PDF, un DXF sau o imagine</strong>
+        <span class="muted">PDF · DXF · PNG · JPG · TIFF</span>
         <button class="ghost" id="dPick">Alege fișier</button>
         <div class="row" style="margin-top:8px"><label class="lbl" for="dDpi" style="white-space:nowrap">DPI imagine</label>
         <input type="text" id="dDpi" class="mono" placeholder="din fișier / 300" style="width:140px"></div>

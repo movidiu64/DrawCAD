@@ -116,6 +116,21 @@ class DxfToPdfTest(unittest.TestCase):
         self.assertIn(pdfium.raw.FPDF_PAGEOBJ_PATH, kinds)
         self.assertNotIn(pdfium.raw.FPDF_PAGEOBJ_IMAGE, kinds)
 
+    def test_texts_are_text(self):
+        """Texts in SHX fonts (drawn in osifont) are PDF text: searchable, no glyph outlines to snap on;
+        the dimension value too, also through a viewport."""
+        from app import pdfcore
+
+        for lay in (False, True):
+            pdf, _ = dxfin.dxf_to_pdf(to_bytes(make_doc(layout=lay)))
+            doc = pdfium.PdfDocument(pdf)
+            txt = doc[0].get_textpage().get_text_range()
+            doc.close()
+            for s in ("ȘURUB Ø20", "romans", "200"):
+                self.assertIn(s, txt)
+            snap = pdfcore.snap_points(pdf, 0)
+            self.assertLessEqual(len(snap["arcs"]), 4)  # the circle and the arc, not letters
+
     def test_binary_dxf(self):
         import tempfile
 
@@ -134,20 +149,20 @@ class DxfToPdfTest(unittest.TestCase):
         self.assertEqual(info["units_mm"], 25.4)
 
     def test_drawcad_round_trip(self):
-        """A DXF exported by DrawCAD opens on its own page: the PAGINA frame on the sheet edge."""
-        doc = ezdxf.new("R2010", units=4)
-        msp = doc.modelspace()
-        doc.layers.add("PAGINA")
-        msp.add_lwpolyline([(0, 0), (840, 0), (840, 594), (0, 594)], close=True, dxfattribs={"layer": "PAGINA"})
-        msp.add_circle((420, 297), 100)
-        for k, v in (("DRAWCAD_SHEET_W", "420"), ("DRAWCAD_SHEET_H", "297"), ("DRAWCAD_SCALE", "2")):
-            doc.header.custom_vars.append(k, v)
-        pdf, info = dxfin.dxf_to_pdf(to_bytes(doc))
+        """A DXF exported by DrawCAD opens on its own page: same sheet, same scale."""
+        from app.dxfout import DxfPage
+
+        W, H = 420 * MM, 297 * MM
+        out = DxfPage(W, H, scale=2)
+        out.frame()
+        out.msp.add_circle(out.xy((W / 2, H / 2)), 100)
+        pdf, info = dxfin.dxf_to_pdf(out.bytes())
         p = info["pages"][0]
         self.assertEqual((p["sheet"], p["scale"]), ([420, 297], 2))
-        self.assertEqual(dxfin.drawcad_page(ezdxf.new()), None)
         (w, h), = pdf_pages(pdf)
         self.assertAlmostEqual(w, 420, 0)
+        self.assertAlmostEqual(h, 297, 0)
+        self.assertIsNone(dxfin.drawcad_page(ezdxf.new()))
 
     def test_empty(self):
         with self.assertRaises(ValueError):

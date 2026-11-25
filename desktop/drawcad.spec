@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.join(ROOT, "backend"))
 datas = [(os.path.join(ROOT, "frontend"), "frontend")]
 binaries = []
 hiddenimports = [
-    "app.main", "app.ingest", "app.vectorize", "app.ocr", "app.dxfout", "app.pdfcore", "app.sanitize",
+    "app.main", "app.ingest", "app.vectorize", "app.ocr", "app.dxfout", "app.dxfin", "app.pdfcore", "app.sanitize",
     "uvicorn.logging", "uvicorn.loops.auto", "uvicorn.loops.asyncio", "uvicorn.protocols.http.auto",
     "uvicorn.protocols.http.h11_impl", "uvicorn.protocols.websockets.auto", "uvicorn.lifespan.on",
 ]

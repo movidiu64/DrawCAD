@@ -8,7 +8,7 @@ DWG through **LibreDWG**, inside DrawCAD (Docker image and Windows executable), 
 | # | Phase | Status |
 |---|---|---|
 | V14-1 | DXF → vector PDF on the server (ezdxf drawing add-on, ReportLab backend) | done |
-| V14-2 | Open DXF in the editor: pages, scale, the original kept | planned |
+| V14-2 | Open DXF in the editor: pages, scale, the original kept | done |
 | V14-3 | DWG through LibreDWG (`dwg2dxf`): Docker image and Windows executable | planned |
 | V14-4 | DXF export of a DXF / DWG: the original entities, the DrawCAD annotations on their layers | planned |
 | V14-5 | Guide, limits, tests on real files | planned |
@@ -20,15 +20,17 @@ DWG through **LibreDWG**, inside DrawCAD (Docker image and Windows executable), 
   used for the PDF overlay) writes lines, polylines, arcs and curves as PDF paths, fills (hatches, solids)
   as filled paths, raster images as images. The result is a vector PDF, so everything DrawCAD does with
   a PDF from CAD works: snap, removal, DXF export of the geometry.
-- Text: ezdxf draws texts as outlines with TrueType fonts; SHX fonts are replaced (osifont, ISO 3098,
-  already in the image, for the ISO / romans / simplex families). Text is not searchable without OCR
-  (as AutoCAD's PDF export with SHX fonts).
+- Text: SHX fonts are not available (nor redistributable); texts in them, and in any font missing on the
+  machine, are drawn in osifont (ISO 3098, already in the image) and written as **PDF text**: searchable,
+  snapped at the insertion point rather than glyph by glyph, exported to DXF as text. Texts in a TrueType
+  font present on the machine, and texts cut by a viewport edge, stay outlines.
 - Colors as in the DXF on a white sheet (ACI 7 black), line weights from the entities (default 0.25 mm).
 
 ## V14-2 — Open DXF in the editor
 
-- Upload accepts `.dxf` (ASCII and binary). The DXF is read in the separate, limited process that already
-  reads uploads (ezdxf with `recover`, size and entity limits); the PDF made from it becomes the
+- Upload accepts `.dxf` (ASCII and binary), recognized by content. The DXF is read in the separate,
+  limited process that already reads uploads (ezdxf with `recover`; entities counted with blocks expanded,
+  `DRAWCAD_MAX_DXF_ENTITIES`, default 400 000, so block bombs and self-referencing blocks are refused); the PDF made from it becomes the
   document's original, and the DXF is kept next to it.
 - **Pages:** each paper-space layout with something on it is a page, at its paper size (with its
   viewports, at their scales). Without layouts: model space, fitted on the smallest ISO sheet (A4…A0,

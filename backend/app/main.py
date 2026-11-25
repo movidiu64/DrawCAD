@@ -419,6 +419,8 @@ async def api_open(request: Request):
         d = DOCS / doc_id
         d.mkdir(parents=True)
         (out_dir / "original.pdf").replace(d / "original.pdf")
+        if (out_dir / "original.dxf").is_file():
+            (out_dir / "original.dxf").replace(d / "original.dxf")
         if (out_dir / "images").is_dir():
             (d / "images").mkdir(exist_ok=True)
             for f in (out_dir / "images").iterdir():
@@ -437,6 +439,8 @@ async def api_open(request: Request):
             "fromExport": state is not None,
             "removed": res.get("removed") or {},
         }
+        if res.get("dxf"):
+            meta["dxf"] = res["dxf"]
         _write_json(d / "meta.json", meta)
         if state is not None:
             _write_json(d / "state.json", state)

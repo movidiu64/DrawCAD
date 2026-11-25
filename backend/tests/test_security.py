@@ -148,6 +148,47 @@ class SecurityTest(unittest.TestCase):
         finally:
             del os.environ["DRAWCAD_MAX_IMAGE_MPX"]
 
+    def test_dxf_inputs(self):
+        """DXF uploads: a broken one is refused, a block bomb (nested inserts standing for 10^8 lines) and a
+        block that contains itself are refused before drawing; a good one keeps its DXF next to the PDF."""
+        import ezdxf
+
+        st, res = self.upload(b"0\nSECTION\n2\nENTITIES\n" + os.urandom(5000), "stricat.dxf")
+        self.assertEqual(st, 400)
+        self.assertIn("error", res)
+
+        def text(doc):
+            s = io.StringIO()
+            doc.write(s)
+            return s.getvalue().encode()
+
+        bomb = ezdxf.new()
+        prev = None
+        for i in range(8):
+            b = bomb.blocks.new(f"B{i}")
+            for k in range(10):
+                if prev:
+                    b.add_blockref(prev, (k, 0))
+                else:
+                    b.add_line((k, 0), (k, 1))
+            prev = f"B{i}"
+        bomb.modelspace().add_blockref(prev, (0, 0))
+        st, res = self.upload(text(bomb), "bomba.dxf")
+        self.assertEqual(st, 400)
+        self.assertIn("prea mare", res["error"])
+        loop = ezdxf.new()
+        loop.blocks.new("A").add_blockref("A", (1, 0))
+        loop.modelspace().add_blockref("A", (0, 0))
+        st, res = self.upload(text(loop), "bucla.dxf")
+        self.assertEqual(st, 400)
+        good = ezdxf.new(units=4)
+        good.modelspace().add_circle((0, 0), 20)
+        st, meta = self.upload(text(good), "bun.dxf")
+        self.assertEqual(st, 200, meta)
+        self.assertEqual(meta["kind"], "dxf")
+        self.assertEqual(meta["dxf"]["pages"][0]["scale"], 0.5)  # Ø40 on A4 at 2:1
+        self.assertTrue((Path(os.environ["DRAWCAD_DATA"]) / "docs" / meta["id"] / "original.dxf").is_file())
+
     def test_upload_limits(self):
         old = appmain.MAX_UPLOAD
         appmain.MAX_UPLOAD = 1000

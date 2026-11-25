@@ -264,6 +264,10 @@ class DxfPage:
         self.doc.header["$LUNITS"] = 2
         self.doc.header["$LTSCALE"] = 1.0
         self.doc.header["$LWDISPLAY"] = 1
+        # the page, for reopening in DrawCAD (dxfin): paper size in mm and drawing scale; the page spans
+        # (0, 0)…(W, H) × scale in model space
+        for name, val in (("DRAWCAD_SHEET_W", W * PT_MM), ("DRAWCAD_SHEET_H", H * PT_MM), ("DRAWCAD_SCALE", self.k / PT_MM)):
+            self.doc.header.custom_vars.append(name, f"{val:.6g}")
         self.doc.styles.add("ISO", font="isocpeur.ttf")
         for name, col in LAYERS.items():
             self.doc.layers.add(name, color=col)

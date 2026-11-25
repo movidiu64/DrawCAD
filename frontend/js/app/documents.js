@@ -7,6 +7,7 @@ import * as dlg from "../dialogs.js";
 import { applyPageOp } from "../pages.js";
 import { tr } from "../i18n.js";
 import { $ } from "./util.js";
+import { fmtNum } from "../annots.js";
 
 export class Documents {
   // ------------------------------------------------------------ documents
@@ -19,10 +20,26 @@ export class Documents {
       const names = { javascript: "JavaScript", actiuni: "acțiuni automate", atasamente: "fișiere atașate", adnotari: "adnotări multimedia", xfa: "formular XFA" };
       const rmTxt = Object.entries(rm).map(([k, n]) => `${names[k] || k} (${n})`).join(", ");
       if (rmTxt) dlg.toast(`Deschis: ${meta.name}. Am eliminat din PDF conținutul activ, inutil la un desen: ${rmTxt}.`, 9000);
+      else if (meta.dxf) dlg.toast(this.dxfOpenedText(meta), 9000);
       else dlg.toast(meta.fromExport ? "Export anterior: cotele au fost reîncărcate editabile." : `Deschis: ${meta.name}`);
     } catch (e) {
       dlg.toast(`Nu s-a putut deschide: ${e.message}`, 6000);
     }
+  }
+
+  /** What came out of a DXF: the pages (layouts or model space on a sheet) and their scale. */
+  dxfOpenedText(meta) {
+    const pg = meta.dxf.pages || [];
+    const k = pg[0].scale;
+    const sc = k >= 1 ? `1:${fmtNum(k, ",", 3)}` : `${fmtNum(1 / k, ",", 3)}:1`;
+    let what;
+    if (pg.length === 1 && pg[0].space === "model" && pg[0].iso) what = `spațiul model pe ${pg[0].iso}, scara ${sc}`;
+    else if (pg.length === 1 && pg[0].space === "model") what = `pagina exportată din DrawCAD, scara ${sc}`;
+    else if (pg.length === 1) what = `planșa ${pg[0].name}; scara ${sc}`;
+    else what = `planșe: ${pg.map((p) => p.name).join(", ")}; scara ${sc}`;
+    const n = (meta.dxf.fixes || 0) + (meta.dxf.errors || 0);
+    const fix = n ? ` Fișierul avea ${n} erori, reparate la citire.` : "";
+    return `Deschis: ${meta.name} — ${what}. Scara desenului e luată din DXF.${fix}`;
   }
 
   async loadDoc(id, silent) {
@@ -41,6 +58,10 @@ export class Documents {
     localStorage.setItem("cotare.lastDoc", meta.id);
     this.annots = (state && state.annots) || [];
     this.settings = { ...dlg.storedDefaults(), ...((state && state.settings) || {}) };
+    // a DXF: the drawing scale comes from the file (the first page's layout or the fitted sheet)
+    if (!(state && state.settings && state.settings.scale) && meta.dxf && meta.dxf.pages && meta.dxf.pages[0]) {
+      this.settings.scale = meta.dxf.pages[0].scale;
+    }
     this.ocr = new Map(); // page → OCR result (null = not recognized yet)
     this.ocrPages = new Set(meta.ocrPages || []);
     this.hit = null;
@@ -54,7 +75,7 @@ export class Documents {
     this.revPending = true;
     this.setSaveState(state ? "saved" : "");
     $("docName").textContent = meta.name;
-    $("docMeta").textContent = `${meta.kind === "image" ? "imagine" : "PDF"} · ${meta.pages.length} ${meta.pages.length === 1 ? "pagină" : "pagini"}`;
+    $("docMeta").textContent = `${{ image: "imagine", dxf: "DXF" }[meta.kind] || "PDF"} · ${meta.pages.length} ${meta.pages.length === 1 ? "pagină" : "pagini"}`;
     document.title = `${meta.name} — DrawCAD`;
     this.setPage(0);
     this.updateButtons();

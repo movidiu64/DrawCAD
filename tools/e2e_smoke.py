@@ -756,12 +756,23 @@ def main(url, out):
         assert abs(page.evaluate("window.cotare.compare.split") - 0.25) < 1e-9
         page.click("[data-cmp='close']")
         page.click("#ptabs [data-ptab='props']")
+        # a DXF (V14): opened as a drawing, on an ISO sheet at its scale; the 1:2 layout sets the scale
+        dxf = out / "placa.dxf"
+        _make_dxf(dxf)
+        prev_id = page.evaluate("window.cotare.doc.id")
+        page.set_input_files("#fileInput", str(dxf))
+        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.kind === 'dxf'")
+        assert "DXF" in page.inner_text("#docMeta"), page.inner_text("#docMeta")
+        assert page.evaluate("window.cotare.settings.scale") == 2, page.evaluate("window.cotare.settings.scale")
+        # snap comes from the DXF geometry: the Ø30 hole at 1:2 is a 7.5 mm radius on the sheet
+        page.wait_for_function("window.cotare.snapper.arcs.some((a) => Math.abs(a[2] - 7.5 * 72 / 25.4) < 0.2)")
+        page.screenshot(path=str(out / "dxf_open.png"))
         # closing without changes: straight to the start page
         page.click("#btnClose")
         page.wait_for_function("window.cotare.doc === null && !document.getElementById('emptyState').hidden")
         page.wait_for_function("document.querySelectorAll('#recentList [data-doc]').length >= 1", timeout=5000)
-        # reopen from Recent, one change, then close with the prompt
-        page.click("#recentList [data-doc]")
+        # reopen the export from Recent (the DXF is the newest), one change, then close with the prompt
+        page.click(f'#recentList [data-doc="{prev_id}"]')
         page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 42")
         page.wait_for_timeout(300)
         # page operations are history steps: rotate, Ctrl+Z; delete a page, Ctrl+Z, Ctrl+Y, Ctrl+Z
@@ -858,6 +869,22 @@ def main(url, out):
     print("TEXT:", " | ".join(t for t in txt.split() if t))
     assert "Ø30" not in txt.split(), "the Ø30 text should have been removed from the original"
     print("CONSOLE ERRORS:", errors or "none")
+
+
+def _make_dxf(path):
+    """A 120 × 80 plate with a hole and a label, shown on an A4 layout at 1:2."""
+    import ezdxf
+
+    doc = ezdxf.new("R2010", setup=True, units=4)
+    doc.styles.add("ISO", font="isocp.shx")
+    msp = doc.modelspace()
+    msp.add_lwpolyline([(0, 0), (120, 0), (120, 80), (0, 80)], close=True)
+    msp.add_circle((60, 40), 15)
+    msp.add_text("PLACĂ", height=7, dxfattribs={"style": "ISO"}).set_placement((5, 85))
+    lay = doc.layouts.new("Plansa")
+    lay.page_setup(size=(297, 210), margins=(0, 0, 0, 0), units="mm")
+    lay.add_viewport(center=(148.5, 105), size=(277, 190), view_center_point=(60, 45), view_height=380)
+    doc.saveas(path)
 
 
 def _report_failure(exc):

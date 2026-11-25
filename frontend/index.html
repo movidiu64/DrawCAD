@@ -66,10 +66,10 @@
             <div class="starttop">
               <div class="drop">
                 <div class="droptile"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7 9l5-5 5 5M5 20h14"/></svg></div>
-                <strong>Trage aici un PDF sau o imagine</strong>
-                <span class="dropsub">PDF exportat din CAD, scanare sau fotografie a desenului. Originalul nu se modifică: cotele, toleranțele și reviziile se aplică doar la export.</span>
+                <strong>Trage aici un PDF, un DXF sau o imagine</strong>
+                <span class="dropsub">PDF exportat din CAD, desen DXF, scanare sau fotografie a desenului. Originalul nu se modifică: cotele, toleranțele și reviziile se aplică doar la export.</span>
                 <button class="primary" id="btnOpen2">Alege fișier</button>
-                <span class="fmts mono">PDF · PNG · JPG · TIFF</span>
+                <span class="fmts mono">PDF · DXF · PNG · JPG · TIFF</span>
               </div>
               <div class="howcard">
                 <div class="lbl">Cum lucrează</div>
@@ -115,7 +115,7 @@
 <div class="modal" id="modal" hidden>
   <div class="dialog" id="dialog" role="dialog" aria-modal="true"></div>
 </div>
-<input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,application/pdf,image/*" hidden>
+<input type="file" id="fileInput" accept=".pdf,.dxf,.png,.jpg,.jpeg,.tif,.tiff,application/pdf,image/*" hidden>
 <input type="file" id="imgInput" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" hidden>
 <div class="toast" id="toast" hidden></div>
 

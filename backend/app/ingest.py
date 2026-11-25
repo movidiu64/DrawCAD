@@ -26,10 +26,43 @@ MEM_MB = int(_env("WORKER_MEM_MB", "3072"))
 CPU_S = int(_env("WORKER_CPU_S", "120"))
 MAX_PAGE_PT = 14400  # 200 inches, the limit of the PDF specification
 MAX_STATE = 8 * 1024 * 1024
+MAX_DXF_ENTITIES = int(_env("MAX_DXF_ENTITIES", "400000"))
 
 
 class Rejected(Exception):
     pass
+
+
+def is_dxf(head: bytes) -> bool:
+    """A DXF by its content (the upload's name is not trusted): binary DXF sentinel, or an ASCII file
+    that starts with group code 0 SECTION (after optional 999 comments)."""
+    if head.startswith(b"AutoCAD Binary DXF"):
+        return True
+    lines = [ln.strip() for ln in head[:4096].decode("latin-1").splitlines()]
+    i = 0
+    while i + 1 < len(lines) and lines[i] == "999":
+        i += 2
+    return i + 1 < len(lines) and lines[i] == "0" and lines[i + 1].upper() == "SECTION"
+
+
+def dxf_pdf(data: bytes, out_dir: str) -> tuple[bytes, dict]:
+    """A DXF made into a vector PDF (dxfin); the DXF is kept next to it (original.dxf), for the DXF export
+    of the original drawing."""
+    from . import dxfin
+
+    try:
+        pdf, info = dxfin.dxf_to_pdf(data, max_entities=MAX_DXF_ENTITIES)
+    except dxfin.TooLarge as e:
+        raise Rejected(f"Desen DXF prea mare: peste {MAX_DXF_ENTITIES} entități de desenat, cu blocurile desfăcute") from e
+    except ValueError as e:
+        raise Rejected(str(e)) from e
+    except Exception as e:  # noqa: BLE001
+        raise Rejected(f"DXF imposibil de citit: {e}") from e
+    if len(info["pages"]) > MAX_PAGES:
+        raise Rejected(f"Prea multe pagini (limita e {MAX_PAGES})")
+    with open(os.path.join(out_dir, "original.dxf"), "wb") as f:
+        f.write(data)
+    return pdf, info
 
 
 def _limit_self():
@@ -129,7 +162,12 @@ def process(path: str, out_dir: str, dpi: float | None) -> dict:
     state = None
     removed = {}
     head = data[:1024]
-    if b"%PDF-" not in head:
+    dxf = None
+    if is_dxf(data[:4096]):
+        data, dxf = dxf_pdf(data, out_dir)
+        kind = "dxf"
+        data, removed = sanitize_pdf(data)  # our own PDF: nothing to remove, but every PDF goes through it
+    elif b"%PDF-" not in head:
         try:
             im = Image.open(path)
             w, h = im.size
@@ -178,7 +216,7 @@ def process(path: str, out_dir: str, dpi: float | None) -> dict:
             pdfcore.snap_points(data, i)
     with open(os.path.join(out_dir, "original.pdf"), "wb") as f:
         f.write(data)
-    return {"kind": kind, "dpi": used_dpi, "pages": pages, "state": state, "removed": removed}
+    return {"kind": kind, "dpi": used_dpi, "pages": pages, "state": state, "removed": removed, "dxf": dxf}
 
 
 def _emit(out_dir, obj):

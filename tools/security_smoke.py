@@ -41,6 +41,18 @@ st, _h, _ = call("POST", "/api/open", b"MZ" + os.urandom(4000), {"X-Filename": "
 assert st == 400, st
 st, _h, _ = call("POST", "/api/open", b"%PDF-1.7\n" + os.urandom(20000), {"X-Filename": "stricat.pdf"})
 assert st == 400, st
+st, _h, _ = call("POST", "/api/open", b"0\nSECTION\n2\nENTITIES\n" + os.urandom(20000), {"X-Filename": "stricat.dxf"})
+assert st == 400, st
+# a DXF block bomb: 8 levels of 10 nested inserts (10^8 lines), refused before drawing
+_dxf = ["0\nSECTION\n2\nBLOCKS"]
+for _i in range(8):
+    _dxf.append(f"0\nBLOCK\n8\n0\n2\nB{_i}\n70\n0\n10\n0\n20\n0\n30\n0\n3\nB{_i}")
+    for _k in range(10):
+        _dxf.append(f"0\nINSERT\n8\n0\n2\nB{_i - 1}\n10\n{_k}\n20\n0\n30\n0" if _i else f"0\nLINE\n8\n0\n10\n{_k}\n20\n0\n30\n0\n11\n{_k}\n21\n1\n31\n0")
+    _dxf.append("0\nENDBLK\n8\n0")
+_dxf += ["0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nINSERT\n8\n0\n2\nB7\n10\n0\n20\n0\n30\n0\n0\nENDSEC\n0\nEOF\n"]
+st, _h, body = call("POST", "/api/open", "\n".join(_dxf).encode(), {"X-Filename": "bomba.dxf"})
+assert st == 400 and b"prea mare" in body, (st, body[:200])
 st, _h, _ = call("POST", "/api/open", malicious_pdf(), {"X-Filename": "a.pdf", "Origin": "http://rau.example"})
 assert st == 403, st
 # images placed on a drawing: SVG (active content), a decompression bomb and a renamed executable are refused

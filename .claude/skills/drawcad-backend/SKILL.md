@@ -18,7 +18,8 @@ Starlette app in `backend/app/main.py`, one uvicorn worker. Heavy or untrusted w
   PDFs (import, merge, re-open of an export) must go through ingest + sanitize too. Content streams are
   not touched, so object ids stay stable.
 - Keep the limits: upload size streamed to disk (`DRAWCAD_MAX_UPLOAD_MB`), pages (`DRAWCAD_MAX_PAGES`),
-  image megapixels (`DRAWCAD_MAX_IMAGE_MPX`), render size (`DRAWCAD_MAX_RENDER_PX` / `_MP`), timeouts for
+  image megapixels (`DRAWCAD_MAX_IMAGE_MPX`), DXF entities counted with blocks expanded
+  (`DRAWCAD_MAX_DXF_ENTITIES`, `dxfin.expanded_count`: block bombs and self-referencing blocks), render size (`DRAWCAD_MAX_RENDER_PX` / `_MP`), timeouts for
   OCR and vectorization. Validate everything the frontend sends (primitives, removals, rectangles) as
   `_clean_prims()` and `_clean_ops()` do.
 - Every new endpoint keeps the owner check for the private modes (`_req_owner(request)`; another browser's
