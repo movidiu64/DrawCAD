@@ -357,7 +357,16 @@ export class Keyboard {
   bindKeys() {
     window.addEventListener("keydown", (e) => {
       this.frame = (this.frame || 0) + 1;
-      if (dlg.isModalOpen()) return;
+      if (dlg.isModalOpen()) {
+        // the dialog handles its keys while the focus is in it; Esc closes it even when the focus is not
+        // (just opened, or clicked outside its fields), and F1 shows the shortcut sheet instead
+        if (e.key === "Escape") dlg.closeModal();
+        else if (e.key === "F1") {
+          e.preventDefault();
+          dlg.shortcutSheet(this);
+        }
+        return;
+      }
       // the rail's flyout handles its own keys (arrows, Enter on a row, Esc)
       if (e.target && e.target.closest && e.target.closest("#railFly")) return;
       // Ctrl+K: command search (UI-D9), also from the command line; F1: the shortcut sheet (UI-D14)
