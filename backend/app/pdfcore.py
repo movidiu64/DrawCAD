@@ -1341,6 +1341,9 @@ def _apply_removals_page(page: pdfium.PdfPage, ops: list[dict]) -> dict:
                 report["removed"] += 1
     if targets or recolored:
         R.FPDFPage_GenerateContent(page.raw)
+    # for the DXF export of a drawing opened from DXF: which original objects went (whole or cut)
+    report["_gone"] = sorted(o for o in targets if o not in cuts)
+    report["_cut"] = sorted(cuts)
     return report
 
 

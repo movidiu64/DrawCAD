@@ -525,6 +525,52 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(len(pdfium.PdfDocument(p2)), 1)
         self.assertIsNotNone(pdfcore.extract_embedded(p2))
 
+    def test_dxf_source_export(self):
+        """A drawing opened from DXF exports as itself: every original entity, DrawCAD's line on its layer
+        in the space the page shows (model space 1:1 / the 1:2 layout's paper space), the circle deleted
+        in DrawCAD gone from the DXF."""
+        import ezdxf
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        import test_dxfin
+
+        for lay in (False, True):
+            src = test_dxfin.make_doc(layout=lay)
+            data = test_dxfin.to_bytes(src)
+            meta = self.req("POST", "/api/open", data, {"X-Filename": "piesa.dxf"})
+            self.assertEqual(meta["kind"], "dxf")
+            hmap = json.loads((Path(TMP) / "docs" / meta["id"] / "original.dxfmap.json").read_text())[0]
+            circle = src.modelspace().query("CIRCLE")[0].dxf.handle
+            ids = [str(n) for n, h in enumerate(hmap) if h == circle]
+            self.assertTrue(ids)
+            prims = {"0": [{"t": "L", "p": [10 * MM, 10 * MM, 50 * MM, 10 * MM], "w": 0.5, "c": "add"}]}
+            body = {"format": "dxf", "filename": "piesa.dxf", "pages": prims, "removals": {"0": [{"mode": "objects", "ids": ids}]}}
+            out, h = self.req("POST", f"/api/doc/{meta['id']}/export", body, raw=True)
+            self.assertEqual(h["X-Export-Kind"], "dxf")
+            self.assertEqual(json.loads(h["X-Dxf-Stats"])["source"]["deleted"], 1)
+            doc = ezdxf.read(io.StringIO(out.decode("utf-8")))
+            msp = doc.modelspace()
+            self.assertEqual(len(msp.query("CIRCLE")), 0)
+            self.assertEqual(len(msp.query("ARC")), 1)
+            self.assertEqual(len(msp.query("DIMENSION")), 1)
+            self.assertEqual(len(msp.query("HATCH")), 1)
+            if lay:
+                ln = doc.layouts.get("Plansa 1").query("LINE[layer=='DRAWCAD-COTE']")[0]
+                self.assertAlmostEqual(ln.dxf.start.x, 10, 3)
+                self.assertAlmostEqual(ln.dxf.start.y, 200, 3)
+                self.assertAlmostEqual(ln.dxf.end.x, 50, 3)
+            else:
+                a, _b, _c, d, e, f = meta["dxf"]["pages"][0]["tf"]
+                ln = msp.query("LINE[layer=='DRAWCAD-COTE']")[0]
+                self.assertAlmostEqual(ln.dxf.start.x, (10 * MM - e) / a, 3)
+                self.assertAlmostEqual(ln.dxf.start.y, (210 * MM - 10 * MM - f) / d, 3)
+                self.assertAlmostEqual(ln.dxf.end.x - ln.dxf.start.x, 40, 3)  # 1:1 on the sheet
+            # the page rebuilt instead (option): DrawCAD's own layers, the page frame
+            body["dxf"] = {"source": False}
+            out, _h = self.req("POST", f"/api/doc/{meta['id']}/export", body, raw=True)
+            doc = ezdxf.read(io.StringIO(out.decode("utf-8")))
+            self.assertTrue(doc.modelspace().query("LWPOLYLINE[layer=='PAGINA']"))
+
     def test_dxf_export_vector(self):
         import zipfile
 

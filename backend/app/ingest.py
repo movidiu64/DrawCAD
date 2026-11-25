@@ -84,6 +84,9 @@ def dxf_pdf(data: bytes, out_dir: str) -> tuple[bytes, dict]:
         raise Rejected(f"Prea multe pagini (limita e {MAX_PAGES})")
     with open(os.path.join(out_dir, "original.dxf"), "wb") as f:
         f.write(data)
+    # which DXF entity each PDF object comes from: removals made in DrawCAD reach the DXF export
+    with open(os.path.join(out_dir, "original.dxfmap.json"), "w", encoding="utf-8") as f:
+        json.dump(info.pop("handles"), f, separators=(",", ":"))
     return pdf, info
 
 

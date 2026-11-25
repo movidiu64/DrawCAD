@@ -189,6 +189,8 @@ export function exportDialog(app, opts = {}) {
   const nPages = app.doc.pages.length;
   const nOcr = app.ocrPages ? app.ocrPages.size : 0;
   const realScale = Number(app.settings.scale) || 1;
+  // a drawing opened from DXF / DWG: its DXF export can be the original drawing plus the annotations
+  const fromCad = app.doc.dxf ? (app.doc.kind === "dwg" ? "DWG" : "DXF") : "";
   const dlg = showModal(`
     <h2>Exportă</h2>
     <div class="seg" id="eFmt" style="margin-bottom:12px">
@@ -205,6 +207,11 @@ export function exportDialog(app, opts = {}) {
       <div class="cards">
         <div class="lbl">Opțiuni</div>
         <div id="eDxfOpts" class="dxfopts" hidden>
+          ${fromCad ? `<div class="seg" id="eSrc">
+            <button data-src="1" class="on">Desenul ${fromCad} original</button>
+            <button data-src="0">Reconstruit din pagină</button></div>
+          <div class="note" id="eSrcNote">Entitățile originale rămân neschimbate (straturi, blocuri, cote); cotele și adnotările DrawCAD se adaugă pe straturile DRAWCAD-…, în spațiul desenului (model sau planșă). Ce ai șters în DrawCAD se șterge și din DXF.</div>` : ""}
+          <div id="eRebuild" ${fromCad ? "hidden" : ""}>
           <div class="seg" id="eScale">
             <button data-sc="paper" class="${realScale === 1 ? "on" : ""}">Mărimea hârtiei (1:1)</button>
             <button data-sc="real" class="${realScale !== 1 ? "on" : ""}" ${realScale === 1 ? "disabled title=\"Calibrează întâi scara (K)\"" : ""}>Mărime reală${realScale !== 1 ? ` (×${fmtNum(realScale, ",", 4)})` : ""}</button></div>
@@ -215,6 +222,7 @@ export function exportDialog(app, opts = {}) {
           <label class="chk"><input type="checkbox" id="xVec" checked> Scanuri: vectorizează imaginea <span class="muted">(experimental)</span></label>
           <label class="chk"><input type="checkbox" id="xImg"> Scanuri: imaginea ca fundal (arhivă ZIP cu DXF + PNG)</label>
           <div class="note">Straturi separate: PDF-GEOMETRIE, PDF-TEXT, SCAN-VECTORI, OCR-TEXT, DRAWCAD-COTE… Arcele rămân arce, cercurile cercuri. Imaginile puse în DrawCAD ies lângă DXF, în arhiva ZIP. Pe un scan, textul se recunoaște automat (OCR) dacă nu a fost deja; vectorizarea dă o bază de lucru, nu un desen curat — verifică cotele importante.</div>
+          </div>
         </div>
         <div id="ePdfOpts" class="dxfopts">
         <label class="chk" style="font-size:13px"><input type="checkbox" id="eEmbed" checked> Atașează stratul editabil (la redeschidere cotele rămân editabile)</label>
@@ -237,6 +245,13 @@ export function exportDialog(app, opts = {}) {
   let pgMode = "all";
   let fmt = "pdf";
   let scaleMode = realScale !== 1 ? "real" : "paper";
+  let fromSource = !!fromCad;
+  dlg.querySelectorAll("[data-src]").forEach((b) => b.addEventListener("click", () => {
+    fromSource = b.dataset.src === "1";
+    dlg.querySelectorAll("[data-src]").forEach((x) => x.classList.toggle("on", x === b));
+    dlg.querySelector("#eRebuild").hidden = fromSource;
+    dlg.querySelector("#eSrcNote").hidden = !fromSource;
+  }));
   dlg.querySelectorAll("[data-fmt]").forEach((b) => b.addEventListener("click", () => {
     fmt = b.dataset.fmt;
     dlg.querySelectorAll("[data-fmt]").forEach((x) => x.classList.toggle("on", x === b));
@@ -294,9 +309,9 @@ export function exportDialog(app, opts = {}) {
       const sel = nPages > 1 ? (pgMode === "cur" ? [app.page] : pgMode === "pick" ? parsePages(dlg.querySelector("#ePick").value) : null) : null;
       const split = fmt === "pdf" && nPages > 1 && chk("#eSplit");
       const extra = fmt === "dxf"
-        ? { format: "dxf", dxf: { scale: scaleMode === "real" ? realScale : 1, geom: chk("#xGeom"), text: chk("#xText"), annots: chk("#xAnn"), ocr: chk("#xOcr"), vectorize: chk("#xVec"), image: chk("#xImg") } }
+        ? { format: "dxf", dxf: { source: fromSource, scale: scaleMode === "real" ? realScale : 1, geom: chk("#xGeom"), text: chk("#xText"), annots: fromSource || chk("#xAnn"), ocr: chk("#xOcr"), vectorize: chk("#xVec"), image: chk("#xImg") } }
         : { ocrLayer: chk("#eOcr"), notes: chk("#eNotes") };
-      const { blob, report, kind, stats } = await app.exportPdf(name, color, chk("#eEmbed"), sel, split, extra);
+      let { blob, report, kind, stats } = await app.exportPdf(name, color, chk("#eEmbed"), sel, split, extra);
       const stem = name.replace(/\.(pdf|dxf|zip)$/i, "");
       const fileName = `${stem}.${kind === "zip" ? "zip" : kind === "dxf" ? "dxf" : "pdf"}`;
       const saved = await saveBlob(blob, fileName);
@@ -307,6 +322,7 @@ export function exportDialog(app, opts = {}) {
       }
       const a = { download: saved };
       closeModal();
+      if (stats && stats.source) report = {};  // the removals are told in DXF terms (entities) below
       const removed = Object.values(report).reduce((s, r) => s + (r.removed || 0), 0);
       const blackened = Object.values(report).reduce((s, r) => s + (r.black || 0), 0);
       const sum = (k) => Object.values(report).reduce((s, r) => s + (r[k] || 0), 0);
@@ -314,7 +330,13 @@ export function exportDialog(app, opts = {}) {
       const left = sum("partial") + sum("locked");
       app.markExported();
       let dx = "";
-      if (stats) {
+      if (stats && stats.source) {
+        const st = stats.source;
+        const gone = st.deleted || 0;
+        const part = st.deleted_partly || 0;
+        const img = st.images_left_out || 0;
+        dx = ` · desenul ${st.from === "dwg" ? "DWG" : "DXF"} original + adnotările${gone ? ` · ${gone} entități șterse` : ""}${part ? ` · ${part} doar acoperite` : ""}${img ? ` · ${img} imagini lăsate deoparte` : ""}`;
+      } else if (stats) {
         const tot = (k) => Object.values(stats).reduce((acc, r) => acc + (r[k] || 0), 0);
         const ents = tot("linii") + tot("polilinii") + tot("arce") + tot("cercuri") + tot("curbe");
         const skew = Object.values(stats).map((r) => r.skew).find((v) => v);

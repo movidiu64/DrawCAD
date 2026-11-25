@@ -419,8 +419,9 @@ async def api_open(request: Request):
         d = DOCS / doc_id
         d.mkdir(parents=True)
         (out_dir / "original.pdf").replace(d / "original.pdf")
-        if (out_dir / "original.dxf").is_file():
-            (out_dir / "original.dxf").replace(d / "original.dxf")
+        for f in ("original.dxf", "original.dxfmap.json"):
+            if (out_dir / f).is_file():
+                (out_dir / f).replace(d / f)
         if (out_dir / "images").is_dir():
             (d / "images").mkdir(exist_ok=True)
             for f in (out_dir / "images").iterdir():
@@ -1122,6 +1123,56 @@ def _overlaps(box, boxes):
     return False
 
 
+def _source_dxf_ok(doc_id, meta, idxs) -> bool:
+    """A drawing opened from DXF / DWG, whose chosen pages can take DrawCAD's work in the original DXF:
+    pages not turned in the editor (a quarter turn has no place in the drawing's own space)."""
+    d = _doc_dir(doc_id)
+    dxf = meta.get("dxf") or {}
+    if not (d / "original.dxf").is_file() or not dxf.get("pages"):
+        return False
+    lay = _layout(doc_id) or [{"src": i} for i in range(len(meta.get("pages", [])))]
+    for i in idxs:
+        it = lay[i] if i < len(lay) else {}
+        src = int(it.get("src", i))
+        if int(it.get("rot", 0)) % 360 or src >= len(dxf["pages"]) or "tf" not in dxf["pages"][src]:
+            return False
+    return True
+
+
+async def _export_dxf_source(doc_id, meta, original, prims, rem, idxs, opts, color, base_name):
+    """DXF export of a drawing opened from DXF / DWG: the original DXF with DrawCAD's annotations on
+    their layers, in the space each page shows, and the removals made in DrawCAD (dxfin.export_source)."""
+    from . import dxfin
+
+    d = _doc_dir(doc_id)
+    lay = _layout(doc_id) or [{"src": i} for i in range(len(meta.get("pages", [])))]
+    rem_sel = {k: v for k, v in rem.items() if k in idxs}
+    reports = {}
+    if any(rem_sel.values()):
+        _base, reports = await run_in_threadpool(pdfcore.apply_removals, original, rem_sel)
+    maps = _read_json(d / "original.dxfmap.json", [])
+    want_annots = bool(opts.get("annots", True))
+    pages = []
+    skipped_images = 0
+    for i in idxs:
+        it = lay[i]
+        src = int(it.get("src", i))
+        info = meta["dxf"]["pages"][src]
+        page_prims = [p for p in prims.get(i, []) if p.get("t") != "I"] if want_annots else []
+        skipped_images += sum(1 for p in prims.get(i, []) if p.get("t") == "I") if want_annots else 0
+        rep = reports.get(i, {})
+        pages.append({
+            "page": info, "H": info["sheet"][1] * 72 / 25.4, "kp": float(it.get("scale", 1) or 1),
+            "prims": page_prims, "handles": maps[src] if isinstance(maps, list) and src < len(maps) else None,
+            "gone": rep.get("_gone", []), "cut": rep.get("_cut", []),
+            "zones": [op["rect"] for op in rem.get(i, []) if op.get("mode") == "zone"],
+        })
+    data, counts = await run_in_threadpool(dxfin.export_source, (d / "original.dxf").read_bytes(), pages, color)
+    if skipped_images:
+        counts["images_left_out"] = skipped_images
+    return data, reports, "dxf", {"source": {**counts, "source": True, "from": meta.get("kind", "dxf")}}
+
+
 async def _export_dxf(doc_id, prims, rem, sel, opts, color, base_name):
     """DXF for the chosen pages: one file, or a ZIP when there are several pages or background images."""
     import io
@@ -1135,6 +1186,8 @@ async def _export_dxf(doc_id, prims, rem, sel, opts, color, base_name):
     idxs = sorted({i for i in (sel or range(n_pages)) if 0 <= i < n_pages})
     if not idxs:
         raise ValueError("nicio pagină aleasă")
+    if opts.get("source", True) and _source_dxf_ok(doc_id, meta, idxs):
+        return await _export_dxf_source(doc_id, meta, original, prims, rem, idxs, opts, color, base_name)
     scale = opts.get("scale", 1)
     scale = float(scale) if _finite(scale) and 1e-4 < scale < 1e4 else 1.0
     want = {k: bool(opts.get(k, d)) for k, d in (("geom", True), ("text", True), ("annots", True), ("ocr", True), ("vectorize", True), ("image", False))}
@@ -1321,7 +1374,7 @@ async def api_export(request: Request):
     ascii_name = re.sub(r"[^A-Za-z0-9._ ()+-]", "_", filename)
     headers = {
         "Content-Disposition": f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename)}",
-        "X-Removal-Report": json.dumps(reports),
+        "X-Removal-Report": json.dumps({k: {n: v for n, v in r.items() if not n.startswith("_")} for k, r in reports.items()}),
         "X-Export-Kind": kind,
     }
     if stats is not None:

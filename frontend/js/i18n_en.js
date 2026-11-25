@@ -1401,4 +1401,12 @@ export const EN = {
   "Conversia DWG a durat peste {} s": "The DWG conversion took over {} s",
   "DWG imposibil de convertit": "DWG cannot be converted",
   "DWG imposibil de convertit: {}": "DWG cannot be converted: {}",
+  "Desenul {} original": "The original {} drawing",
+  "Reconstruit din pagină": "Rebuilt from the page",
+  "Entitățile originale rămân neschimbate (straturi, blocuri, cote); cotele și adnotările DrawCAD se adaugă pe straturile DRAWCAD-…, în spațiul desenului (model sau planșă). Ce ai șters în DrawCAD se șterge și din DXF.": "The original entities stay unchanged (layers, blocks, dimensions); DrawCAD's dimensions and annotations are added on the DRAWCAD-… layers, in the drawing's space (model or layout). What you deleted in DrawCAD is deleted from the DXF too.",
+  "· desenul {} original + adnotările{}{}{}": "· the original {} drawing + annotations{}{}{}",
+  "· {} entități șterse": "· {} entities deleted",
+  "· {} doar acoperite": "· {} only covered",
+  "· {} imagini lăsate deoparte": "· {} images left out",
+  "DXF R12: nu poate primi adnotările DrawCAD (salvează-l ca DXF 2000 sau mai nou)": "DXF R12: cannot take DrawCAD's annotations (save it as DXF 2000 or newer)",
 };

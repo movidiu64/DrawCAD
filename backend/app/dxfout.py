@@ -289,7 +289,10 @@ class DxfPage:
         key = tuple(vals)
         if key in self._lt:
             return self._lt[key]
-        name = f"DRAWCAD_{len(self._lt) + 1}"
+        n = len(self._lt) + 1
+        while f"DRAWCAD_{n}" in self.doc.linetypes:
+            n += 1
+        name = f"DRAWCAD_{n}"
         pattern = [round(sum(vals), 4)]
         for i, v in enumerate(vals):
             pattern.append(v if i % 2 == 0 else -v)
@@ -577,3 +580,31 @@ class Rotation:
 
 
 __all__ = ["DxfPage", "page_content", "is_scan", "Rotation", "_wrap_pi"]
+
+
+class DxfOnto(DxfPage):
+    """DrawCAD annotations written into an existing drawing: a DXF or DWG opened in DrawCAD gets them
+    on DrawCAD's layers, in the space its page shows (model space, or the paper-space layout), at the
+    drawing's own units. `tf`: drawing → PDF points of the page ([a, b, c, d, e, f], uniform scale, as
+    dxfin placed it); `H`: page height in points; `kp`: the page's resize in the editor."""
+
+    def __init__(self, doc, space, tf, H: float, kp: float = 1.0):
+        a, _b, _c, d, e, f = tf
+        self.doc, self.msp = doc, space
+        self.W, self.H = None, H
+        self._a, self._d, self._e, self._f, self._kp = a, d, e, f, kp or 1.0
+        self.k = 1 / (a * self._kp)
+        if "ISO" not in doc.styles:
+            doc.styles.add("ISO", font="isocpeur.ttf")
+        for name, col in LAYERS.items():
+            if name not in doc.layers:
+                doc.layers.add(name, color=col)
+        self._lt = {}
+        self.counts = {}
+
+    def xy(self, p):
+        x, y = p[0] / self._kp, self.H - p[1] / self._kp
+        return (round((x - self._e) / self._a, 6), round((y - self._f) / self._d, 6))
+
+    def frame(self):
+        pass

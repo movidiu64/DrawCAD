@@ -10,7 +10,7 @@ DWG through **LibreDWG**, inside DrawCAD (Docker image and Windows executable), 
 | V14-1 | DXF → vector PDF on the server (ezdxf drawing add-on, ReportLab backend) | done |
 | V14-2 | Open DXF in the editor: pages, scale, the original kept | done |
 | V14-3 | DWG through LibreDWG (`dwg2dxf`): Docker image and Windows executable | done (CI to confirm the image and exe builds) |
-| V14-4 | DXF export of a DXF / DWG: the original entities, the DrawCAD annotations on their layers | planned |
+| V14-4 | DXF export of a DXF / DWG: the original entities, the DrawCAD annotations on their layers | done |
 | V14-5 | Guide, limits, tests on real files | planned |
 
 ## V14-1 — DXF → vector PDF
@@ -61,6 +61,14 @@ DWG through **LibreDWG**, inside DrawCAD (Docker image and Windows executable), 
   DRAWCAD-REVIZIE…) in the space the page came from (a layout's paper space, or model space at the
   drawing scale). Removals made in DrawCAD (cover / delete) delete or cover the entities they hit.
 - A DWG comes out as DXF this way (DWG → DXF conversion, with or without annotations).
+- How: on opening, dxfin records which DXF entity (top-level handle) each PDF object comes from
+  (`original.dxfmap.json`, kept only for pages where the count matches the PDF one to one) and the
+  drawing → page transform of each page (`tf`). On export, DrawCAD's annotations go through that
+  transform into the page's space (`DxfOnto`); an entity whose PDF objects were all removed is
+  deleted; one only partly removed (a block, a line cut by a zone) stays, the zones covered by a wipeout.
+- The export dialog offers "the original DXF/DWG drawing" (default) or "rebuilt from the page" (the
+  generic PDF → DXF path). Pages turned in the editor, R12 files and placed images fall back or are left
+  out (said in the export message).
 
 ## Checks
 

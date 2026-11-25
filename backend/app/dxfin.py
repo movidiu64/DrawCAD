@@ -93,6 +93,7 @@ class _Canvas(BackendInterface):
         self.h = h_pt
         self._lw = 0.25
         self._min_lw = 0.05
+        self.handles: list[str] = []  # the DXF entity of each PDF object, in drawing order
 
     # --- state
     def _stroke(self, props):
@@ -139,18 +140,23 @@ class _Canvas(BackendInterface):
     def draw_point(self, pos, props) -> None:
         self._stroke(props)
         self.c.line(pos.x, pos.y, pos.x, pos.y)
+        self.handles.append(props.handle)
 
     def draw_line(self, start, end, props) -> None:
         self._stroke(props)
         self.c.line(start.x, start.y, end.x, end.y)
+        self.handles.append(props.handle)
 
     def draw_solid_lines(self, lines, props) -> None:
+        if not lines:
+            return
         self._stroke(props)
         p = self.c.beginPath()
         for a, b in lines:
             p.moveTo(a.x, a.y)
             p.lineTo(b.x, b.y)
         self.c.drawPath(p, stroke=1, fill=0)
+        self.handles.append(props.handle)
 
     def draw_path(self, path, props) -> None:
         if len(path) == 0:
@@ -159,13 +165,17 @@ class _Canvas(BackendInterface):
         p = self.c.beginPath()
         self._add(p, path, False)
         self.c.drawPath(p, stroke=1, fill=0)
+        self.handles.append(props.handle)
 
     def draw_filled_paths(self, paths, props) -> None:
+        if not any(len(q) for q in paths):
+            return
         self._fill(props)
         p = self.c.beginPath()
         for path in paths:
             self._add(p, path, True)
         self.c.drawPath(p, stroke=0, fill=1, fillMode=0)  # even-odd
+        self.handles.append(props.handle)
 
     def draw_filled_polygon(self, points, props) -> None:
         pts = [(float(q[0]), float(q[1])) for q in points.to_list()]
@@ -178,6 +188,7 @@ class _Canvas(BackendInterface):
             p.lineTo(*q)
         p.close()
         self.c.drawPath(p, stroke=0, fill=1)
+        self.handles.append(props.handle)
 
     def draw_image(self, image_data, props) -> None:
         from PIL import Image
@@ -191,6 +202,7 @@ class _Canvas(BackendInterface):
         ys = [q.y for q in corners]
         pil = Image.fromarray(img, mode="RGBA")
         self.c.drawImage(ImageReader(pil), min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys), mask="auto")
+        self.handles.append(props.handle)
 
     def clear(self) -> None:
         pass
@@ -301,7 +313,7 @@ class _Texts:
 
             portal.foreach_stage(through)
             pts = seen
-        self.items.append((text, m, properties.color, pts))
+        self.items.append((text, m, properties.color, pts, pipe._current_entity_handle))
 
 
 _OSI_CAP = 1515 / 2048  # osifont: cap height / em (the size given to the PDF font)
@@ -316,8 +328,8 @@ class _Drawing:
 
     def bbox(self) -> BoundingBox2d | None:
         b = self.rec.player().bbox()
-        for *_x, pts in self.texts:
-            b.extend(pts)
+        for t in self.texts:
+            b.extend(t[3])
         return b if b.has_data else None
 
 
@@ -331,9 +343,10 @@ def _record(doc, layout_obj) -> _Drawing:
     return _Drawing(rec, texts.items)
 
 
-def _place(drw: _Drawing, c, page_mm: tuple[float, float], box: BoundingBox2d) -> None:
+def _place(drw: _Drawing, c, page_mm: tuple[float, float], box: BoundingBox2d) -> tuple[list, list[str]]:
     """The recorded drawing, its `box` (drawing units) filling the page (no margins: the box already has
-    the sheet's proportions), on a new page of the canvas."""
+    the sheet's proportions), on a new page of the canvas. → (the drawing → PDF points transform
+    [a, b, c, d, e, f], the DXF entity handle of each PDF object on the page, in order)."""
     from . import pdfcore
 
     wmm, hmm = page_mm
@@ -347,9 +360,10 @@ def _place(drw: _Drawing, c, page_mm: tuple[float, float], box: BoundingBox2d) -
     be = _Canvas(c, wmm * MM, hmm * MM)
     be.configure(_config())
     player.replay(be)
+    handles = be.handles
     if drw.texts:
         pdfcore._register_font()
-        for text, tm, color, _pts in drw.texts:
+        for text, tm, color, _pts, handle in drw.texts:
             t = tm @ m
             c.saveState()
             c.setFillGray(_ink(color))
@@ -357,7 +371,9 @@ def _place(drw: _Drawing, c, page_mm: tuple[float, float], box: BoundingBox2d) -
             c.setFont(pdfcore.FONT_NAME, 1)
             c.drawString(0, 0, text)
             c.restoreState()
+            handles.append(handle)
     c.showPage()
+    return [round(float(m[i, j]), 12) for i, j in ((0, 0), (0, 1), (1, 0), (1, 1), (3, 0), (3, 1))], handles
 
 
 def fit_sheet(width: float, height: float) -> tuple[str, float, float, float]:
@@ -473,16 +489,7 @@ def dxf_to_pdf(data: bytes, max_entities: int = 0) -> tuple[bytes, dict]:
     drawing scale for DrawCAD (real mm per paper mm), and the audit counts."""
     from reportlab.pdfgen import canvas as rl
 
-    if data[:22] == b"AutoCAD Binary DXF\r\n\x1a\x00":
-        from ezdxf.document import Drawing
-        from ezdxf.lldxf.tagger import binary_tags_loader
-
-        doc = Drawing.load(binary_tags_loader(data, errors="surrogateescape"))
-        auditor = doc.audit()
-    else:
-        from ezdxf import recover
-
-        doc, auditor = recover.read(io.BytesIO(data))
+    doc, auditor = load(data)
     if max_entities:
         n = expanded_count(doc, max_entities)
         if n > max_entities:
@@ -492,6 +499,7 @@ def dxf_to_pdf(data: bytes, max_entities: int = 0) -> tuple[bytes, dict]:
     c = rl.Canvas(buf, pageCompression=1)
     c.setTitle("DXF")
     pages = []
+    maps = []
     # a DXF exported by DrawCAD: its page frame and scale, exactly
     dc = drawcad_page(doc)
     if dc:
@@ -499,8 +507,9 @@ def dxf_to_pdf(data: bytes, max_entities: int = 0) -> tuple[bytes, dict]:
         sw, sh, scale = dc
         rec = _record(doc, doc.modelspace())
         box = BoundingBox2d([Vec2(0, 0), Vec2(sw * scale / unit, sh * scale / unit)])
-        _place(rec, c, (sw, sh), box)
-        pages.append({"name": "Model", "space": "model", "sheet": [round(sw, 3), round(sh, 3)], "scale": round(scale, 6)})
+        tf, hs = _place(rec, c, (sw, sh), box)
+        maps.append(hs)
+        pages.append({"name": "Model", "space": "model", "sheet": [round(sw, 3), round(sh, 3)], "scale": round(scale, 6), "tf": tf})
     if not pages:
         # paper-space layouts with something on them, in tab order
         for lay in sorted(doc.layouts, key=lambda x: x.dxf.get("taborder", 0)):
@@ -516,10 +525,11 @@ def dxf_to_pdf(data: bytes, max_entities: int = 0) -> tuple[bytes, dict]:
             # the whole paper, in paper-space units (its origin is where the plot margins start)
             lo, hi = lay.get_paper_limits()
             box = BoundingBox2d([Vec2(lo), Vec2(hi)])
-            _place(rec, c, (wmm, hmm), box)
+            tf, hs = _place(rec, c, (wmm, hmm), box)
+            maps.append(hs)
             vps = [v for v in lay.viewports() if v.dxf.get("status", 1) > 1 and v.dxf.view_height > 0]
             scale = (vps[0].dxf.view_height / vps[0].dxf.height) * unit if vps else 1.0
-            pages.append({"name": lay.name, "space": "paper", "sheet": [round(wmm, 2), round(hmm, 2)], "scale": round(scale, 6)})
+            pages.append({"name": lay.name, "space": "paper", "sheet": [round(wmm, 2), round(hmm, 2)], "scale": round(scale, 6), "tf": tf})
     if not pages:
         rec = _record(doc, doc.modelspace())
         outliers = 0
@@ -534,13 +544,35 @@ def dxf_to_pdf(data: bytes, max_entities: int = 0) -> tuple[bytes, dict]:
         cx, cy = b.center.x, b.center.y
         half = Vec2(sw / sc / unit / 2, sh / sc / unit / 2)
         box = BoundingBox2d([Vec2(cx, cy) - half, Vec2(cx, cy) + half])
-        _place(rec, c, (sw, sh), box)
-        pages.append({"name": "Model", "space": "model", "sheet": [sw, sh], "scale": round(1 / sc, 6), "iso": name})
+        tf, hs = _place(rec, c, (sw, sh), box)
+        maps.append(hs)
+        pages.append({"name": "Model", "space": "model", "sheet": [sw, sh], "scale": round(1 / sc, 6), "iso": name, "tf": tf})
         if outliers:
             pages[-1]["outliers"] = outliers
     c.save()
-    info = {"pages": pages, "fixes": len(auditor.fixes), "errors": len(auditor.errors), "units_mm": unit}
-    return buf.getvalue(), info
+    pdf = buf.getvalue()
+    info = {"pages": pages, "fixes": len(auditor.fixes), "errors": len(auditor.errors), "units_mm": unit,
+            "handles": _checked_maps(pdf, maps)}
+    return pdf, info
+
+
+def _checked_maps(pdf: bytes, maps: list[list[str]]) -> list:
+    """The handle lists, kept only for pages where they match the PDF's objects one to one (a text
+    split in two by its font, say, would shift them): None for the others."""
+    import pypdfium2 as pdfium
+
+    from . import pdfcore
+
+    out = []
+    with pdfcore.PDFIUM_LOCK:
+        doc = pdfium.PdfDocument(pdf)
+        try:
+            for i, hs in enumerate(maps):
+                n = pdfium.raw.FPDFPage_CountObjects(doc[i].raw)
+                out.append(hs if n == len(hs) else None)
+        finally:
+            doc.close()
+    return out
 
 
 def drawcad_page(doc) -> tuple[float, float, float] | None:
@@ -554,6 +586,76 @@ def drawcad_page(doc) -> tuple[float, float, float] | None:
     if not (1 <= sw <= 20000 and 1 <= sh <= 20000 and 1e-6 <= sc <= 1e6):
         return None
     return vals
+
+
+def load(data: bytes):
+    """The DXF (ASCII or binary) as ezdxf reads it, repaired: (doc, auditor)."""
+    if data[:22] == b"AutoCAD Binary DXF\r\n\x1a\x00":
+        from ezdxf.document import Drawing
+        from ezdxf.lldxf.tagger import binary_tags_loader
+
+        doc = Drawing.load(binary_tags_loader(data, errors="surrogateescape"))
+        return doc, doc.audit()
+    from ezdxf import recover
+
+    return recover.read(io.BytesIO(data))
+
+
+def export_source(data: bytes, pages: list[dict], color: str = "black") -> tuple[bytes, dict]:
+    """The DXF export of a drawing opened from DXF / DWG: the original drawing, entities and all, with
+    what was done in DrawCAD. pages: [{"page": its dxfin info, "H": height pt, "kp": resize, "prims":
+    annotations, "handles": the entity of each PDF object or None, "gone": / "cut": PDF objects removed
+    whole / cut, "zones": zone removal rectangles}]. Entities removed whole are deleted; partly removed
+    ones (a block, a line cut by a zone) stay, and the zones are covered by a wipeout."""
+    from collections import Counter
+
+    from . import dxfout
+
+    doc, _aud = load(data)
+    if doc.dxfversion < "AC1015":
+        raise ValueError("DXF R12: nu poate primi adnotările DrawCAD (salvează-l ca DXF 2000 sau mai nou)")
+    counts: dict = {}
+
+    def add(k, n=1):
+        counts[k] = counts.get(k, 0) + n
+
+    for pg in pages:
+        info = pg["page"]
+        space = doc.modelspace() if info["space"] == "model" else doc.layouts.get(info["name"])
+        if space is None:
+            continue
+        out = dxfout.DxfOnto(doc, space, info["tf"], pg["H"], pg.get("kp", 1))
+        hs = pg.get("handles")
+        gone_ids, cut_ids = pg.get("gone") or [], pg.get("cut") or []
+        partial = len(cut_ids)
+        if hs:
+            total = Counter(h for h in hs if h)
+            gone = Counter(hs[int(o)] for o in gone_ids if o.isdigit() and int(o) < len(hs) and hs[int(o)])
+            for h, n in gone.items():
+                e = doc.entitydb.get(h)
+                if e is None or not e.is_alive:
+                    continue
+                lay = doc.layouts.get_layout_by_key(e.dxf.owner) if n >= total[h] else None
+                if lay is not None:
+                    lay.delete_entity(e)
+                    add("deleted")
+                else:
+                    partial += 1
+        else:
+            partial += len(gone_ids)
+        if partial:
+            for x0, y0, x1, y1 in pg.get("zones", []):
+                space.add_wipeout([out.xy((min(x0, x1), max(y0, y1))), out.xy((max(x0, x1), min(y0, y1)))],
+                                  dxfattribs={"layer": "DRAWCAD-ACOPERIRI"})
+                out._count("acoperiri")
+            add("deleted_partly", partial)
+        if pg.get("prims"):
+            out.add_prims(pg["prims"], color)
+        for k, v in out.counts.items():
+            add(k, v)
+    s = io.StringIO()
+    doc.write(s)
+    return s.getvalue().encode("utf-8"), counts
 
 
 if __name__ == "__main__":  # quick manual check: python -m app.dxfin file.dxf out.pdf
