@@ -440,7 +440,9 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
 .cmpleg i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .cmpleg i.old { background: var(--cmp-old); }
 .cmpleg i.new { background: var(--cmp-new); margin-left: 6px; }
-.ctxtool input[type=range] { width: 110px; accent-color: var(--accent); }
+.ctxtool input[type=range] { width: 90px; accent-color: var(--accent); }
+.ctxtool .cmpmode { flex: none; }
+.ctxtool .cmpmode button { height: 26px; padding: 0 9px; font-size: 12px; }
 .cmpn { min-width: 40px; text-align: center; font-size: 12px; }
 
 /* stamps */

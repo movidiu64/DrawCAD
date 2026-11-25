@@ -92,13 +92,19 @@ export class Review {
         body.otherRemovals = theirs.removals;
       }
       const res = await api.compare(this.doc.id, body);
-      const img = new Image();
-      await new Promise((ok, bad) => {
-        img.onload = ok;
-        img.onerror = bad;
-        img.src = res.image;
+      const load = (src) => new Promise((ok, bad) => {
+        const im = new Image();
+        im.onload = () => ok(im);
+        im.onerror = bad;
+        im.src = src;
       });
-      this.compare = { other, otherPage, otherName, align, withAnnots, body, page: this.page, regions: res.regions, idx: -1, alpha: 1, img };
+      const img = await load(res.image);
+      // the older page, aligned under this one: side by side and the curtain view
+      const oldImg = res.oldImage ? await load(res.oldImage).catch(() => null) : null;
+      const prev = this.compare;
+      const mode = prev && prev.mode && oldImg ? prev.mode : "overlay";
+      this.compare = { other, otherPage, otherName, align, withAnnots, body, page: this.page, regions: res.regions, idx: -1, alpha: 1, img, oldImg, mode, split: 0.5 };
+      if (mode === "side") this.fitCompareSide();
       this.view.redraw();
       this.renderCtx();
       const n = res.regions.length;
@@ -110,7 +116,28 @@ export class Review {
     }
   }
 
+  /** How the comparison shows: "overlay" (colored differences over the page), "side" (the older page
+   *  next to this one, on the left) or "swipe" (the older page over this one up to a line you drag). */
+  setCompareMode(mode) {
+    const c = this.compare;
+    if (!c || !c.oldImg || c.mode === mode) return;
+    const was = c.mode;
+    c.mode = mode;
+    if (mode === "side") this.fitCompareSide();
+    else if (was === "side") this.view.fit();
+    this.view.redraw();
+    this.renderCtx();
+  }
+
+  /** Side by side: both pages in view, the older one on the left. */
+  fitCompareSide() {
+    const v = this.view;
+    const gap = v.pageW * 0.04;
+    v.zoomToBox([-v.pageW - gap, 0, v.pageW, v.pageH], 24);
+  }
+
   endCompare() {
+    if (this.compare && this.compare.mode === "side") this.view.fit();
     this.compare = null;
     this.view.cmpBox = null;
     this.view.redraw();
@@ -124,7 +151,11 @@ export class Review {
     c.idx = (c.idx + d + c.regions.length) % c.regions.length;
     const b = c.regions[c.idx];
     const m = 12 * K;
-    this.view.zoomToBox([b[0] - m, b[1] - m, b[2] + m, b[3] + m]);
+    if (c.mode === "side") {
+      // the area on both pages: the older one is drawn one page width (and a gap) to the left
+      const off = this.view.pageW * 1.04;
+      this.view.zoomToBox([b[0] - off - m, b[1] - m, b[2] + m, b[3] + m]);
+    } else this.view.zoomToBox([b[0] - m, b[1] - m, b[2] + m, b[3] + m]);
     this.view.cmpBox = b;
     this.view.redraw();
     this.renderCtx();

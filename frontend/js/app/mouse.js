@@ -341,6 +341,15 @@ export class Mouse {
         this.applyHotGrip(p);
         return;
       }
+      const cmp = this.compare;
+      if (cmp && cmp.mode === "swipe" && cmp.oldImg && cmp.page === this.page) {
+        // the curtain's line: dragged left and right (it is picked within 8 screen pixels)
+        const lx = Math.max(0, Math.min(1, cmp.split)) * this.view.pageW;
+        if (Math.abs(raw[0] - lx) * this.view.zoom <= 8) {
+          this.drag = { kind: "cmpSplit" };
+          return;
+        }
+      }
       if (this.cmpPick) {
         // two-point alignment: snap on this page for its two points, not on the older one drawn over it
         this.comparePick(this.cmpPick.pts.length < 2 ? this.snapPoint(raw, e, null).pt : raw);
@@ -408,6 +417,19 @@ export class Mouse {
       }
       if (d && d.kind === "mmenu") {
         this.hoverMarking(sx, sy);
+        return;
+      }
+      // the curtain's line: the cursor says it can be dragged
+      const cmpL = this.compare;
+      if (!d && cmpL && cmpL.mode === "swipe" && cmpL.oldImg && this.tool === "select") {
+        const near = Math.abs(raw[0] - Math.max(0, Math.min(1, cmpL.split)) * this.view.pageW) * this.view.zoom <= 8;
+        $("canvas").style.cursor = near ? "ew-resize" : "default";
+      }
+      if (d && d.kind === "cmpSplit") {
+        this.compare.split = Math.max(0, Math.min(1, raw[0] / this.view.pageW));
+        const r = $("cmpSplit");
+        if (r) r.value = String(Math.round(this.compare.split * 100));
+        this.view.redraw();
         return;
       }
       if (d && d.kind === "pan") {
@@ -600,6 +622,7 @@ export class Mouse {
         if (m && m.hi >= 0) this.runMarking(m.hi);
         return; // no direction: the menu stays open for a click
       }
+      if (d.kind === "cmpSplit") return;
       if (d.kind === "pan") {
         $("canvas").style.cursor = this.tool === "pan" ? "grab" : this.tool === "select" ? "default" : "crosshair";
         return;

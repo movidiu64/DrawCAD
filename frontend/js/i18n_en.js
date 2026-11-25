@@ -215,6 +215,11 @@ export const EN = {
   "Luminoasă": "Light",
   "Ca sistemul": "As the system",
   "Foaia rămâne albă în ambele teme. Se salvează în acest browser.": "The sheet stays white in both themes. Saved in this browser.",
+  // compare views (1.3.2)
+  "Suprapus": "Overlay",
+  "Alăturat": "Side by side",
+  "Cortină": "Curtain",
+  "Unde e linia: în stânga ei revizia veche, în dreapta cea deschisă; o poți trage și pe desen": "Where the line is: the older revision on its left, the open one on its right; you can also drag it on the drawing",
   // compare: two-point alignment (V13-7)
   "Aliniază cu două puncte (revizia veche e la altă scară sau rotită): alegi două puncte pe pagina deschisă, apoi aceleași două pe cea veche": "Align with two points (the older revision is at another scale or rotated): pick two points on the open page, then the same two on the older one",
   "Aliniere: click pe un punct de reper pe pagina deschisă (cu snap) · Esc renunță": "Alignment: click a reference point on the open page (with snap) · Esc cancels",

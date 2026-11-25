@@ -253,6 +253,14 @@ class ApiTest(unittest.TestCase):
         self.assertGreater(r1["removed"], 0)
         self.assertGreater(r1["added"], 0)
         self.assertTrue(r1["image"].startswith("data:image/png;base64,"))
+        # the older page, aligned, for side by side and the curtain: same size as the overlay
+        import base64
+
+        from PIL import Image
+
+        im_o = Image.open(io.BytesIO(base64.b64decode(r1["oldImage"].split(",", 1)[1])))
+        im_c = Image.open(io.BytesIO(base64.b64decode(r1["image"].split(",", 1)[1])))
+        self.assertEqual(im_o.size, im_c.size)
         boxes = r1["regions"]
         self.assertTrue(any(b[0] < 300 < b[2] and b[1] < 595 - 250 < b[3] for b in boxes), boxes)  # the hole
         self.assertTrue(any(b[0] < 700 < b[2] for b in boxes), boxes)  # the new line

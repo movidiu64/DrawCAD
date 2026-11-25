@@ -33,6 +33,7 @@ export const COLORS = {
   inkDefault: "#111111",
   hitMark: "#f08c00",
   cmpGhost: "#d62828", // the older revision drawn over the page while picking alignment points
+  cmpCaption: "#9aa3ad", // names above the pages in side by side and curtain views (on the gray canvas)
   snapMark: "#1f9d55", // tracking lines and acquired points: ≥ 3:1 on the white sheet and on the canvas
   acquired: "#d06f00", // the snap marker: ≥ 3:1 on the white sheet
   tipLine: "#4a525d",
@@ -473,19 +474,72 @@ export class View {
     }
     // revision compare: the overlay (red / green / gray) over the page, as strong as the slider says
     const cmp = this.app.compare;
-    if (cmp && cmp.page === this.pageN && cmp.img && cmp.alpha > 0) {
-      ctx.save();
-      ctx.globalAlpha = cmp.alpha;
-      ctx.drawImage(cmp.img, 0, 0, this.pageW, this.pageH);
-      ctx.restore();
-      if (this.cmpBox) {
+    if (cmp && cmp.page === this.pageN && cmp.img) {
+      const W = this.pageW;
+      const H = this.pageH;
+      const mode = cmp.oldImg ? cmp.mode : "overlay";
+      const box = (dx) => {
+        if (!this.cmpBox) return;
         const [x0, y0, x1, y1] = this.cmpBox;
         ctx.save();
         ctx.strokeStyle = COLORS.hitMark;
         ctx.lineWidth = 2 / z;
         ctx.setLineDash([6 / z, 4 / z]);
-        ctx.strokeRect(x0 - 4 / z, y0 - 4 / z, x1 - x0 + 8 / z, y1 - y0 + 8 / z);
+        ctx.strokeRect(x0 + dx - 4 / z, y0 - 4 / z, x1 - x0 + 8 / z, y1 - y0 + 8 / z);
         ctx.restore();
+      };
+      const caption = (txt, x) => {
+        ctx.save();
+        ctx.fillStyle = COLORS.cmpCaption;
+        ctx.font = `${13 / z}px sans-serif`;
+        ctx.textBaseline = "bottom";
+        ctx.fillText(txt, x, -8 / z);
+        ctx.restore();
+      };
+      if (mode === "side") {
+        // the older page on the left, one page width and a gap away; this one stays where it is
+        const off = W * 1.04;
+        ctx.fillStyle = COLORS.white;
+        ctx.fillRect(-off, 0, W, H);
+        ctx.drawImage(cmp.oldImg, -off, 0, W, H);
+        caption(cmp.otherName, -off);
+        caption(this.app.doc ? this.app.doc.name : "", 0);
+        box(-off);
+        box(0);
+      } else if (mode === "swipe") {
+        // the curtain: the older page up to the line, this one after it
+        const sx = Math.max(0, Math.min(1, cmp.split)) * W;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, sx, H);
+        ctx.clip();
+        ctx.fillStyle = COLORS.white;
+        ctx.fillRect(0, 0, sx, H);
+        ctx.drawImage(cmp.oldImg, 0, 0, W, H);
+        ctx.restore();
+        ctx.save();
+        ctx.strokeStyle = COLORS.hitMark;
+        ctx.lineWidth = 2 / z;
+        ctx.beginPath();
+        ctx.moveTo(sx, -12 / z);
+        ctx.lineTo(sx, H + 12 / z);
+        ctx.stroke();
+        ctx.fillStyle = COLORS.hitMark;
+        for (const y of [-12 / z, H / 2, H + 12 / z]) {
+          ctx.beginPath();
+          ctx.arc(sx, y, 7 / z, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+        caption(`◀ ${cmp.otherName}`, Math.max(0, sx - 220 / z));
+        caption(`${this.app.doc ? this.app.doc.name : ""} ▶`, sx + 10 / z);
+        box(0);
+      } else if (cmp.alpha > 0) {
+        ctx.save();
+        ctx.globalAlpha = cmp.alpha;
+        ctx.drawImage(cmp.img, 0, 0, W, H);
+        ctx.restore();
+        box(0);
       }
     }
     // two-point alignment: after the two points on this page, the older page half transparent over it

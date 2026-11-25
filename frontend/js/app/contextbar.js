@@ -34,7 +34,10 @@ export class ContextBar {
       const c = this.compare;
       const n = c.regions.length;
       html = `${ico("M4 5h7v14H4zM13 5h7v14h-7z")}<b>Comparare</b><span class="cmpleg"><i class="old"></i>${esc(c.otherName)}<i class="new"></i>${esc(tr("revizia deschisă"))}</span><span class="vs"></span>
-        <label class="cdef" title="Cât de tare se vede comparația peste pagină">${esc(tr("Suprapunere"))}<input type="range" id="cmpAlpha" min="0" max="100" value="${Math.round(c.alpha * 100)}"></label>
+        ${c.oldImg ? `<span class="seg cmpmode">${[["overlay", "Suprapus"], ["side", "Alăturat"], ["swipe", "Cortină"]].map(([m, l]) => `<button data-cmpmode="${m}" class="${c.mode === m ? "on" : ""}" aria-pressed="${c.mode === m}">${esc(tr(l))}</button>`).join("")}</span><span class="vs"></span>` : ""}
+        ${c.mode === "side" ? "" : c.mode === "swipe"
+          ? `<label class="cdef" title="${esc(tr("Unde e linia: în stânga ei revizia veche, în dreapta cea deschisă; o poți trage și pe desen"))}">${esc(tr("Linie"))}<input type="range" id="cmpSplit" min="0" max="100" value="${Math.round(c.split * 100)}"></label>`
+          : `<label class="cdef" title="Cât de tare se vede comparația peste pagină">${esc(tr("Suprapunere"))}<input type="range" id="cmpAlpha" min="0" max="100" value="${Math.round(c.alpha * 100)}"></label>`}
         <span class="vs"></span><button class="ca" data-cmp="prev" ${n ? "" : "disabled"} aria-label="${esc(tr("Zona anterioară"))}">◀</button><span class="mono cmpn">${n ? `${c.idx + 1 > 0 ? c.idx + 1 : "–"}/${n}` : "0"}</span><button class="ca" data-cmp="next" ${n ? "" : "disabled"} aria-label="${esc(tr("Zona următoare"))}">▶</button>
         <button class="ca" data-cmp="pdf">PDF</button><button class="ca" data-cmp="close" title="${esc(tr("Închide comparația"))}">${esc(tr("Închide"))}</button>`;
     } else {
@@ -64,6 +67,12 @@ export class ContextBar {
       else if (k === "pdf") this.exportCompare();
       else this.endCompare();
     }));
+    box.querySelectorAll("[data-cmpmode]").forEach((b) => b.addEventListener("click", () => this.setCompareMode(b.dataset.cmpmode)));
+    const cs = box.querySelector("#cmpSplit");
+    if (cs) cs.addEventListener("input", () => {
+      this.compare.split = Number(cs.value) / 100;
+      this.view.redraw();
+    });
     const ca = box.querySelector("#cmpAlpha");
     if (ca) ca.addEventListener("input", () => {
       this.compare.alpha = Number(ca.value) / 100;

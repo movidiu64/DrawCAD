@@ -34,8 +34,8 @@ def _dilate(m: np.ndarray, r: int) -> np.ndarray:
     return out
 
 
-def _shift(m: np.ndarray, dy: int, dx: int) -> np.ndarray:
-    out = np.zeros_like(m)
+def _shift(m: np.ndarray, dy: int, dx: int, fill=0) -> np.ndarray:
+    out = np.full_like(m, fill)
     h, w = m.shape
     ys = slice(max(0, -dy), h - max(0, dy))
     yd = slice(max(0, dy), h - max(0, -dy))
@@ -70,9 +70,10 @@ def _align(a: np.ndarray, b: np.ndarray, limit: float = 0.04) -> tuple[int, int]
     return int(sy * k), int(sx * k)
 
 
-def _warp(old: np.ndarray, m: complex, t: complex, shape: tuple[int, int]) -> np.ndarray:
-    """The older page's ink mask moved, turned and scaled by z → m·z + t (pixels, z = x + iy), sampled
-    on the newer page's grid (nearest pixel: the dilation tolerance absorbs the half pixel)."""
+def _warp(old: np.ndarray, m: complex, t: complex, shape: tuple[int, int], fill=0) -> np.ndarray:
+    """The older page (gray levels) moved, turned and scaled by z → m·z + t (pixels, z = x + iy),
+    sampled on the newer page's grid (nearest pixel: the dilation tolerance absorbs the half pixel);
+    outside the older page: `fill` (white)."""
     h, w = shape
     ys, xs = np.mgrid[0:h, 0:w]
     src = ((xs + 1j * ys) - t) / m
@@ -80,7 +81,7 @@ def _warp(old: np.ndarray, m: complex, t: complex, shape: tuple[int, int]) -> np
     sy = np.rint(src.imag).astype(np.int64)
     oh, ow = old.shape
     ok = (sx >= 0) & (sx < ow) & (sy >= 0) & (sy < oh)
-    out = np.zeros((h, w), dtype=bool)
+    out = np.full((h, w), fill, dtype=old.dtype)
     out[ok] = old[sy[ok], sx[ok]]
     return out
 
@@ -152,7 +153,7 @@ def compare_pages(old_pdf: bytes, old_i: int, new_pdf: bytes, new_i: int, size_n
         m, t = sim
         so = min(s * abs(m), 6000 / max(wo, ho, 1))
         old = pdfcore.render_array(old_pdf, old_i, so)
-        a = _warp(old < INK, s * m / so, s * t, (h, w))
+        oldg = _warp(old, s * m / so, s * t, (h, w), fill=255)
     else:
         # the older page at the newer one's size (a sheet exported at another size is stretched to fit)
         so = s * min(wn / wo, hn / ho) if wo > 0 and ho > 0 else s
@@ -161,7 +162,8 @@ def compare_pages(old_pdf: bytes, old_i: int, new_pdf: bytes, new_i: int, size_n
             from PIL import Image
 
             old = np.asarray(Image.fromarray(old).resize((w, h), Image.BILINEAR))
-        a = old < INK
+        oldg = old
+    a = oldg < INK
     b = new < INK
     dy = dx = 0
     if align:
@@ -178,6 +180,7 @@ def compare_pages(old_pdf: bytes, old_i: int, new_pdf: bytes, new_i: int, size_n
         _s, dy, dx = best
         if dy or dx:
             a = _shift(a, dy, dx)
+            oldg = _shift(oldg, dy, dx, fill=255)
     px_mm = s * 72 / 25.4
     tol = max(1, round(px_mm * 0.18))  # ≈ 0.18 mm on each side
     if sim:
@@ -194,12 +197,18 @@ def compare_pages(old_pdf: bytes, old_i: int, new_pdf: bytes, new_i: int, size_n
     return {
         "img": img, "scale": s, "regions": regions,
         "removed": int(removed.sum()), "added": int(added.sum()), "shift_mm": [round(dx / s / 72 * 25.4, 2), round(dy / s / 72 * 25.4, 2)],
+        "old": oldg,  # the older page as laid under the newer one (aligned), gray levels
         "fit": {"scale": round(abs(sim[0]), 5), "angle": round(float(np.degrees(np.angle(sim[0]))), 3)} if sim else None,
     }
 
 
 def overlay_png(res: dict) -> bytes:
     return pdfcore.png_from_array(res["img"])
+
+
+def old_png(res: dict) -> bytes:
+    """The older page, aligned on the newer one: for side by side and the curtain view."""
+    return pdfcore.png_from_array(res["old"])
 
 
 def overlay_pdf(res: dict, size: tuple[float, float], legend: str) -> bytes:

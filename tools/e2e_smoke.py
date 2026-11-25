@@ -747,6 +747,13 @@ def main(url, out):
         page.wait_for_function("!!window.cotare.compare", timeout=60000)
         assert page.evaluate("window.cotare.compare.regions.length") == 0, page.evaluate("JSON.stringify(window.cotare.compare.regions)")
         assert "Compar" in page.inner_text("#ctxTool")
+        # the other views: side by side, then the curtain, whose line follows the slider
+        page.click("[data-cmpmode=side]")
+        assert page.evaluate("window.cotare.compare.mode") == "side"
+        page.click("[data-cmpmode=swipe]")
+        page.wait_for_selector("#cmpSplit")
+        page.eval_on_selector("#cmpSplit", "el => { el.value = '25'; el.dispatchEvent(new Event('input')); }")
+        assert abs(page.evaluate("window.cotare.compare.split") - 0.25) < 1e-9
         page.click("[data-cmp='close']")
         page.click("#ptabs [data-ptab='props']")
         # closing without changes: straight to the start page

@@ -667,8 +667,10 @@ async def api_compare(request: Request):
     import base64
 
     png = await run_in_threadpool(lambda: compare.overlay_png(res))
+    old = await run_in_threadpool(lambda: compare.old_png(res))
     return JSONResponse({
         "image": "data:image/png;base64," + base64.b64encode(png).decode("ascii"),
+        "oldImage": "data:image/png;base64," + base64.b64encode(old).decode("ascii"),
         "regions": res["regions"], "removed": res["removed"], "added": res["added"], "shiftMm": res["shift_mm"], "fit": res.get("fit"),
     })
 
