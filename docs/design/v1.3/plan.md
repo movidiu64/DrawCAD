@@ -6,7 +6,7 @@ Built on the `v1.3` branch, one phase per commit (or a few), `VERSION` = `1.3.0-
 | # | Phase | Status |
 |---|---|---|
 | V13-1 | `main.js` split by area into `js/app/*.js` | built |
-| V13-2 | Page operations in undo / redo | planned |
+| V13-2 | Page operations in undo / redo | built |
 | V13-3 | ISO 2768-1 general tolerances | planned |
 | V13-4 | Measure: area and perimeter | planned |
 | V13-5 | Text at any angle, rotated linear dimension | planned |
@@ -30,7 +30,7 @@ OCR in strips), documents as tabs, recent-document thumbnails, user accounts.
   `App.prototype` in the old order, so `this` is still the app and nothing else changes.
 - `tools/check_rules.py` and `tools/i18n_extract.py` scan `js/**`.
 
-## V13-2 — Page operations in undo / redo
+## V13-2 — Page operations in undo / redo · built
 
 - Rotate, delete and reorder pages become history steps: Ctrl+Z / Ctrl+Y (and `U`, `REDO`) undo them
   like any other change. Today the guide says they cannot be undone.

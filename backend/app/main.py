@@ -797,9 +797,10 @@ async def api_preview(request: Request):
 
 
 async def api_pages(request: Request):
-    """Page operations: rotate (90° left / right, 180°), delete, move. The uploaded file
-    stays unchanged; order and rotation live in the metadata and are applied on render and export.
-    The operation comes with the annotation state, already transformed to the new page."""
+    """Page operations: rotate (90° left / right, 180°), delete, move, scale, or a whole layout
+    (undo / redo). The uploaded file stays unchanged; order and rotation live in the metadata and are
+    applied on render and export, so a deleted page can come back. The operation comes with the
+    annotation state, already transformed to the new page; the answer has the layout before and after."""
     doc_id = request.path_params["doc_id"]
     try:
         d = _doc_dir(doc_id)
@@ -815,13 +816,33 @@ async def api_pages(request: Request):
     pages0 = meta.get("pages0") or meta.get("pages", [])
     lay = meta.get("layout") if isinstance(meta.get("layout"), list) and meta.get("layout") else [{"src": i, "rot": 0} for i in range(n)]
     lay = [dict(it) for it in lay]
+    prev = [dict(it) for it in lay]
     op = body.get("op")
     sel = body.get("pages")
     if sel is None:
         sel = list(range(n))
     if not isinstance(sel, list) or not all(isinstance(i, int) and not isinstance(i, bool) and 0 <= i < n for i in sel):
         return _err("Pagini invalide")
-    if op == "rotate":
+    if op == "layout":
+        # a layout from the undo history: each source page at most once, quarter turns, sane scale
+        new = body.get("layout")
+        if not isinstance(new, list) or not 1 <= len(new) <= len(pages0):
+            return _err("Pagini invalide")
+        seen, lay = set(), []
+        for it in new:
+            src, rot, sc = (it.get("src"), it.get("rot", 0), it.get("scale", 1)) if isinstance(it, dict) else (None, 0, 1)
+            if not (isinstance(src, int) and not isinstance(src, bool) and 0 <= src < len(pages0)) or src in seen:
+                return _err("Pagini invalide")
+            if not (isinstance(rot, int) and not isinstance(rot, bool) and rot % 90 == 0):
+                return _err("Unghi invalid")
+            if not (_finite(sc) and 0.01 <= float(sc) <= 100):
+                return _err("Factor invalid")
+            seen.add(src)
+            q = {"src": src, "rot": rot % 360}
+            if abs(float(sc) - 1) > 1e-9:
+                q["scale"] = round(float(sc), 6)
+            lay.append(q)
+    elif op == "rotate":
         delta = body.get("delta")
         if delta not in (90, -90, 180, 270):
             return _err("Unghi invalid")
@@ -869,7 +890,7 @@ async def api_pages(request: Request):
     state = body.get("state")
     if isinstance(state, dict) and isinstance(state.get("annots"), list):
         _write_json(d / "state.json", state)
-    return JSONResponse({"pages": meta["pages"], "lv": meta["lv"], "ocrPages": _ocr_pages(doc_id, meta)})
+    return JSONResponse({"pages": meta["pages"], "lv": meta["lv"], "ocrPages": _ocr_pages(doc_id, meta), "layout": lay, "prev": prev})
 
 
 async def api_snap(request: Request):

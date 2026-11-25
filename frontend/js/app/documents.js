@@ -172,22 +172,25 @@ export class Documents {
     }));
   }
 
-  /** Rotating / deleting / moving pages: annotations (and the undo history) are transformed along
-   *  with the page, and the server receives the new state together with the operation. */
-  async pageOp(op) {
+  /** Rotating / deleting / moving / scaling pages: annotations are transformed along with the page,
+   *  and the server receives the new state together with the operation. The operation is a history step:
+   *  the entry holds the page layout, annotations and settings from before it, so Ctrl+Z brings the
+   *  pages back (a deleted page too: the uploaded file never changes).
+   *  `hist` = an entry from the history being undone / redone: { pages, annots, settings, page, stack }. */
+  async pageOp(op, hist = null) {
     if (!this.doc || this._pageBusy) return;
     const n = this.doc.pages.length;
     const full = { ...op, count: n, sizes: this.doc.pages.map((p) => [p.w, p.h]) };
     const S = this.S();
-    const tr = (list) => applyPageOp(list, full, S, this.measure);
-    const annots = tr(this.annots);
+    const annots = hist ? hist.annots : applyPageOp(this.annots, full, S, this.measure);
+    const before = { annots: this.annots, settings: this.settings, page: this.page };
     this._pageBusy = true;
     clearTimeout(this.saveTimer);
     this.saveTimer = null;
     try {
       // sheet enlarged k times: the same real dimension means k times more paper mm
-      let settings = this.settings;
-      if (op.op === "scale" && (op.pages == null || n === 1)) settings = { ...settings, scale: (Number(settings.scale) || 1) / op.factor };
+      let settings = hist ? hist.settings : this.settings;
+      if (!hist && op.op === "scale" && (op.pages == null || n === 1)) settings = { ...settings, scale: (Number(settings.scale) || 1) / op.factor };
       const res = await api.pageOp(this.doc.id, { ...op, state: { ...this.stateJson(), settings, annots } });
       this.annots = annots;
       // a comparison drawn for the page before the change would no longer line up
@@ -196,16 +199,23 @@ export class Documents {
         this.settings = settings;
         this._S = null;
       }
-      this.undo = this.undo.map((st) => JSON.stringify(tr(JSON.parse(st))));
-      this.redo = this.redo.map((st) => JSON.stringify(tr(JSON.parse(st))));
+      // the step for the other direction: the layout the server had before, with what we had
+      const entry = JSON.stringify({ pages: res.prev, annots: before.annots, settings: before.settings, page: before.page });
+      if (hist) hist.stack.push(entry);
+      else {
+        this.undo.push(entry);
+        this.redo = [];
+      }
+      this.lastHistKey = null;
       this.cache.clear();
       this.doc.pages = res.pages;
       this.doc.lv = res.lv;
       this.ocrPages = new Set(res.ocrPages || []);
       this.ocr = new Map();
       let pg = this.page;
-      if (op.op === "delete") pg = Math.min(pg - op.pages.filter((d) => d < pg).length, res.pages.length - 1);
-      if (op.op === "move") {
+      if (hist) pg = hist.page;
+      else if (op.op === "delete") pg = Math.min(pg - op.pages.filter((d) => d < pg).length, res.pages.length - 1);
+      else if (op.op === "move") {
         const order = [...Array(n).keys()];
         order.splice(op.to, 0, order.splice(op.page, 1)[0]);
         pg = order.indexOf(this.page);
@@ -215,10 +225,21 @@ export class Documents {
       this.unexported = true;
       this.setSaveState("saved");
       $("docMeta").textContent = `${this.doc.kind === "image" ? "imagine" : "PDF"} · ${res.pages.length} ${res.pages.length === 1 ? "pagină" : "pagini"}`;
-      this.setPage(Math.max(0, pg));
+      this.setPage(Math.min(Math.max(0, pg), res.pages.length - 1));
+      this.panel.render();
       this.updateButtons();
     } finally {
       this._pageBusy = false;
     }
+  }
+
+  /** Undo / redo of a page operation: puts back the layout of a history entry (see pageOp). */
+  pageHistory(entry, stack, back) {
+    const st = JSON.parse(entry);
+    this.pageOp({ op: "layout", layout: st.pages }, { annots: st.annots, settings: st.settings, page: st.page, stack }).catch((e) => {
+      back.push(entry);
+      this.updateButtons();
+      dlg.toast(e.message);
+    });
   }
 }

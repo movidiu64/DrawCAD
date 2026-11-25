@@ -750,6 +750,32 @@ def main(url, out):
         page.click("#recentList [data-doc]")
         page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 42")
         page.wait_for_timeout(300)
+        # page operations are history steps: rotate, Ctrl+Z; delete a page, Ctrl+Z, Ctrl+Y, Ctrl+Z
+        snap_a = page.evaluate("JSON.stringify(window.cotare.annots)")
+        w0 = page.evaluate("window.cotare.doc.pages[0].w")
+        lv = lambda: page.evaluate("window.cotare.doc.lv || 0")
+        def page_step(js_or_key):
+            v = lv()
+            if js_or_key.startswith("Control"):
+                page.keyboard.press(js_or_key)
+            else:
+                page.evaluate(js_or_key)
+            page.wait_for_function(f"(window.cotare.doc.lv || 0) > {v} && !window.cotare._pageBusy", timeout=20000)
+        page_step("window.cotare.runCommand('rotR')")
+        assert abs(page.evaluate("window.cotare.doc.pages[0].w") - w0) > 1
+        assert page.evaluate("JSON.stringify(window.cotare.annots)") != snap_a
+        page_step("Control+z")
+        assert abs(page.evaluate("window.cotare.doc.pages[0].w") - w0) < 0.01
+        assert page.evaluate("JSON.stringify(window.cotare.annots)") == snap_a
+        page_step("window.cotare.pageOp({ op: 'delete', pages: [1] })")
+        assert page.evaluate("window.cotare.doc.pages.length") == 1
+        page_step("Control+z")
+        assert page.evaluate("window.cotare.doc.pages.length") == 2
+        assert page.evaluate("JSON.stringify(window.cotare.annots)") == snap_a
+        page_step("Control+y")
+        assert page.evaluate("window.cotare.doc.pages.length") == 1
+        page_step("Control+z")
+        assert page.evaluate("window.cotare.doc.pages.length") == 2 and page.evaluate("window.cotare.annots.length") == 42
         page.keyboard.press("t")
         click(100, 30)
         page.press("#tTxt", "Escape")

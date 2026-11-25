@@ -265,7 +265,9 @@ export class StateHistory {
   }
 
   doUndo() {
-    if (!this.undo.length) return;
+    if (!this.undo.length || this._pageBusy) return;
+    // a page operation (rotate, delete, move, scale): its entry is an object, not a list of annotations
+    if (this.undo[this.undo.length - 1][0] === "{") return this.pageHistory(this.undo.pop(), this.redo, this.undo);
     this.redo.push(JSON.stringify(this.annots));
     this.annots = JSON.parse(this.undo.pop());
     this.lastHistKey = null;
@@ -276,7 +278,8 @@ export class StateHistory {
   }
 
   doRedo() {
-    if (!this.redo.length) return;
+    if (!this.redo.length || this._pageBusy) return;
+    if (this.redo[this.redo.length - 1][0] === "{") return this.pageHistory(this.redo.pop(), this.undo, this.redo);
     this.undo.push(JSON.stringify(this.annots));
     this.annots = JSON.parse(this.redo.pop());
     this.lastHistKey = null;

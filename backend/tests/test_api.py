@@ -648,6 +648,21 @@ class ApiTest(unittest.TestCase):
         # not all pages can be deleted
         with self.assertRaises(urllib.error.HTTPError):
             self.req("POST", f"/api/doc/{doc}/pages", {"op": "delete", "pages": [0]})
+        # undo: the layout before the deletion comes back whole, the deleted page included
+        self.assertEqual(r["prev"], [{"src": 1, "rot": 0}, {"src": 0, "rot": 90}])
+        r2 = self.req("POST", f"/api/doc/{doc}/pages", {"op": "layout", "layout": r["prev"]})
+        self.assertEqual(len(r2["pages"]), 2)
+        self.assertEqual(r2["layout"], r["prev"])
+        self.assertEqual(r2["prev"], r["layout"])
+        self.assertAlmostEqual(r2["pages"][1]["w"], h0, places=2)
+        # back to the original order and rotation: no layout left in the metadata
+        r3 = self.req("POST", f"/api/doc/{doc}/pages", {"op": "layout", "layout": [{"src": 0, "rot": 0}, {"src": 1, "rot": 0}]})
+        self.assertEqual(r3["layout"], [{"src": 0, "rot": 0}, {"src": 1, "rot": 0}])
+        self.assertAlmostEqual(r3["pages"][0]["w"], w0, places=2)
+        # invalid layouts: a page twice, an unknown page, a turn that is not a quarter, empty
+        for bad in ([{"src": 0}, {"src": 0}], [{"src": 7}], [{"src": 0, "rot": 45}], [], [{"src": 0, "scale": 0}]):
+            with self.assertRaises(urllib.error.HTTPError):
+                self.req("POST", f"/api/doc/{doc}/pages", {"op": "layout", "layout": bad})
 
     def test_page_scale_and_low_dpi_image(self):
         """Sheet size: the page and the content grow together, the objects stay the same."""

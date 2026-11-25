@@ -430,7 +430,7 @@ All pages can be rotated at once from there too (90° or 180°).
 
 - **The export keeps rotation and order** (PDF and DXF). The uploaded file stays unchanged on the server; order and rotation are stored separately and applied on render and export.
 - **Dimensions and other annotations rotate with the page.** A horizontal dimension becomes vertical and measures the same, texts rotate, and tables (revisions, parts list) stay horizontal, moved to the matching place.
-- **Ctrl+Z does not undo a page operation.** For that, rotate or move back. The annotation history is transformed as well, so undoing earlier changes works correctly.
+- **Ctrl+Z undoes a page operation** like any other change (rotation, deletion, order, sheet size), with the annotations as they were; Ctrl+Y does it again. A deleted page comes back, because the uploaded file is never changed.
 - **OCR** is remembered for each orientation of the page.
 
 ### Sheet size (scans and photos)
