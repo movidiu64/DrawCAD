@@ -107,6 +107,12 @@ export class Keyboard {
         dlg.commandSearch(this);
         return;
       }
+      // ? on an empty command line: the shortcut sheet (a command never starts with ?)
+      if (e.key === "?" && !inp.value && !ctl) {
+        e.preventDefault();
+        dlg.shortcutSheet(this);
+        return;
+      }
       if (ctl && !inp.value && (e.key.toLowerCase() === "z" || e.key.toLowerCase() === "y")) {
         e.preventDefault();
         if (e.key.toLowerCase() === "z" && !e.shiftKey) this.doUndo();

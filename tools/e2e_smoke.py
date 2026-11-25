@@ -797,7 +797,8 @@ def main(url, out):
         page.keyboard.press("Enter")
         page.wait_for_selector("#spane-sheet:not([hidden])")
         page.keyboard.press("Escape")
-        page.keyboard.press("Shift+Slash")
+        # F1 opens the sheet wherever the focus is (? too, unless something is typed in a field)
+        page.keyboard.press("F1")
         page.wait_for_selector("#ssGrid")
         page.fill("#ssQ", "cerc")
         assert page.evaluate("[...document.querySelectorAll('.ssrow')].filter(r => !r.hidden).length") >= 1
