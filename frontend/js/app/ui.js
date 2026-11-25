@@ -7,6 +7,7 @@ import { TOOL_BY_ID, FAMILIES, FAMILY_OF } from "../tools.js";
 import * as dlg from "../dialogs.js";
 import { commandList } from "../commands.js";
 import { lang as uiLang, tr } from "../i18n.js";
+import { useThemeColors } from "../view.js";
 import { $ } from "./util.js";
 
 export class Interface {
@@ -42,6 +43,38 @@ export class Interface {
    * slot shows, a second click on the active slot, a right click or a long press opens the family's
    * flyout with every member. Every tool keeps a [data-tool] button (in the flyout).
    */
+  /** Theme (V13-8): "dark" (default), "light" or "system" (follows the operating system), kept in
+   *  this browser. The CSS tokens switch with data-theme on <html>, the canvas colors with them. */
+  themePref() {
+    try {
+      const v = localStorage.getItem("drawcad.theme");
+      return v === "light" || v === "system" ? v : "dark";
+    } catch (_) {
+      return "dark";
+    }
+  }
+
+  applyTheme(pref = null) {
+    if (pref) {
+      try {
+        localStorage.setItem("drawcad.theme", pref);
+      } catch (_) { /* storage unavailable */ }
+    }
+    const p = pref || this.themePref();
+    const mq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: light)") : null;
+    const light = p === "light" || (p === "system" && !!(mq && mq.matches));
+    document.documentElement.dataset.theme = light ? "light" : "dark";
+    useThemeColors(light);
+    if (mq && !this._themeWatch) {
+      this._themeWatch = true;
+      mq.addEventListener("change", () => {
+        if (this.themePref() === "system") this.applyTheme();
+      });
+    }
+    if (this.view) this.view.redraw();
+    if (this.panel && this.doc) this.panel.render();
+  }
+
   buildToolbar() {
     const cfg = this.railCfg();
     const nav = $("tools");

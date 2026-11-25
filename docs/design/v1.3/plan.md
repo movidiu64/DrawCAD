@@ -12,7 +12,7 @@ Built on the `v1.3` branch, one phase per commit (or a few), `VERSION` = `1.3.0-
 | V13-5 | Text at any angle, rotated linear dimension | built |
 | V13-6 | Command search (Ctrl+K), shortcut sheet (? / F1), first-run tips | built |
 | V13-7 | Revision compare: two-point alignment | built |
-| V13-8 | Light theme | planned |
+| V13-8 | Light theme | built |
 
 Not in 1.3: ISO 286 above 500 mm, weld symbols (ISO 2553), offset / trim / extend, a symbol library,
 CSV export, the performance items (scan vectorization, Windows worker process, cached drawing layer,
@@ -98,13 +98,15 @@ OCR in strips), documents as tabs, recent-document thumbnails, user accounts.
   lines up. One more pixel of tolerance covers the resampling.
 - The automatic alignment stays the default; after two points it only refines by a few pixels.
 
-## V13-8 — Light theme
+## V13-8 — Light theme · built
 
 - Settings → Interface → Theme: dark (default), light, as the system.
-- First the 16 overlay colours in `app.css` (`rgba(21, 24, 28, …)`, shadows) and `COLORS.canvasBg` /
-  `tipBg` / `uiDark` in `view.js` become tokens; then a second set of values under
-  `[data-theme="light"]`. The sheet stays white; the canvas around it light grey; the selection
-  amber gets the dark edge of TH4 everywhere. Contrast checked to WCAG AA in both themes.
+- The overlay colours in `app.css` became tokens (`--shade` for shadows, `--glass` behind floating
+  labels, `--backdrop` behind dialogs); the light values are a second token set under
+  `:root[data-theme="light"]`, and `COLORS_LIGHT` in `view.js` switches the canvas around the sheet,
+  the tracking tip line and the symbol previews. The sheet stays white, so annotation and selection
+  colors do not change. Text contrast in the light set: 5.2 : 1 or more (muted on the page background),
+  field edges 3.7 : 1. The rule check accepts the two token blocks.
 
 ## Checks for every phase
 

@@ -549,6 +549,7 @@ export class Grips {
   }
 
   async init() {
+    this.applyTheme(); // first, so the interface is not drawn dark and then light
     startI18n(); // in English, texts are translated as the interface is built
     await document.fonts.load("16px osifont").catch(() => {});
     try {

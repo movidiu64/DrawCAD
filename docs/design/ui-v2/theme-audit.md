@@ -49,7 +49,7 @@ document, Undo, the panel and Export.
 
 ## Not done
 
-- **Light theme** (UI-D15, *planned*). The tokens make it a second set of values under
+- **Light theme** (UI-D15): built in v1.3 (V13-8); the note below is what was done first. The tokens make it a second set of values under
   `[data-theme="light"]`, but 16 overlay colours in `app.css` (`rgba(21, 24, 28, …)`, shadows) and
   `COLORS.canvasBg` / `tipBg` / `uiDark` in `view.js` are written for dark and need tokens first.
   The sheet is white in both themes; the canvas around it would be a light grey (#d9dde3 or so), and

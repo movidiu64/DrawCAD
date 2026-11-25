@@ -46,6 +46,20 @@ export const COLORS = {
   coverPaper: "#f4f1e8",
 };
 
+// the light theme (Settings → Interface): the editor colors that depend on it; the sheet stays white
+export const COLORS_LIGHT = {
+  canvasBg: "#d3d8df",
+  tipLine: "#6b737e",
+  uiDark: "#111418",
+  uiLight: "#1b1f24",
+};
+const COLORS_DARK = Object.fromEntries(Object.keys(COLORS_LIGHT).map((k) => [k, COLORS[k]]));
+
+/** Switches the theme-dependent editor colors (the CSS tokens switch with data-theme on <html>). */
+export function useThemeColors(light) {
+  Object.assign(COLORS, light ? COLORS_LIGHT : COLORS_DARK);
+}
+
 const colorOf = (c) => COLORS[c] || (typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c) ? c : COLORS.inkDefault);
 
 // whole page: ~12 MP (≈ 48 MB decoded in the browser); beyond that, at high zoom, the detail area takes over

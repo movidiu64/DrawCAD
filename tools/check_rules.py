@@ -1,7 +1,7 @@
 """Project rules checked in CI (the `test` job). Fails with a list of violations.
 
-1. Colors: a hex color in app.css only inside `:root` (the tokens); in the JS only inside the
-   `COLORS` object of view.js.
+1. Colors: a hex color in app.css only inside `:root` and `:root[data-theme="light"]` (the tokens of
+   the two themes); in the JS only inside the `COLORS` and `COLORS_LIGHT` objects of view.js.
 2. i18n: every interface text that tools/i18n_extract.py finds has a key in i18n_en.js
    (exact, or a `{}` pattern, or composed of translated pieces, as i18n.js looks it up).
    Duplicate keys in i18n_en.js are errors too.
@@ -69,6 +69,7 @@ EXCEPTIONS = [
     ("i18n", "js/dialogs.js", "DrawCAD {}", "product name + version (translate=\"no\")"),
     # i18n: not interface text
     ("i18n", "*", "Escape", "KeyboardEvent.key value"),
+    ("i18n", "js/app/ui.js", "prefers-color-scheme", "CSS media query, not text"),
     ("i18n", "js/iso2768.js", "ISO 2768-", "standard designation (ISO 2768-mK), the same in every language"),
     ("i18n", "js/panel.js", "ISO 2768-mK", "standard designation, the same in every language"),
     ("i18n", "js/tools.js", "ISO 2768-mK", "standard designation, the same in every language"),
@@ -110,26 +111,24 @@ def check_colors():
     out = []
     css_path = "css/app.css"
     css = (FRONT / css_path).read_text("utf-8")
-    m = re.search(r":root\s*\{[^}]*\}", css)
-    root = (m.start(), m.end()) if m else (0, 0)
+    roots = [(m.start(), m.end()) for m in re.finditer(r":root(?:\[data-theme=\"light\"\])?\s*\{[^}]*\}", css)]
     for h in HEX.finditer(css):
-        if root[0] <= h.start() < root[1]:
+        if any(a <= h.start() < b for a, b in roots):
             continue
         ln = line_of(css, h.start())
         text = css.splitlines()[ln - 1].strip()
         if not excepted("color", css_path, text):
-            out.append(f"{css_path}:{ln}: color {h.group(0)} outside :root — add a token in :root and use var(--…): {text[:100]}")
+            out.append(f"{css_path}:{ln}: color {h.group(0)} outside the :root tokens — add a token in :root and use var(--…): {text[:100]}")
     for f in sorted((FRONT / "js").rglob("*.js")):
         rel = f.relative_to(FRONT).as_posix()
         if f.name in ("i18n_en.js", "iso286_data.js"):
             continue
         src = f.read_text("utf-8")
-        allowed = (0, 0)
+        allowed = []
         if f.name == "view.js":
-            m = re.search(r"export const COLORS = \{[^}]*\};", src)
-            allowed = (m.start(), m.end()) if m else (0, 0)
+            allowed = [(m.start(), m.end()) for m in re.finditer(r"export const COLORS(?:_LIGHT)? = \{[^}]*\};", src)]
         for h in HEX.finditer(src):
-            if allowed[0] <= h.start() < allowed[1]:
+            if any(a <= h.start() < b for a, b in allowed):
                 continue
             # inside a regex literal / character class: not a color ("/^#[0-9a-f]{6}$/")
             before = src[max(0, h.start() - 2):h.start()]

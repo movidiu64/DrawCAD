@@ -14,7 +14,11 @@ The interface is one dark theme, built from plain HTML strings in ES modules (no
   else in app.css fails CI. Need a new shade? Add a token with a role name (`--info-bg`, `--layer-rev`),
   not a value name. Reuse before adding: `--bg`, `--panel`, `--panel2`, `--raised`, `--line…`, `--text`,
   `--text2`, `--muted`, `--accent`, `--ok`, `--warn`, `--bad` and their `-bg` / `-ink` pairs.
-- **JS:** a hex color only inside `COLORS` in `frontend/js/view.js` (canvas drawing cannot read CSS variables).
+- **Two themes:** every new token needs its light value too, in `:root[data-theme="light"]` (text ≥ 4.5 : 1,
+  field edges ≥ 3 : 1 on the light panel). Shadows use `rgba(var(--shade), a)`, floating labels
+  `rgba(var(--glass), a)`, never a fixed dark rgba. Canvas colors that depend on the theme go in
+  `COLORS_LIGHT` (view.js) as well. Check a change in both themes (Settings → Interface → Theme).
+- **JS:** a hex color only inside `COLORS` / `COLORS_LIGHT` in `frontend/js/view.js` (canvas drawing cannot read CSS variables).
   Inline styles in HTML strings use `var(--…)` (`style="background:var(--layer-add)"`); canvas code uses
   `COLORS.x`. A hex anywhere else in the JS fails CI.
 - **Fonts:** `var(--sans)` for the interface, `var(--mono)` (class `mono`) for numbers, codes and values.

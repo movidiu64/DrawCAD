@@ -209,6 +209,12 @@ export const EN = {
   "Documentul nu mai există: {}": "The document no longer exists: {}",
   "Documentul trebuie să păstreze cel puțin o pagină": "The document must keep at least one page",
   "Două puncte (cu snap) → distanța, Δx, Δy și unghiul, la scara desenului · A = arie și perimetru · nu se adaugă nimic pe desen": "Two points (with snap) → distance, Δx, Δy and angle at drawing scale · A = area and perimeter · nothing is added to the drawing",
+  // light theme (V13-8)
+  "Temă": "Theme",
+  "Întunecată": "Dark",
+  "Luminoasă": "Light",
+  "Ca sistemul": "As the system",
+  "Foaia rămâne albă în ambele teme. Se salvează în acest browser.": "The sheet stays white in both themes. Saved in this browser.",
   // compare: two-point alignment (V13-7)
   "Aliniază cu două puncte (revizia veche e la altă scară sau rotită): alegi două puncte pe pagina deschisă, apoi aceleași două pe cea veche": "Align with two points (the older revision is at another scale or rotated): pick two points on the open page, then the same two on the older one",
   "Aliniere: click pe un punct de reper pe pagina deschisă (cu snap) · Esc renunță": "Alignment: click a reference point on the open page (with snap) · Esc cancels",

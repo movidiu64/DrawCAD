@@ -139,7 +139,7 @@ UI-D1 … D8 are in `README.md` and unchanged. New:
 | UI-D12 | One-line status bar; toasts out of the way | built (452f1cc) |
 | UI-D13 | Compact properties: collapsible sections | built (b49c869) |
 | UI-D14 | Shortcut sheet and first-run tips | built in v1.3 (? / F1) |
-| UI-D15 | Motion, contrast, light theme | motion built (452f1cc); light theme *planned* |
+| UI-D15 | Motion, contrast, light theme | motion built (452f1cc); light theme built in v1.3 |
 | UI-D16 | Phone and tablet layout | built (5f27a88) |
 
 ### UI-D9 — Command search at the cursor (*check*: the key)

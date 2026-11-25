@@ -755,6 +755,11 @@ export function settingsDialog(app, startPane = null) {
             <div class="sub">Pagina se reîncarcă; lucrul rămâne salvat.</div>
           </div>
           <div class="sec">
+            <div class="h">Temă</div>
+            <div class="seg">${[["dark", "Întunecată"], ["light", "Luminoasă"], ["system", "Ca sistemul"]].map(([v, l]) => `<button data-theme-set="${v}" class="${app.themePref() === v ? "on" : ""}">${l}</button>`).join("")}</div>
+            <div class="sub">Foaia rămâne albă în ambele teme. Se salvează în acest browser.</div>
+          </div>
+          <div class="sec">
             <div class="h">Bara de unelte</div>
             <label class="chk"><input type="checkbox" id="sRailLbl" ${rail.labels ? "checked" : ""}> Etichete sub iconițe</label>
             <label class="chk"><input type="checkbox" id="sRailHover" ${rail.hover ? "checked" : ""}> Lista familiei se deschide când ții mouse-ul pe buton</label>
@@ -876,6 +881,10 @@ export function settingsDialog(app, startPane = null) {
     });
   }
   $d("#sKeys").addEventListener("click", () => keysDialog(app));
+  dlg.querySelectorAll("[data-theme-set]").forEach((b) => b.addEventListener("click", () => {
+    app.applyTheme(b.dataset.themeSet);
+    dlg.querySelectorAll("[data-theme-set]").forEach((x) => x.classList.toggle("on", x === b));
+  }));
   dlg.querySelectorAll("[data-uilang]").forEach((b) => b.addEventListener("click", () => {
     if (b.dataset.uilang === uiLang()) return;
     setLang(b.dataset.uilang);
