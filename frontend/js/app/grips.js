@@ -455,6 +455,10 @@ export class Grips {
       if (this.clicks.length >= 3) this.finishPoly(true);
       return;
     }
+    if (t && t.id === "measure" && this.cmdState.area) {
+      if (this.clicks.length >= 3) this.finishArea();
+      return;
+    }
     if (t && t.chain && this.chain && this.clicks.length) {
       const first = this.chain.first;
       this.toolClick(first);

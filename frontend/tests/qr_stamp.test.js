@@ -63,3 +63,17 @@ test("QR and title block stay upright under rotate / mirror; scale grows the QR 
   near(center(mirrorAbout(JSON.parse(JSON.stringify(tb)), "h", [0, 500], S, measure)), [t0[0], 1000 - t0[1]]);
   assert.equal(scaleAbout(JSON.parse(JSON.stringify(tb)), 2, [0, 0]).scale, 2);
 });
+
+test("area and perimeter of an outline and of closed shapes", async () => {
+  const { polygonMetrics, closedOutline } = await import("../js/shapes.js");
+  const m = polygonMetrics([[0, 0], [30, 0], [30, 20], [0, 20]]);
+  assert.equal(m.area, 600);
+  assert.equal(m.perimeter, 100);
+  // clockwise or not, the area is positive
+  assert.equal(polygonMetrics([[0, 0], [0, 20], [30, 20], [30, 0]]).area, 600);
+  assert.deepEqual(closedOutline({ type: "shape", kind: "rect", pts: [[10, 10], [40, 30]] }).pts, [[10, 10], [40, 10], [40, 30], [10, 30]]);
+  assert.equal(closedOutline({ type: "shape", kind: "circle", pts: [[0, 0], [3, 4]] }).r, 5);
+  assert.equal(closedOutline({ type: "shape", kind: "poly", pts: [[0, 0], [1, 0], [1, 1]] }), null);
+  assert.equal(closedOutline({ type: "shape", kind: "poly", closed: true, pts: [[0, 0], [1, 0], [1, 1]] }).pts.length, 3);
+  assert.equal(closedOutline({ type: "dim" }), null);
+});

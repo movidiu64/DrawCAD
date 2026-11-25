@@ -17,6 +17,7 @@ import { Editing } from "./app/edit.js";
 import { Mouse } from "./app/mouse.js";
 import { ContextBar } from "./app/contextbar.js";
 import { Keyboard } from "./app/keys.js";
+import { MeasureArea } from "./app/measure.js";
 
 class App {
   constructor() {
@@ -177,6 +178,10 @@ class App {
       this.finishPoly(false);
       return;
     }
+    if (confirm && t.id === "measure" && this.cmdState.area && this.clicks.length >= 3) {
+      this.finishArea();
+      return;
+    }
     if (this.acq.length || this.parDir) this.clearAcq();
     this.chain = null;
     if (this.tool === "measure") this.cmdState = {}; // DIST Multiple ends with the chain
@@ -191,7 +196,7 @@ class App {
 }
 
 // the methods of each area, in the order they used to stand in the class
-for (const part of [RadialMenu, Review, SheetItems, PointInput, Grips, Interface, Documents, StateHistory, Editing, Mouse, ContextBar, Keyboard]) {
+for (const part of [RadialMenu, Review, SheetItems, PointInput, Grips, Interface, Documents, StateHistory, Editing, Mouse, ContextBar, Keyboard, MeasureArea]) {
   for (const [name, d] of Object.entries(Object.getOwnPropertyDescriptors(part.prototype))) {
     if (name !== "constructor") Object.defineProperty(App.prototype, name, d);
   }

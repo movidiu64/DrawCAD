@@ -146,6 +146,7 @@ export class RadialMenu {
       this.updateOverlay(pt, null);
       return;
     }
+    if (t.id === "measure" && this.cmdState.area) return this.areaClick(pt);
     if (t.kind === "clicks") {
       this.clicks.push(pt);
       if (this.clicks.length >= t.n) {

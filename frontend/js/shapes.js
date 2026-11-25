@@ -386,3 +386,32 @@ export function removeVertex(a, i) {
   a.pts.splice(i, 1);
   return true;
 }
+
+// ------------------------------------------------------------------ area and perimeter (MEASUREGEOM Area)
+/** Area (shoelace, absolute) and perimeter of a closed polygon, in page units. */
+export function polygonMetrics(pts) {
+  let a = 0;
+  let p = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const [x0, y0] = pts[i];
+    const [x1, y1] = pts[(i + 1) % pts.length];
+    a += x0 * y1 - x1 * y0;
+    p += Math.hypot(x1 - x0, y1 - y0);
+  }
+  return { area: Math.abs(a) / 2, perimeter: p };
+}
+
+/** The closed outline of a drawn shape: { pts } (polygon) or { c, r } (circle), or null. */
+export function closedOutline(a) {
+  if (!a || a.type !== "shape" || !Array.isArray(a.pts)) return null;
+  if (a.kind === "rect" && a.pts.length >= 2) {
+    const [[x0, y0], [x1, y1]] = a.pts;
+    return { pts: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]] };
+  }
+  if (a.kind === "circle" && a.pts.length >= 2) {
+    const [c, q] = a.pts;
+    return { c, r: Math.hypot(q[0] - c[0], q[1] - c[1]) };
+  }
+  if ((a.kind === "hatch" || (a.kind === "poly" && a.closed)) && a.pts.length >= 3) return { pts: a.pts };
+  return null;
+}

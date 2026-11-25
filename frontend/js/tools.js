@@ -82,8 +82,15 @@ export const TOOLS = [
     hint: "Trage pentru a muta foaia · rotița = zoom · oricând: butonul din mijloc sau Space + tragere" },
 
   { id: "measure", label: "Măsoară", key: "M", group: "Navigare", icon: "M3 17L17 3l4 4L7 21zM7 13l2 2M10 10l2 2M13 7l2 2", kind: "clicks", n: 2,
-    hint: "Două puncte (cu snap) → distanța, Δx, Δy și unghiul, la scara desenului; nu se adaugă nimic pe desen",
-    preview(pts, cur) { return { line: [pts[0], cur] }; } },
+    hint: "Două puncte (cu snap) → distanța, Δx, Δy și unghiul, la scara desenului · A = arie și perimetru · nu se adaugă nimic pe desen",
+    preview(pts, cur, app) {
+      // Area: the outline so far, closed back to the first point
+      if (app && app.cmdState && app.cmdState.area) {
+        const all = [...pts, cur];
+        return { lines: all.map((p, i) => [p, all[(i + 1) % all.length]]) };
+      }
+      return { line: [pts[0], cur] };
+    } },
 
   // MOVE / COPY on the selection (commands only, not on the toolbar): base point, second point
   { id: "moveSel", label: "Mută obiectele", key: "", group: "Navigare", hidden: true, icon: "M12 3v18M3 12h18",
@@ -414,7 +421,12 @@ const OPTIONS = {
       return true;
     }) },
   ],
-  measure: [{ key: "M", label: "Mai multe puncte", en: ["MULTIPLE"], when: (app) => !app.cmdState || !app.cmdState.multi, run: (app) => { app.cmdState.multi = true; } }],
+  measure: [
+    { key: "M", label: "Mai multe puncte", en: ["MULTIPLE"], when: (app) => !app.cmdState || (!app.cmdState.multi && !app.cmdState.area), run: (app) => { app.cmdState.multi = true; } },
+    { key: "A", label: "Arie", en: ["AREA"], when: (app) => !app.cmdState || (!app.cmdState.multi && !app.cmdState.area && !(app.clicks || []).length), run: (app) => { app.cmdState.area = true; } },
+    { key: "O", label: "Obiect", en: ["OBJECT"], when: (app) => !!(app.cmdState && app.cmdState.area && !app.cmdState.areaObj && !(app.clicks || []).length), run: (app) => { app.cmdState.areaObj = true; } },
+    { key: "D", label: "Distanță", en: ["DISTANCE"], when: (app) => !!(app.cmdState && app.cmdState.area && !(app.clicks || []).length), run: (app) => { app.cmdState.area = false; app.cmdState.areaObj = false; } },
+  ],
 };
 
 /** The prompt of a tool in the current state: { text, opts } (opts only those available now). */
@@ -423,6 +435,9 @@ export function promptFor(t, app) {
   const list = PROMPTS[t.id];
   const n = (app.clicks || []).length;
   let text = app.placing && PLACE_PROMPTS[t.id] ? PLACE_PROMPTS[t.id] : list ? list[Math.min(n, list.length - 1)] : `Punctul ${n + 1}`;
+  if (t.id === "measure" && app.cmdState && app.cmdState.area) {
+    text = app.cmdState.areaObj ? "Click pe un contur închis" : n >= 3 ? `Punctul ${n + 1} al conturului (Enter = închide)` : `Punctul ${n + 1} al conturului`;
+  }
   if (app.cmdState && app.cmdState.orient) text += app.cmdState.orient === "h" ? " (orizontal)" : " (vertical)";
   if (app.cmdState && app.cmdState.axis) text += ` (pe ${app.cmdState.axis.toUpperCase()})`;
   const opts = (OPTIONS[t.id] || []).filter((o) => !o.when || o.when(app));

@@ -247,6 +247,7 @@ export class ContextBar {
     if (this.clicks.length) {
       if (this.placing) this.setHint(t2.placeHint);
       else if (t2.kind === "poly") this.setHint(`${t2.hint} · ${this.clicks.length} puncte`);
+      else if (t2.id === "measure" && this.cmdState.area) this.setHint(`Arie: ${this.clicks.length} puncte · click pe primul punct, C sau Enter închide conturul · Esc renunță`);
       else if (t2.chain) this.setHint(t2.hint);
       else this.setHint(`${t2.hint} · pas ${this.clicks.length + 1}/${t2.n} · Esc renunță`);
     }

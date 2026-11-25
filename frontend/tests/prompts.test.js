@@ -62,6 +62,12 @@ test("TEXT Height / Rotation: the size factor from paper mm and the angle", () =
   const big = t.make([mm(10, 10)], app({ cmdState: { textH: 7, textA: 30 } }));
   assert.equal(big.size, 2);
   assert.equal(big.angle, 30);
-  assert.deepEqual(promptFor(TOOL_BY_ID.measure, app()).opts.map((o) => o.key), ["M"]);
+  assert.deepEqual(promptFor(TOOL_BY_ID.measure, app()).opts.map((o) => o.key), ["M", "A"]);
   assert.deepEqual(promptFor(TOOL_BY_ID.measure, app({ cmdState: { multi: true } })).opts, [], "Multiple once");
+  // Area: Object or back to Distance before the first point; the prompt counts the outline's points
+  assert.deepEqual(promptFor(TOOL_BY_ID.measure, app({ cmdState: { area: true } })).opts.map((o) => o.key), ["O", "D"]);
+  assert.deepEqual(promptFor(TOOL_BY_ID.measure, app({ cmdState: { area: true, areaObj: true } })).opts.map((o) => o.key), ["D"]);
+  const p3 = promptFor(TOOL_BY_ID.measure, app({ cmdState: { area: true }, clicks: [[0, 0], [1, 0], [1, 1]] }));
+  assert.deepEqual(p3.opts, []);
+  assert.match(p3.text, /Punctul 4 al conturului \(Enter = închide\)/);
 });

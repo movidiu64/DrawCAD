@@ -205,7 +205,7 @@ Dimensions do not change on calibration: they measure the drawing.
 - `DCO`, `DBA`: `S` (before the first point) picks an existing linear dimension to continue: the chain goes on from its second extension line on the same line, a baseline series from its first one, one step further out; Enter ends it, with no placement click.
 - `L`: `U` undoes the last segment, `C` closes the chain. `PL`: `U`, `C`.
 - `C` (circle): `D` diameter. `REC`: `D` length and width. `UCS`: `W` page corner.
-- `T` (text): `H` height in paper mm, `R` angle. `DI` (measure): `M` a chain of points with a running total, until Enter.
+- `T` (text): `H` height in paper mm, `R` angle. `DI` (measure): `M` a chain of points with a running total, until Enter; `A` area and perimeter (then `O` for an object, `D` back to distance).
 - An option that needs a value asks for it in the command line; Esc or an empty Enter keeps the default.
 
 **Prompt next to the cursor:** with dynamic input on (F12), the same prompt and option letters appear next to the cursor, above L / ∠. **↓** opens the options there (also from an empty command line), ↑ / ↓ move, Enter picks, Esc closes.
@@ -396,7 +396,7 @@ Every cell can be edited in the panel. **Update from dimensions** rebuilds the t
 - **Detail:** the center of the area → the radius; the next letter goes next to the circle and can be moved.
 - **Label:** proposes "A–A" for the first unlabeled section, then "B (2:1)" for details. The "Add label" button in the section or detail panel does the same.
 - **Balloon:** a point on the part → the circle position; numbers increase automatically. From the panel: circled or on a line, ending with a dot (inside the part) or an arrow (on the outline).
-- **Measure (M):** two points with snap; shows the distance, Δx, Δy and the angle, at drawing scale.
+- **Measure (M):** two points with snap; shows the distance, Δx, Δy and the angle, at drawing scale. Option **Area** (`A`): click the corners of an outline one after the other (snaps and typed points work); a click on the first point, `C` or Enter closes it and shows the area in mm² (and cm² from 10 000 mm²) and the perimeter in mm, at drawing scale, also in the F2 history. Then `O` (**Object**) measures a closed drawn shape with one click: rectangle, circle, closed polyline or hatch. Nothing is added to the drawing.
 
 **Removal from the original:** after you drag the area, the dialog shows the objects found and a before/after preview. There are four modes:
 - **Cover area** (default): a filled rectangle over the area, without removing anything from the file. The color is white, but you can change it: pick from the palette, take a sample with the "Eyedropper" directly from the "Before" preview or, in Chrome/Edge, from anywhere on screen. That way the cover matches the background of a colored or scanned drawing.
