@@ -4,7 +4,7 @@ FROM python:3.13-slim AS libredwg
 ARG LIBREDWG_VERSION=0.14
 ARG LIBREDWG_SHA256=62ebb73b984f865960f20ed26619ea5f8789d5e3fd088fa40a2598384da81275
 RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential ca-certificates curl xz-utils \
+ && apt-get install -y --no-install-recommends build-essential ca-certificates curl pkgconf xz-utils \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 # one step each, so a failure says where; configure and make show their own error lines (the same base
