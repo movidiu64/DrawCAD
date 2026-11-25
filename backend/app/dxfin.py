@@ -12,6 +12,7 @@ from __future__ import annotations
 import io
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -484,12 +485,95 @@ def expanded_count(doc, limit: int) -> int:
     return total
 
 
+def _paper_box(lay, content: BoundingBox2d, wmm: float, hmm: float) -> BoundingBox2d:
+    """The sheet of a paper-space layout, in paper-space units. The LIMITS when they match the paper size
+    (many files leave them at the 12 × 9 default); else the printable area from the plot margins, which
+    starts at paper (0, 0); else the sheet centered on what is drawn."""
+    u = 25.4 if lay.dxf_layout.dxf.get("plot_paper_units", 1) == 0 else 1.0  # paper units: inch / mm
+    w, h = wmm / u, hmm / u
+    lo, hi = (Vec2(p) for p in lay.get_paper_limits())
+    lim = hi - lo
+    if abs(lim.x - w) <= 0.02 * w and abs(lim.y - h) <= 0.02 * h:
+        return BoundingBox2d([lo, hi])
+    m = layout.Page.from_dxf_layout(lay).margins_in_mm
+    o = Vec2(-m.left / u, -m.bottom / u)
+    plot = BoundingBox2d([o, o + Vec2(w, h)])
+    tol = 0.01 * max(w, h)
+    if (content.extmin.x >= plot.extmin.x - tol and content.extmin.y >= plot.extmin.y - tol
+            and content.extmax.x <= plot.extmax.x + tol and content.extmax.y <= plot.extmax.y + tol):
+        return plot
+    c = content.center
+    return BoundingBox2d([c - Vec2(w / 2, h / 2), c + Vec2(w / 2, h / 2)])
+
+
+def rebuild_inventor(doc) -> int:
+    """Drawings saved as DWG by Inventor keep every view, the border and the title block in anonymous
+    blocks (*I1, *I2…) placed by Inventor's own block references (ACIDBLOCKREFERENCE), which only
+    Inventor's object enabler can read: LibreDWG and AutoCAD without it drop them and the sheet is
+    empty. The blocks themselves are there, so they are placed again in the layout: blocks drawn in
+    sheet coordinates (border, title block, notes) at (0, 0); each view block centred on the viewport
+    frame Inventor leaves for it (matched by size: the view fits its frame, with an equal margin), at
+    the frame's scale. → number of blocks placed (0: nothing to do)."""
+    from ezdxf import bbox as ebbox
+
+    if not any(k[0] == "ACIDBLOCKREFERENCE" for k in doc.classes.classes):
+        return 0
+    used = set()
+    for blk in doc.blocks:
+        for e in blk:
+            if e.dxftype() == "INSERT":
+                used.add(e.dxf.name.upper())
+    cand = []
+    for blk in doc.blocks:
+        n = blk.name
+        if not re.fullmatch(r"\*I\d+", n, re.I) or n.upper() in used or not len(blk):
+            continue
+        try:
+            ext = ebbox.extents(blk, fast=True)
+        except Exception:  # noqa: BLE001
+            continue
+        if ext.has_data:
+            cand.append((n, BoundingBox2d([Vec2(ext.extmin), Vec2(ext.extmax)])))
+    if not cand:
+        return 0
+    placed = 0
+    papers = sorted((lay for lay in doc.layouts if not lay.is_modelspace), key=lambda x: x.dxf.get("taborder", 0))
+    # the sheets Inventor made: layouts with view frames (an empty default layout gets nothing)
+    framed = [lay for lay in papers if any(v.dxf.get("id", 0) != 1 for v in lay.query("VIEWPORT"))]
+    for lay in framed or papers[:1]:
+        page = layout.Page.from_dxf_layout(lay)
+        tol = 0.02 * max(page.width_in_mm, page.height_in_mm)
+        # model windows of the viewports (the layout's own, id 1, is the paper itself), smallest first
+        wins = []
+        for v in lay.query("VIEWPORT"):
+            if v.dxf.get("id", 0) == 1 or v.dxf.view_height <= 0 or v.dxf.height <= 0:
+                continue
+            k = v.dxf.view_height / v.dxf.height
+            wins.append((Vec2(v.dxf.center), k, v.dxf.width * k, v.dxf.view_height))
+        wins.sort(key=lambda w: w[2] * w[3])
+        for pc, k, ww, wh in wins:
+            fits = [nb for nb in cand if nb[1].size.x <= ww + 1e-6 and nb[1].size.y <= wh + 1e-6]
+            if fits:
+                n, b = max(fits, key=lambda nb: nb[1].size.x * nb[1].size.y)
+                lay.add_blockref(n, pc - b.center / k, dxfattribs={"xscale": 1 / k, "yscale": 1 / k})
+                cand.remove((n, b))
+                placed += 1
+        for n, b in list(cand):
+            if (b.extmin.x >= -tol and b.extmin.y >= -tol
+                    and b.extmax.x <= page.width_in_mm + tol and b.extmax.y <= page.height_in_mm + tol):
+                lay.add_blockref(n, (0, 0))
+                cand.remove((n, b))
+                placed += 1
+    return placed
+
+
 def dxf_to_pdf(data: bytes, max_entities: int = 0) -> tuple[bytes, dict]:
     """DXF (ASCII or binary) → (PDF, info). info: pages [{name, space, sheet, scale}] where scale is the
     drawing scale for DrawCAD (real mm per paper mm), and the audit counts."""
     from reportlab.pdfgen import canvas as rl
 
     doc, auditor = load(data)
+    rebuilt = rebuild_inventor(doc)
     if max_entities:
         n = expanded_count(doc, max_entities)
         if n > max_entities:
@@ -522,9 +606,7 @@ def dxf_to_pdf(data: bytes, max_entities: int = 0) -> tuple[bytes, dict]:
             wmm, hmm = page.width_in_mm, page.height_in_mm
             if not (wmm > 1 and hmm > 1):
                 continue
-            # the whole paper, in paper-space units (its origin is where the plot margins start)
-            lo, hi = lay.get_paper_limits()
-            box = BoundingBox2d([Vec2(lo), Vec2(hi)])
+            box = _paper_box(lay, rec.bbox(), wmm, hmm)
             tf, hs = _place(rec, c, (wmm, hmm), box)
             maps.append(hs)
             vps = [v for v in lay.viewports() if v.dxf.get("status", 1) > 1 and v.dxf.view_height > 0]
@@ -551,8 +633,16 @@ def dxf_to_pdf(data: bytes, max_entities: int = 0) -> tuple[bytes, dict]:
             pages[-1]["outliers"] = outliers
     c.save()
     pdf = buf.getvalue()
+    if rebuilt:
+        # the drawing as placed again: the DXF kept for export is this one
+        s = io.StringIO()
+        doc.write(s)
+        fixed = s.getvalue().encode("utf-8")
     info = {"pages": pages, "fixes": len(auditor.fixes), "errors": len(auditor.errors), "units_mm": unit,
+            "inventor": rebuilt,
             "handles": _checked_maps(pdf, maps)}
+    if rebuilt:
+        info["fixed_dxf"] = fixed
     return pdf, info
 
 

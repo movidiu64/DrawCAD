@@ -112,6 +112,56 @@ class DwgTest(unittest.TestCase):
             dxfin.dwg_exe = old
 
 
+def inventor_doc():
+    """Like a DWG saved by Inventor once LibreDWG has read it: border and views in anonymous *I blocks
+    that nothing references (Inventor's own block references are gone), an A3 layout whose viewports
+    are only frames looking at an empty model space far away."""
+    doc = ezdxf.new("R2018", units=4)
+    from ezdxf.entities import DXFClass
+
+    cls = DXFClass.new(doc=doc)
+    cls.update_dxf_attribs({"name": "ACIDBLOCKREFERENCE", "cpp_class_name": "AcIdBlockReference",
+                            "app_name": "AcIdViewObj | Product: Inventor Drawing Enabler", "flags": 1153,
+                            "was_a_proxy": 0, "is_an_entity": 1})
+    doc.classes.register(cls)
+    border = doc.blocks.new("*I1")
+    border.add_lwpolyline([(10, 10), (410, 10), (410, 287), (10, 287)], close=True)
+    border.add_text("CAPAC", height=5).set_placement((300, 20))
+    view = doc.blocks.new("PIESA_VIEW1")
+    view.add_circle((0, 0), 40)
+    view.add_circle((0, 0), 10)
+    ref = doc.blocks.new("*I2")
+    ref.add_blockref("PIESA_VIEW1", (0, 0))
+    side = doc.blocks.new("*I3")
+    side.add_lwpolyline([(-10, -40), (10, -40), (10, 40), (-10, 40)], close=True)
+    lay = doc.layouts.new("Sheet")
+    lay.page_setup(size=(420, 297), margins=(0, 0, 0, 0), units="mm")
+    lay.add_viewport(center=(120, 150), size=(100, 100), view_center_point=(-10050, -10050), view_height=100)
+    lay.add_viewport(center=(250, 150), size=(40, 100), view_center_point=(-10020, -10050), view_height=100)
+    return doc
+
+
+class InventorTest(unittest.TestCase):
+    def test_views_placed_again(self):
+        doc = inventor_doc()
+        self.assertEqual(dxfin.rebuild_inventor(doc), 3)
+        refs = {e.dxf.name: e for e in doc.layouts.get("Sheet").query("INSERT")}
+        self.assertEqual(set(refs), {"*I1", "*I2", "*I3"})
+        self.assertEqual(tuple(refs["*I1"].dxf.insert)[:2], (0, 0))
+        self.assertEqual(tuple(refs["*I2"].dxf.insert)[:2], (120, 150))  # the round view in the square frame
+        self.assertEqual(tuple(refs["*I3"].dxf.insert)[:2], (250, 150))  # the narrow one in the narrow frame
+        self.assertEqual(dxfin.rebuild_inventor(doc), 0)  # once placed, not again (a reopened export)
+        self.assertEqual(dxfin.rebuild_inventor(ezdxf.new()), 0)  # not an Inventor file: untouched
+
+    def test_opens(self):
+        pdf, info = dxfin.dxf_to_pdf(to_bytes(inventor_doc()))
+        self.assertEqual(info["inventor"], 3)
+        p = info["pages"][0]
+        self.assertEqual((p["name"], p["sheet"]), ("Sheet", [420, 297]))
+        self.assertIn(b"*I2", info["fixed_dxf"])  # the DXF kept for export has the views too
+        self.assertGreater(ink(pdf), 0.005)
+
+
 class FitSheetTest(unittest.TestCase):
     def test_choice(self):
         self.assertEqual(dxfin.fit_sheet(220, 175)[0::3], ("A4", 1))

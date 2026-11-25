@@ -38,7 +38,8 @@ export class Documents {
     else if (pg.length === 1) what = `planșa ${pg[0].name}; scara ${sc}`;
     else what = `planșe: ${pg.map((p) => p.name).join(", ")}; scara ${sc}`;
     const n = (meta.dxf.fixes || 0) + (meta.dxf.errors || 0);
-    const fix = n ? ` Fișierul avea ${n} erori, reparate la citire.` : "";
+    const fix = (n ? ` Fișierul avea ${n} erori, reparate la citire.` : "")
+      + (meta.dxf.inventor ? " Desen salvat din Inventor: vederile, chenarul și indicatorul au fost așezate din nou din blocurile lui." : "");
     return `Deschis: ${meta.name} — ${what}. Scara desenului e luată din fișier.${fix}`;
   }
 

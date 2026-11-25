@@ -1409,4 +1409,5 @@ export const EN = {
   "· {} doar acoperite": "· {} only covered",
   "· {} imagini lăsate deoparte": "· {} images left out",
   "DXF R12: nu poate primi adnotările DrawCAD (salvează-l ca DXF 2000 sau mai nou)": "DXF R12: cannot take DrawCAD's annotations (save it as DXF 2000 or newer)",
+  "Desen salvat din Inventor: vederile, chenarul și indicatorul au fost așezate din nou din blocurile lui.": "Drawing saved from Inventor: the views, the border and the title block were placed again from its blocks.",
 };

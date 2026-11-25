@@ -480,6 +480,7 @@ How the pages are made:
 - **paper-space layouts** with something on them: one page per layout, at the layout's paper size; the drawing scale is the scale of the layout's first viewport (a 1:2 viewport → scale 1:2);
 - **model space only**: the drawing is fitted on an ISO sheet with a 10 mm margin, at a standard scale: a small part is enlarged on A4 (10:1, 5:1, 2:1), otherwise 1:1 on the smallest sheet it fits (A4 … A0), a larger drawing is reduced (1:2, 1:5, 1:10 …). A few entities lost far away (a point kilometres off) do not shrink the drawing: they are left off the sheet;
 - **a DXF exported by DrawCAD** opens on its own page, at its own scale (DrawCAD writes both in the DXF header).
+- **a DWG / DXF saved from Inventor** keeps its views, border and title block in blocks placed by Inventor's own objects, which only Inventor's object enabler reads (AutoCAD without it shows an empty sheet too). DrawCAD places these blocks again: the border, title block and notes on the sheet, each view centred in the frame Inventor left for it, at its scale. The DXF export then has them as ordinary blocks.
 
 The opening message says which pages were made and at what scale; the drawing scale (Layers → Drawing scale) is set from it, so dimensions measure the real sizes.
 
