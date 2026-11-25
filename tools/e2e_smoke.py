@@ -770,7 +770,7 @@ def main(url, out):
         # a DWG, where LibreDWG is installed (Docker image, desktop app): converted, then like a DXF
         if page.evaluate("fetch('api/health').then((r) => r.json()).then((h) => !!h.dwg)"):
             prev_id = page.evaluate("window.cotare.doc.id")
-            page.set_input_files("#fileInput", str(Path(__file__).resolve().parents[1] / "backend" / "tests" / "data" / "piesa_r2000.dwg"))
+            page.set_input_files("#fileInput", str(Path(__file__).resolve().parents[1] / "backend" / "tests" / "fixtures" / "piesa_r2000.dwg"))
             page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.kind === 'dwg'")
             assert "DWG" in page.inner_text("#docMeta"), page.inner_text("#docMeta")
             page.wait_for_function("window.cotare.snapper.arcs.some((a) => Math.abs(a[2] - 25 * 72 / 25.4) < 0.2)")

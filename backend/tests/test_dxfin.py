@@ -74,7 +74,7 @@ def ink(data, page=0):
     return 1 - sum(hist[250:]) / sum(hist)
 
 
-DWG = Path(__file__).parent / "data" / "piesa_r2000.dwg"  # make_doc() saved as R2000 DWG by LibreDWG
+DWG = Path(__file__).parent / "fixtures" / "piesa_r2000.dwg"  # make_doc() saved as R2000 DWG by LibreDWG
 
 
 class DwgTest(unittest.TestCase):
