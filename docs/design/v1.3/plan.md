@@ -11,7 +11,7 @@ Built on the `v1.3` branch, one phase per commit (or a few), `VERSION` = `1.3.0-
 | V13-4 | Measure: area and perimeter | built |
 | V13-5 | Text at any angle, rotated linear dimension | built |
 | V13-6 | Command search (Ctrl+K), shortcut sheet (? / F1), first-run tips | built |
-| V13-7 | Revision compare: two-point alignment | planned |
+| V13-7 | Revision compare: two-point alignment | built |
 | V13-8 | Light theme | planned |
 
 Not in 1.3: ISO 286 above 500 mm, weld symbols (ISO 2553), offset / trim / extend, a symbol library,
@@ -89,12 +89,14 @@ OCR in strips), documents as tabs, recent-document thumbnails, user accounts.
 - First document opened: three tips (rail, command line, panel), one after the other, each with
   *Am înțeles*; shown once, reopened from the shortcut sheet.
 
-## V13-7 — Revision compare: two-point alignment
+## V13-7 — Revision compare: two-point alignment · built
 
-- In the compare window, *Align with two points*: pick two points on the open page, then the same two
-  points on the older revision (shown alone, half transparent). The older page is moved, turned and
-  scaled so both pairs meet: an export at another scale or rotated lines up.
-- The automatic alignment stays the default; the two-point result can be refined by it.
+- In the compare window, *Align with two points*: pick two points on the open page (with snap), then
+  the same two points on the older revision, drawn in red over the page (its points snap to its own
+  corners and ends). The older page is rendered at the matching resolution, then moved, turned and
+  scaled (a similarity from the two pairs) so both pairs meet: an export at another scale or rotated
+  lines up. One more pixel of tolerance covers the resampling.
+- The automatic alignment stays the default; after two points it only refines by a few pixels.
 
 ## V13-8 — Light theme
 

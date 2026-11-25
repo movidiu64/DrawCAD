@@ -104,6 +104,10 @@ class App {
   escape(confirm = false) {
     const t = TOOL_BY_ID[this.tool];
     if (this.hideFlyout) this.hideFlyout();
+    if (this.cmpPick) {
+      this.cancelComparePick();
+      return;
+    }
     if (this.gripMenu && this.gripMenu.shown) {
       this.hideGripMenu();
       return;

@@ -341,6 +341,11 @@ export class Mouse {
         this.applyHotGrip(p);
         return;
       }
+      if (this.cmpPick) {
+        // two-point alignment: snap on this page for its two points, not on the older one drawn over it
+        this.comparePick(this.cmpPick.pts.length < 2 ? this.snapPoint(raw, e, null).pt : raw);
+        return;
+      }
       if (t.kind === "select") {
         this.startSelectDrag(raw, sx, sy, e);
         return;

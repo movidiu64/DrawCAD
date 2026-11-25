@@ -3,7 +3,7 @@
 
 import * as api from "../api.js";
 import { build, derive, K, fmtNum } from "../annots.js";
-import { finalize } from "../tools.js";
+import { finalize, TOOL_BY_ID } from "../tools.js";
 import * as dlg from "../dialogs.js";
 import { tr } from "../i18n.js";
 import { today, $ } from "./util.js";
@@ -11,10 +11,74 @@ import { today, $ } from "./util.js";
 export class Review {
   // ------------------------------------------------------------ revision compare (V12-6)
   /** Lays page otherPage of document other (the older revision) under the current page. */
-  async runCompare(other, otherPage, align, otherName, withAnnots = true) {
+  /** Two-point alignment (V13-7): two points on the open page, then the same two on the older revision,
+   *  drawn half transparent over it; the older page is then moved, turned and scaled onto this one. */
+  async startCompareAlign(other, otherPage, otherName, withAnnots, align) {
+    if (this.compare) this.endCompare();
+    if (this.tool !== "select") this.setTool("select");
+    const om = await api.getDoc(other);
+    const op = (om.pages || [])[otherPage];
+    if (!op) return;
+    const img = new Image();
+    img.onload = () => this.view.redraw();
+    img.src = api.renderUrl(other, otherPage, Math.min(3, 2400 / Math.max(op.w, op.h)));
+    this.cmpPick = { other, otherPage, otherName, withAnnots, align, page: this.page, wo: op.w, ho: op.h, pts: [], img, snaps: [] };
+    // the older page's corners and ends, where it is drawn over this one, to snap its two points
+    const pg = this.doc.pages[this.page];
+    api.snap(other, otherPage).then((g) => {
+      if (this.cmpPick) this.cmpPick.snaps = (g.pts || []).map((q) => [(q[0] * pg.w) / op.w, (q[1] * pg.h) / op.h]);
+    }).catch(() => {});
+    this.comparePickHint();
+  }
+
+  comparePickHint() {
+    const n = this.cmpPick ? this.cmpPick.pts.length : 0;
+    const steps = [
+      "Aliniere: click pe un punct de reper pe pagina deschisă (cu snap) · Esc renunță",
+      "Aliniere: al doilea punct de reper, cât mai departe de primul",
+      "Aliniere: același prim punct pe revizia veche (desenată cu roșu peste pagină; se prinde de colțuri și capete)",
+      "Aliniere: același al doilea punct pe revizia veche",
+    ];
+    this.setHint(steps[n]);
+    this.view.redraw();
+  }
+
+  /** A point of the two-point alignment: the first two on this page, the next two on the older one. */
+  comparePick(p) {
+    const c = this.cmpPick;
+    if (c.pts.length >= 2 && c.snaps.length) {
+      // on the older page: the nearest of its corners and ends, within 10 screen pixels
+      const tol = 10 / this.view.zoom;
+      let best = null;
+      for (const q of c.snaps) {
+        const d = Math.hypot(q[0] - p[0], q[1] - p[1]);
+        if (d <= tol && (!best || d < best[0])) best = [d, q];
+      }
+      if (best) p = [...best[1]];
+    }
+    c.pts.push(p);
+    if (c.pts.length < 4) return this.comparePickHint();
+    this.cmpPick = null;
+    const pg = this.doc.pages[c.page];
+    // the older page is drawn stretched over this one: back to its own points
+    const old = (q) => [(q[0] * c.wo) / pg.w, (q[1] * c.ho) / pg.h];
+    const pairs = [[c.pts[0], old(c.pts[2])], [c.pts[1], old(c.pts[3])]];
+    this.setHint(TOOL_BY_ID[this.tool].hint);
+    this.runCompare(c.other, c.otherPage, c.align, c.otherName, c.withAnnots, pairs);
+  }
+
+  cancelComparePick() {
+    this.cmpPick = null;
+    this.setHint(TOOL_BY_ID[this.tool].hint);
+    this.view.redraw();
+    dlg.toast("Alinierea în două puncte a fost anulată");
+  }
+
+  async runCompare(other, otherPage, align, otherName, withAnnots = true, pairs = null) {
     dlg.toast("Se compară…", 30000);
     try {
       const body = { other, page: this.page, otherPage, align };
+      if (pairs) body.pairs = pairs;
       if (withAnnots) {
         // both pages as their exports look: this one from the editor, the other from its saved state
         const mine = this.pageLayer(this.annots, this.page, (a) => this.builtOf(a));
@@ -39,7 +103,8 @@ export class Review {
       this.renderCtx();
       const n = res.regions.length;
       const sh = res.shiftMm || [0, 0];
-      dlg.toast(n ? `${n} ${n === 1 ? "zonă modificată" : "zone modificate"}: roșu = doar în ${otherName}, verde = doar în revizia deschisă${sh[0] || sh[1] ? ` · aliniat cu ${fmtNum(sh[0], ",", 2)} / ${fmtNum(sh[1], ",", 2)} mm` : ""}` : "Nicio diferență de desen între cele două pagini.", 6000);
+      const fit = res.fit ? ` · revizia veche × ${fmtNum(res.fit.scale, ",", 3)}, rotită ${fmtNum(res.fit.angle, ",", 1)}°` : "";
+      dlg.toast(n ? `${n} ${n === 1 ? "zonă modificată" : "zone modificate"}: roșu = doar în ${otherName}, verde = doar în revizia deschisă${sh[0] || sh[1] ? ` · aliniat cu ${fmtNum(sh[0], ",", 2)} / ${fmtNum(sh[1], ",", 2)} mm` : ""}${fit}` : `Nicio diferență de desen între cele două pagini.${fit}`, 6000);
     } catch (err) {
       dlg.toast(`Compararea nu a reușit: ${err.message}`, 6000);
     }

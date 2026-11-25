@@ -70,6 +70,35 @@ def _align(a: np.ndarray, b: np.ndarray, limit: float = 0.04) -> tuple[int, int]
     return int(sy * k), int(sx * k)
 
 
+def _warp(old: np.ndarray, m: complex, t: complex, shape: tuple[int, int]) -> np.ndarray:
+    """The older page's ink mask moved, turned and scaled by z → m·z + t (pixels, z = x + iy), sampled
+    on the newer page's grid (nearest pixel: the dilation tolerance absorbs the half pixel)."""
+    h, w = shape
+    ys, xs = np.mgrid[0:h, 0:w]
+    src = ((xs + 1j * ys) - t) / m
+    sx = np.rint(src.real).astype(np.int64)
+    sy = np.rint(src.imag).astype(np.int64)
+    oh, ow = old.shape
+    ok = (sx >= 0) & (sx < ow) & (sy >= 0) & (sy < oh)
+    out = np.zeros((h, w), dtype=bool)
+    out[ok] = old[sy[ok], sx[ok]]
+    return out
+
+
+def similarity(pairs) -> tuple[complex, complex] | None:
+    """Two point pairs [[new, old], [new, old]] (pt, z = x + iy) → the similarity z_new = m·z_old + t;
+    None if the points are too close (under 2 pt) or the scale is absurd."""
+    (n1, o1), (n2, o2) = pairs
+    zn1, zn2 = complex(*n1), complex(*n2)
+    zo1, zo2 = complex(*o1), complex(*o2)
+    if abs(zo2 - zo1) < 2 or abs(zn2 - zn1) < 2:
+        return None
+    m = (zn2 - zn1) / (zo2 - zo1)
+    if not 0.05 <= abs(m) <= 20:
+        return None
+    return m, zn1 - m * zo1
+
+
 def _regions(diff: np.ndarray, cell: int, scale: float, min_px: int = 6) -> list[list[float]]:
     """Changed areas: cells holding changed pixels, grouped by touching (8 neighbours), as rectangles
     in points, largest first."""
@@ -105,25 +134,39 @@ def _regions(diff: np.ndarray, cell: int, scale: float, min_px: int = 6) -> list
 
 
 def compare_pages(old_pdf: bytes, old_i: int, new_pdf: bytes, new_i: int, size_new: tuple[float, float],
-                  size_old: tuple[float, float], align: bool = True, long_px: int = 2400) -> dict:
-    """The overlay as RGB array, the changed regions (pt, newer page) and counts."""
+                  size_old: tuple[float, float], align: bool = True, long_px: int = 2400, pairs=None) -> dict:
+    """The overlay as RGB array, the changed regions (pt, newer page) and counts. `pairs` = two points
+    picked on the newer page and the same two on the older one ([[new, old], [new, old]], pt): the older
+    page is moved, turned and scaled onto the newer one (an export at another scale or rotated)."""
     wn, hn = size_new
     wo, ho = size_old
     s = long_px / max(wn, hn)
     new = pdfcore.render_array(new_pdf, new_i, s)
-    # the older page at the newer one's size (a sheet exported at another size is stretched to fit)
-    so = s * min(wn / wo, hn / ho) if wo > 0 and ho > 0 else s
-    old = pdfcore.render_array(old_pdf, old_i, so)
+    sim = similarity(pairs) if pairs else None
+    if pairs and sim is None:
+        raise ValueError("Punctele de aliniere sunt prea apropiate")
     h, w = new.shape[:2]
-    if old.shape[:2] != (h, w):
-        from PIL import Image
+    if sim:
+        # the older page rendered so that, once scaled onto the newer one, one of its pixels is about
+        # one pixel there (lines keep their width), then moved and turned by the two-point similarity
+        m, t = sim
+        so = min(s * abs(m), 6000 / max(wo, ho, 1))
+        old = pdfcore.render_array(old_pdf, old_i, so)
+        a = _warp(old < INK, s * m / so, s * t, (h, w))
+    else:
+        # the older page at the newer one's size (a sheet exported at another size is stretched to fit)
+        so = s * min(wn / wo, hn / ho) if wo > 0 and ho > 0 else s
+        old = pdfcore.render_array(old_pdf, old_i, so)
+        if old.shape[:2] != (h, w):
+            from PIL import Image
 
-        old = np.asarray(Image.fromarray(old).resize((w, h), Image.BILINEAR))
-    a = old < INK
+            old = np.asarray(Image.fromarray(old).resize((w, h), Image.BILINEAR))
+        a = old < INK
     b = new < INK
     dy = dx = 0
     if align:
-        dy, dx = _align(a.astype(np.float32), b.astype(np.float32))
+        # after two points only the last pixels are left: no coarse search
+        dy, dx = (0, 0) if sim else _align(a.astype(np.float32), b.astype(np.float32))
         # refine to the pixel around the coarse shift: the most ink in common
         best = (-1, dy, dx)
         for ey in range(-4, 5):
@@ -137,6 +180,8 @@ def compare_pages(old_pdf: bytes, old_i: int, new_pdf: bytes, new_i: int, size_n
             a = _shift(a, dy, dx)
     px_mm = s * 72 / 25.4
     tol = max(1, round(px_mm * 0.18))  # ≈ 0.18 mm on each side
+    if sim:
+        tol += 1  # resampling a scaled, turned page moves an edge by up to a pixel
     removed = a & ~_dilate(b, tol)
     added = b & ~_dilate(a, tol)
     img = np.full((h, w, 3), 255, dtype=np.uint8)
@@ -149,6 +194,7 @@ def compare_pages(old_pdf: bytes, old_i: int, new_pdf: bytes, new_i: int, size_n
     return {
         "img": img, "scale": s, "regions": regions,
         "removed": int(removed.sum()), "added": int(added.sum()), "shift_mm": [round(dx / s / 72 * 25.4, 2), round(dy / s / 72 * 25.4, 2)],
+        "fit": {"scale": round(abs(sim[0]), 5), "angle": round(float(np.degrees(np.angle(sim[0]))), 3)} if sim else None,
     }
 
 

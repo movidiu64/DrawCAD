@@ -268,6 +268,47 @@ class ApiTest(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError):
             self.req("POST", f"/api/doc/{new['id']}/compare", {"other": "f" * 32, "page": 0, "otherPage": 0})
 
+    def test_compare_two_point_alignment(self):
+        """The older revision exported at 0.7× and turned by 20°: two pairs of points line it up."""
+        import math
+
+        from reportlab.pdfgen import canvas as rl
+
+        def drawing(k=1.0, ang=0.0, tx=0.0, ty=0.0):
+            buf = io.BytesIO()
+            c = rl.Canvas(buf, pagesize=(842, 595))
+            c.translate(tx, ty)
+            c.rotate(ang)
+            c.scale(k, k)
+            c.setLineWidth(1.0 / k)
+            c.rect(100, 100, 500, 300)
+            c.circle(300, 250, 30)
+            c.line(150, 150, 550, 350)
+            c.showPage()
+            c.save()
+            return buf.getvalue()
+
+        k, ang, tx, ty = 0.7, 20.0, 200.0, 40.0
+        new = self.req("POST", "/api/open", drawing(), {"X-Filename": "rev2.pdf"})
+        old = self.req("POST", "/api/open", drawing(k, ang, tx, ty), {"X-Filename": "rev1_scaled.pdf"})
+
+        def vis_old(x, y):
+            a = math.radians(ang)
+            px, py = tx + k * (x * math.cos(a) - y * math.sin(a)), ty + k * (x * math.sin(a) + y * math.cos(a))
+            return [px, 595 - py]
+
+        pairs = [[[100, 595 - 100], vis_old(100, 100)], [[600, 595 - 400], vis_old(600, 400)]]
+        base = {"other": old["id"], "page": 0, "otherPage": 0, "align": True}
+        r0 = self.req("POST", f"/api/doc/{new['id']}/compare", base)
+        self.assertGreater(len(r0["regions"]), 0)  # without the points everything differs
+        r1 = self.req("POST", f"/api/doc/{new['id']}/compare", {**base, "pairs": pairs})
+        self.assertEqual(r1["regions"], [], (r1["removed"], r1["added"]))
+        self.assertAlmostEqual(r1["fit"]["scale"], 1 / k, places=3)
+        self.assertAlmostEqual(r1["fit"]["angle"], ang, places=1)  # y down on the page: turned back by +20°
+        for bad in ([[[0, 0], [0, 0]], [[0, 0], [0, 0]]], [[1, 2]], "x", [[[0, 0], [0, "a"]], [[9, 9], [9, 9]]]):
+            with self.assertRaises(urllib.error.HTTPError):
+                self.req("POST", f"/api/doc/{new['id']}/compare", {**base, "pairs": bad})
+
     def test_zone_cuts_lines_at_border(self):
         import ctypes
 

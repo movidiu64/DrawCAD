@@ -945,6 +945,7 @@ export async function compareDialog(app) {
       <div class="field" style="max-width:120px"><label for="cmpPage">Pagina din cea veche</label><input type="text" class="mono" id="cmpPage" value="${app.page + 1}"></div></div>
     <label class="chk"><input type="checkbox" id="cmpAnn" checked> Cu adnotările DrawCAD (cote, revizii, indicator…), ca în export</label>
     <label class="chk"><input type="checkbox" id="cmpAlign" checked> Aliniază automat (un export decalat cu câțiva milimetri nu apare ca modificare)</label>
+    <label class="chk"><input type="checkbox" id="cmpTwo"> Aliniază cu două puncte (revizia veche e la altă scară sau rotită): alegi două puncte pe pagina deschisă, apoi aceleași două pe cea veche</label>
     <div class="foot"><span class="muted" id="cmpMsg"></span><button class="ghost" data-close>Anulează</button><button class="primary" id="cmpGo" ${chosen ? "" : "disabled"}>Compară</button></div>`);
   const pick = () => {
     const r = dlg.querySelector("[name=cmpDoc]:checked");
@@ -975,8 +976,10 @@ export async function compareDialog(app) {
     const n = Math.max(1, Math.min((d.pages || []).length || 1, parseInt(dlg.querySelector("#cmpPage").value, 10) || 1));
     const align = dlg.querySelector("#cmpAlign").checked;
     const withAnn = dlg.querySelector("#cmpAnn").checked;
+    const two = dlg.querySelector("#cmpTwo").checked;
     closeModal();
-    app.runCompare(d.id, n - 1, align, d.name, withAnn);
+    if (two) app.startCompareAlign(d.id, n - 1, d.name, withAnn, align);
+    else app.runCompare(d.id, n - 1, align, d.name, withAnn);
   });
 }
 

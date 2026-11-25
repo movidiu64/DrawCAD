@@ -32,6 +32,7 @@ export const COLORS = {
   canvasBg: "#2b3038",
   inkDefault: "#111111",
   hitMark: "#f08c00",
+  cmpGhost: "#d62828", // the older revision drawn over the page while picking alignment points
   snapMark: "#1f9d55", // tracking lines and acquired points: ≥ 3:1 on the white sheet and on the canvas
   acquired: "#d06f00", // the snap marker: ≥ 3:1 on the white sheet
   tipLine: "#4a525d",
@@ -472,6 +473,45 @@ export class View {
         ctx.strokeRect(x0 - 4 / z, y0 - 4 / z, x1 - x0 + 8 / z, y1 - y0 + 8 / z);
         ctx.restore();
       }
+    }
+    // two-point alignment: after the two points on this page, the older page half transparent over it
+    const pick = this.app.cmpPick;
+    if (pick && pick.page === this.pageN) {
+      if (pick.pts.length >= 2 && pick.img && pick.img.complete && pick.img.naturalWidth) {
+        // in red, multiplied over the page: its white disappears, its lines stand apart from this page's
+        if (!pick.tint) {
+          const t = document.createElement("canvas");
+          t.width = pick.img.naturalWidth;
+          t.height = pick.img.naturalHeight;
+          const c2 = t.getContext("2d");
+          c2.drawImage(pick.img, 0, 0);
+          c2.globalCompositeOperation = "screen";
+          c2.fillStyle = COLORS.cmpGhost;
+          c2.fillRect(0, 0, t.width, t.height);
+          pick.tint = t;
+        }
+        ctx.save();
+        ctx.globalCompositeOperation = "multiply";
+        ctx.globalAlpha = 0.85;
+        ctx.drawImage(pick.tint, 0, 0, this.pageW, this.pageH);
+        ctx.restore();
+      }
+      ctx.save();
+      ctx.strokeStyle = COLORS.hitMark;
+      ctx.fillStyle = COLORS.hitMark;
+      ctx.lineWidth = 2 / z;
+      ctx.font = `${12 / z}px sans-serif`;
+      pick.pts.forEach((q, i) => {
+        ctx.beginPath();
+        ctx.arc(q[0], q[1], 6 / z, 0, Math.PI * 2);
+        ctx.moveTo(q[0] - 10 / z, q[1]);
+        ctx.lineTo(q[0] + 10 / z, q[1]);
+        ctx.moveTo(q[0], q[1] - 10 / z);
+        ctx.lineTo(q[0], q[1] + 10 / z);
+        ctx.stroke();
+        ctx.fillText(i < 2 ? `${i + 1}` : `${i - 1}′`, q[0] + 8 / z, q[1] - 8 / z);
+      });
+      ctx.restore();
     }
     const app = this.app;
     const single = app.sel.size === 1;

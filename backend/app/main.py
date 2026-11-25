@@ -616,6 +616,15 @@ async def api_compare(request: Request):
         return _err("Pagină sau document inexistent", 404)
     pn = meta["pages"][n]
     po = ometa["pages"][m]
+    # two-point alignment: [[new, old], [new, old]], each a point [x, y] in pt on its page
+    pairs = body.get("pairs")
+    if pairs is not None:
+        ok = (isinstance(pairs, list) and len(pairs) == 2 and all(
+            isinstance(pr, list) and len(pr) == 2 and all(
+                isinstance(q, list) and len(q) == 2 and all(_finite(v) and -1e5 < v < 1e5 for v in q) for q in pr) for pr in pairs))
+        if not ok:
+            return _err("Puncte de aliniere invalide")
+        pairs = [[[float(v) for v in q] for q in pr] for pr in pairs]
     # with the DrawCAD annotations: each page as its export would look (black), not the bare original
     try:
         layers = {}
@@ -643,10 +652,12 @@ async def api_compare(request: Request):
 
     def work():
         return compare.compare_pages(page_pdf(other, "other"), m, page_pdf(doc_id, doc_id), n, (pn["w"], pn["h"]), (po["w"], po["h"]),
-                                     align=bool(body.get("align", True)))
+                                     align=bool(body.get("align", True)), pairs=pairs)
 
     try:
         res = await run_in_threadpool(work)
+    except ValueError as e:
+        return _err(str(e))
     except Exception as e:  # noqa: BLE001
         return _err(f"Compararea a eșuat: {e}", 500)
     if body.get("format") == "pdf":
@@ -658,7 +669,7 @@ async def api_compare(request: Request):
     png = await run_in_threadpool(lambda: compare.overlay_png(res))
     return JSONResponse({
         "image": "data:image/png;base64," + base64.b64encode(png).decode("ascii"),
-        "regions": res["regions"], "removed": res["removed"], "added": res["added"], "shiftMm": res["shift_mm"],
+        "regions": res["regions"], "removed": res["removed"], "added": res["added"], "shiftMm": res["shift_mm"], "fit": res.get("fit"),
     })
 
 

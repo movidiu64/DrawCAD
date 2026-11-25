@@ -65,6 +65,7 @@ export class Documents {
   setPage(n) {
     if (!this.doc) return;
     if (this.compare && this.compare.page !== n) this.compare = null;
+    if (this.cmpPick && this.cmpPick.page !== n) this.cmpPick = null;
     this.page = n;
     this.clicks = [];
     this.selectedId = null;
