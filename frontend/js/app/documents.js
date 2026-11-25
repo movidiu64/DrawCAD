@@ -6,7 +6,8 @@ import { Snapper } from "../osnap.js";
 import * as dlg from "../dialogs.js";
 import { applyPageOp } from "../pages.js";
 import { tr } from "../i18n.js";
-import { $ } from "./util.js";
+import { $, esc } from "./util.js";
+import { scaleText } from "../tblock.js";
 import { fmtNum } from "../annots.js";
 
 export class Documents {
@@ -93,6 +94,14 @@ export class Documents {
     this.selectedId = null;
     this.sel = new Set();
     const p = this.doc.pages[n];
+    // a drawing opened from DXF / DWG: each layout has its own scale, the tools follow the page shown
+    if (this.doc.dxf) {
+      const k = this.pageScale(n);
+      if (k !== Number(this.settings.scale)) {
+        this.settings = { ...this.settings, scale: k };
+        this.cache.clear();
+      }
+    }
     this.view.setPage(this.doc.id, n, p.w, p.h);
     this.renderTabs();
     this.panel.render();
@@ -104,6 +113,17 @@ export class Documents {
       if (this.page === n && this.snapCfg.scan) this.loadScanSnap(n);
     }).catch(() => {});
     if (this.showOcr && this.ocrPages.has(n)) this.loadOcr(n).catch(() => {});
+  }
+
+  /** Layers of a drawing opened from DXF / DWG, hidden or shown again: the server leaves them out of
+   *  the page, snap, search and export, so the page is loaded again. */
+  async setDxfHidden(hidden) {
+    if (!this.doc || !this.doc.dxf) return;
+    const res = await api.dxfLayers(this.doc.id, hidden);
+    this.doc.dxf.hidden = res.hidden;
+    this.doc.lv = res.lv;
+    this.unexported = true;
+    this.setPage(this.page);
   }
 
   /** A scanned page (no vector lines in the PDF). */
@@ -181,7 +201,9 @@ export class Documents {
   }
 
   renderTabs() {
-    const tabs = this.doc.pages.map((p, i) => `<button class="${i === this.page ? "on" : ""}" data-pg="${i}">Pagina ${i + 1}</button>`).join("");
+    // a drawing opened from DXF / DWG: the layout names (Model, Sheet, Plansa 1…)
+    const label = (p, i) => (p.name ? `<span translate="no">${esc(p.name.length > 24 ? `${p.name.slice(0, 23)}…` : p.name)}</span>` : `Pagina ${i + 1}`);
+    const tabs = this.doc.pages.map((p, i) => `<button class="${i === this.page ? "on" : ""}" data-pg="${i}"${p.name ? ` title="${esc(p.name)} · ${esc(scaleText(this.pageScale(i)))}"` : ""}>${label(p, i)}</button>`).join("");
     const ico = (d) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
     const ops = `<span class="pgops">
       <button class="mini" data-pgop="rl" title="Rotește pagina la stânga (ROTL)" aria-label="Rotește pagina la stânga">${ico("M4 4v6h6M4.6 15a8 8 0 1 0 1.9-8.3L4 10")}</button>
@@ -249,7 +271,7 @@ export class Documents {
       this.sel = new Set();
       this.unexported = true;
       this.setSaveState("saved");
-      $("docMeta").textContent = `${this.doc.kind === "image" ? "imagine" : "PDF"} · ${res.pages.length} ${res.pages.length === 1 ? "pagină" : "pagini"}`;
+      $("docMeta").textContent = `${{ image: "imagine", dxf: "DXF", dwg: "DWG" }[this.doc.kind] || "PDF"} · ${res.pages.length} ${res.pages.length === 1 ? "pagină" : "pagini"}`;
       this.setPage(Math.min(Math.max(0, pg), res.pages.length - 1));
       this.panel.render();
       this.updateButtons();

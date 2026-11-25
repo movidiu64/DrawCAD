@@ -571,6 +571,53 @@ class ApiTest(unittest.TestCase):
             doc = ezdxf.read(io.StringIO(out.decode("utf-8")))
             self.assertTrue(doc.modelspace().query("LWPOLYLINE[layer=='PAGINA']"))
 
+    def test_dxf_layers_hidden(self):
+        """Layers of an opened DXF: listed with their color; a hidden layer is gone from the page, the
+        text search and the PDF export, turned off in the DXF of the original drawing, and back when shown."""
+        import ezdxf
+        import pypdfium2 as pdfium
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        import test_dxfin
+
+        src = test_dxfin.make_doc()
+        src.layers.add("COTE", color=3)
+        src.layers.add("TEXTE", color=2)
+        for e in src.modelspace():
+            if e.dxftype() == "DIMENSION":
+                e.dxf.layer = "COTE"
+            elif e.dxftype() == "TEXT":
+                e.dxf.layer = "TEXTE"
+        meta = self.req("POST", "/api/open", test_dxfin.to_bytes(src), {"X-Filename": "straturi.dxf"})
+        layers = {la["name"]: la for la in meta["dxf"]["layers"]}
+        self.assertEqual(set(layers), {"0", "COTE", "TEXTE"})
+        self.assertEqual(layers["COTE"]["color"], "#00ff00")
+        self.assertIsNone(layers["0"]["color"])  # ACI 7: shown in the text color
+        self.assertEqual((meta["pages"][0]["name"], meta["pages"][0]["dscale"]), ("Model", 1.0))
+        doc_id = meta["id"]
+
+        def texts():
+            return " ".join(t["text"] for t in self.req("GET", f"/api/doc/{doc_id}/page/0/text?v={time.time()}")["items"])
+
+        self.assertIn("ȘURUB", texts())
+        before, _h = self.req("GET", f"/api/doc/{doc_id}/page/0/render?scale=1", raw=True)
+        res = self.req("POST", f"/api/doc/{doc_id}/dxf-layers", {"hidden": ["TEXTE", "NU-EXISTA"]})
+        self.assertEqual(res["hidden"], ["TEXTE"])
+        self.assertNotIn("ȘURUB", texts())
+        self.assertIn("200", texts())  # the dimension's value, on COTE, stays
+        after, _h = self.req("GET", f"/api/doc/{doc_id}/page/0/render?scale=1&v={res['lv']}", raw=True)
+        self.assertNotEqual(before, after)
+        pdf, _h = self.req("POST", f"/api/doc/{doc_id}/export", {"filename": "x.pdf", "pages": {}, "removals": {}}, raw=True)
+        d = pdfium.PdfDocument(pdf)
+        self.assertNotIn("ȘURUB", d[0].get_textpage().get_text_range())
+        d.close()
+        out, _h = self.req("POST", f"/api/doc/{doc_id}/export", {"format": "dxf", "filename": "x.dxf", "pages": {}}, raw=True)
+        dx = ezdxf.read(io.StringIO(out.decode("utf-8")))
+        self.assertTrue(dx.layers.get("TEXTE").is_off())
+        self.assertEqual(len(dx.modelspace().query("TEXT")), 3)  # still there, on a layer turned off
+        self.req("POST", f"/api/doc/{doc_id}/dxf-layers", {"hidden": []})
+        self.assertIn("ȘURUB", texts())
+
     def test_dxf_export_vector(self):
         import zipfile
 

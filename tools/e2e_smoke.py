@@ -766,7 +766,24 @@ def main(url, out):
         assert page.evaluate("window.cotare.settings.scale") == 2, page.evaluate("window.cotare.settings.scale")
         # snap comes from the DXF geometry: the Ø30 hole at 1:2 is a 7.5 mm radius on the sheet
         page.wait_for_function("window.cotare.snapper.arcs.some((a) => Math.abs(a[2] - 7.5 * 72 / 25.4) < 0.2)")
+        # the layouts are the page tabs, each with its own scale (the second one is 1:1)
+        tabs = page.inner_text("#pageTabs")
+        assert "Plansa" in tabs and "Detaliu" in tabs, tabs
+        page.click("#pageTabs [data-pg='1']")
+        page.wait_for_function("window.cotare.page === 1 && window.cotare.settings.scale === 1")
+        page.click("#pageTabs [data-pg='0']")
+        page.wait_for_function("window.cotare.page === 0 && window.cotare.settings.scale === 2")
         page.screenshot(path=str(out / "dxf_open.png"))
+        # the drawing's layers: TEXT hidden, its text is no longer on the page, then shown again
+        page.click("#ptabs [data-ptab='layers']")
+        page.wait_for_selector("[data-act='dxflayer'][data-v='TEXT']")
+        page.screenshot(path=str(out / "dxf_layers.png"))
+        page.click("[data-act='dxflayer'][data-v='TEXT']")
+        page.wait_for_function("(window.cotare.doc.dxf.hidden || []).includes('TEXT')")
+        page.wait_for_selector(".layer.off [data-v='TEXT']")
+        page.click("[data-act='dxfall']")
+        page.wait_for_function("(window.cotare.doc.dxf.hidden || []).length === 0")
+        page.click("#ptabs [data-ptab='props']")
         # a DWG, where LibreDWG is installed (Docker image, desktop app): converted, then like a DXF
         if page.evaluate("fetch('api/health').then((r) => r.json()).then((h) => !!h.dwg)"):
             prev_id = page.evaluate("window.cotare.doc.id")
@@ -882,7 +899,8 @@ def main(url, out):
 
 
 def _make_dxf(path):
-    """A 120 × 80 plate with a hole and a label, shown on an A4 layout at 1:2."""
+    """A 120 × 80 plate with a hole and a label (layer TEXT), on an A4 layout at 1:2 and a detail
+    layout at 1:1."""
     import ezdxf
 
     doc = ezdxf.new("R2010", setup=True, units=4)
@@ -890,10 +908,14 @@ def _make_dxf(path):
     msp = doc.modelspace()
     msp.add_lwpolyline([(0, 0), (120, 0), (120, 80), (0, 80)], close=True)
     msp.add_circle((60, 40), 15)
-    msp.add_text("PLACĂ", height=7, dxfattribs={"style": "ISO"}).set_placement((5, 85))
+    doc.layers.add("TEXT", color=1)
+    msp.add_text("PLACĂ", height=7, dxfattribs={"style": "ISO", "layer": "TEXT"}).set_placement((5, 85))
     lay = doc.layouts.new("Plansa")
     lay.page_setup(size=(297, 210), margins=(0, 0, 0, 0), units="mm")
     lay.add_viewport(center=(148.5, 105), size=(277, 190), view_center_point=(60, 45), view_height=380)
+    det = doc.layouts.new("Detaliu")  # the hole at 1:1
+    det.page_setup(size=(297, 210), margins=(0, 0, 0, 0), units="mm")
+    det.add_viewport(center=(148.5, 105), size=(100, 100), view_center_point=(60, 40), view_height=100)
     doc.saveas(path)
 
 

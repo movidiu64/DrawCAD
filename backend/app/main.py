@@ -206,10 +206,59 @@ def _layout(doc_id: str):
     return _LAYOUTS[doc_id]
 
 
+def _dxf_page_info(meta: dict) -> None:
+    """For a drawing opened from DXF / DWG, each page says where it comes from: `src` (page of the
+    uploaded file), `name` (the layout, or Model) and `dscale` (the drawing scale of that layout, after
+    the sheet resizes made in the editor)."""
+    dxf = meta.get("dxf")
+    if not isinstance(dxf, dict) or not dxf.get("pages"):
+        return
+    pages = meta.get("pages") or []
+    lay = meta.get("layout") if isinstance(meta.get("layout"), list) and meta.get("layout") else [{"src": i} for i in range(len(pages))]
+    for i, p in enumerate(pages):
+        it = lay[i] if i < len(lay) else {"src": i}
+        src = int(it.get("src", i))
+        k = float(it.get("scale", 1) or 1)
+        dp = dxf["pages"][src] if 0 <= src < len(dxf["pages"]) else None
+        p["src"] = src
+        if dp:
+            p["name"] = str(dp.get("name", ""))[:80]
+            p["dscale"] = round(float(dp.get("scale", 1)) / k, 9)
+
+
+_HIDDEN: dict = {}
+
+
+def _hidden_layers(doc_id: str) -> list[str]:
+    """Layers of a drawing opened from DXF / DWG hidden in the editor."""
+    if doc_id not in _HIDDEN:
+        dxf = (_read_json(_doc_dir(doc_id) / "meta.json", {}) or {}).get("dxf") or {}
+        h = dxf.get("hidden")
+        _HIDDEN[doc_id] = [x for x in h if isinstance(x, str)] if isinstance(h, list) else []
+    return _HIDDEN[doc_id]
+
+
+def _hidden_ids(doc_id: str, hidden: list[str]) -> dict[int, list[int]]:
+    """Per page of the uploaded file: the PDF objects drawn on the hidden layers."""
+    lm = _read_json(_doc_dir(doc_id) / "original.dxflayers.json", {}) or {}
+    names = lm.get("names") or []
+    want = {i for i, n in enumerate(names) if n in set(hidden)}
+    out = {}
+    for p, row in enumerate(lm.get("pages") or []):
+        if row:
+            out[p] = [i for i, li in enumerate(row) if li in want]
+    return out
+
+
 def _original(doc_id: str) -> bytes:
-    """The working PDF: the uploaded file, with pages rotated / reordered / deleted in the editor.
-    Everything else (render, snap, removals, OCR, export) works on it, so rotation is kept on export too."""
-    raw = lambda: (_doc_dir(doc_id) / "original.pdf").read_bytes()  # noqa: E731
+    """The working PDF: the uploaded file, with pages rotated / reordered / deleted in the editor (and,
+    for a DXF / DWG, the hidden layers made invisible). Everything else (render, snap, removals, OCR,
+    export) works on it, so rotation is kept on export too."""
+    def raw():
+        data = (_doc_dir(doc_id) / "original.pdf").read_bytes()
+        hidden = _hidden_layers(doc_id)
+        return pdfcore.hide_objects(data, _hidden_ids(doc_id, hidden)) if hidden else data
+
     lay = _layout(doc_id)
     if not lay:
         return _bytes_cache.get_or(doc_id, raw)
@@ -221,6 +270,7 @@ def _purge(doc_id: str):
     _bytes_cache.pop(doc_id, None)
     _bytes_cache.pop((doc_id, "L"), None)
     _LAYOUTS.pop(doc_id, None)
+    _HIDDEN.pop(doc_id, None)
     for c in (_render_cache, _ink_cache, _snap_cache, _text_cache):
         for k in [k for k in c if isinstance(k, tuple) and (k[0] == doc_id or (len(k) > 1 and k[1] == doc_id))]:
             c.pop(k, None)
@@ -419,7 +469,7 @@ async def api_open(request: Request):
         d = DOCS / doc_id
         d.mkdir(parents=True)
         (out_dir / "original.pdf").replace(d / "original.pdf")
-        for f in ("original.dxf", "original.dxfmap.json"):
+        for f in ("original.dxf", "original.dxfmap.json", "original.dxflayers.json"):
             if (out_dir / f).is_file():
                 (out_dir / f).replace(d / f)
         if (out_dir / "images").is_dir():
@@ -442,6 +492,7 @@ async def api_open(request: Request):
         }
         if res.get("dxf"):
             meta["dxf"] = res["dxf"]
+            _dxf_page_info(meta)
         _write_json(d / "meta.json", meta)
         if state is not None:
             _write_json(d / "state.json", state)
@@ -513,6 +564,7 @@ async def api_doc(request: Request):
         _purge(doc_id)
         return JSONResponse({"ok": True})
     meta["accessed"] = time.time()
+    _dxf_page_info(meta)
     _write_json(d / "meta.json", meta)
     pub = {k: v for k, v in meta.items() if k != "owner"}
     ocr_pages = _ocr_pages(doc_id, meta)
@@ -903,12 +955,39 @@ async def api_pages(request: Request):
     except Exception as e:  # noqa: BLE001
         return _err(f"Operația pe pagini a eșuat: {e}", 500)
     meta["pages"] = info["pages"]
+    _dxf_page_info(meta)
     meta["updated"] = time.time()
     _write_json(d / "meta.json", meta)
     state = body.get("state")
     if isinstance(state, dict) and isinstance(state.get("annots"), list):
         _write_json(d / "state.json", state)
     return JSONResponse({"pages": meta["pages"], "lv": meta["lv"], "ocrPages": _ocr_pages(doc_id, meta), "layout": lay, "prev": prev})
+
+
+async def api_dxf_layers(request: Request):
+    """Layers of a drawing opened from DXF / DWG shown or hidden: {"hidden": [names]}. Hidden layers
+    are left out of the page, snap, search and every export (in the DXF of the original drawing they
+    are turned off)."""
+    doc_id = request.path_params["doc_id"]
+    try:
+        d = _doc_dir(doc_id)
+        body = await _json_body(request)
+    except (ValueError, FileNotFoundError):
+        return _err("Document inexistent", 404)
+    except OverflowError:
+        return _err("Cerere prea mare", 413)
+    meta = _read_json(d / "meta.json", {})
+    dxf = meta.get("dxf")
+    if not isinstance(dxf, dict) or not isinstance(body, dict) or not isinstance(body.get("hidden"), list):
+        return _err("Cerere invalidă")
+    known = {la["name"] for la in dxf.get("layers") or []}
+    hidden = sorted({h for h in body["hidden"] if isinstance(h, str) and h in known})
+    dxf["hidden"] = hidden
+    meta["lv"] = int(meta.get("lv", 0)) + 1
+    meta["updated"] = time.time()
+    _write_json(d / "meta.json", meta)
+    _purge(doc_id)
+    return JSONResponse({"hidden": hidden, "lv": meta["lv"]})
 
 
 async def api_snap(request: Request):
@@ -1167,7 +1246,8 @@ async def _export_dxf_source(doc_id, meta, original, prims, rem, idxs, opts, col
             "gone": rep.get("_gone", []), "cut": rep.get("_cut", []),
             "zones": [op["rect"] for op in rem.get(i, []) if op.get("mode") == "zone"],
         })
-    data, counts = await run_in_threadpool(dxfin.export_source, (d / "original.dxf").read_bytes(), pages, color)
+    hidden = (meta.get("dxf") or {}).get("hidden") or []
+    data, counts = await run_in_threadpool(dxfin.export_source, (d / "original.dxf").read_bytes(), pages, color, hidden)
     if skipped_images:
         counts["images_left_out"] = skipped_images
     return data, reports, "dxf", {"source": {**counts, "source": True, "from": meta.get("kind", "dxf")}}
@@ -1352,6 +1432,19 @@ async def api_export(request: Request):
                 prims.setdefault(i, []).append({"t": "O", "p": ln["box"], "txt": ln["text"], "rot": ln.get("rot", 0),
                                                 **{k: ln[k] for k in ("cap", "base", "org", "ang", "len") if k in ln}})
 
+    # a drawing opened from DXF / DWG: what is on hidden layers is left out of the PDF (not only made
+    # invisible, so it cannot be found or copied there either)
+    hidden = _hidden_layers(doc_id)
+    hidden_n = {}
+    if fmt == "pdf" and hidden:
+        hid = _hidden_ids(doc_id, hidden)
+        lay = _layout(doc_id) or [{"src": i} for i in range(len(_read_json(d / "meta.json", {}).get("pages", [])))]
+        for i, it in enumerate(lay):
+            ids = hid.get(int(it.get("src", i)))
+            if ids:
+                rem[i] = [*rem.get(i, []), {"mode": "objects", "ids": [str(x) for x in ids]}]
+                hidden_n[i] = len(ids)
+
     def work():
         return pdfcore.export_pages(_original(doc_id), prims, rem, color, state if embed else None, embed, ink, sel, split, base, rev,
                                     {k: str(v) for k, v in images.items()}, notes)
@@ -1366,6 +1459,9 @@ async def api_export(request: Request):
         return _err(str(e))
     except Exception as e:  # noqa: BLE001
         return _err(f"Export eșuat: {e}", 500)
+    for i, k in hidden_n.items():
+        if isinstance(reports.get(i), dict):
+            reports[i]["removed"] = max(0, reports[i].get("removed", 0) - k)  # hidden layers: not "removed"
     if kind == "zip":
         filename = f"{base}.zip"
     elif kind == "dxf":
@@ -1455,6 +1551,7 @@ routes = [
     Route("/api/doc/{doc_id}/page/{n:int}/ocr", api_ocr, methods=["GET", "POST"]),
     Route("/api/doc/{doc_id}/page/{n:int}/text", api_text),
     Route("/api/doc/{doc_id}/pages", api_pages, methods=["POST"]),
+    Route("/api/doc/{doc_id}/dxf-layers", api_dxf_layers, methods=["POST"]),
     Route("/api/doc/{doc_id}/export", api_export, methods=["POST"]),
     Route("/api/doc/{doc_id}/images", api_image_add, methods=["POST"]),
     Route("/api/doc/{doc_id}/compare", api_compare, methods=["POST"]),

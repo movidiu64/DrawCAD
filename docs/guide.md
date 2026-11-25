@@ -482,7 +482,9 @@ How the pages are made:
 - **a DXF exported by DrawCAD** opens on its own page, at its own scale (DrawCAD writes both in the DXF header).
 - **a DWG / DXF saved from Inventor** keeps its views, border and title block in blocks placed by Inventor's own objects, which only Inventor's object enabler reads (AutoCAD without it shows an empty sheet too). DrawCAD places these blocks again: the border, title block and notes on the sheet, each view centred in the frame Inventor left for it, at its scale. The DXF export then has them as ordinary blocks.
 
-The opening message says which pages were made and at what scale; the drawing scale (Layers → Drawing scale) is set from it, so dimensions measure the real sizes.
+The opening message says which pages were made and at what scale. The page tabs carry the layout names (Model, Sheet, Plansa 1…), and **each layout keeps its own drawing scale**: going to another tab switches the scale with it (Layers → Drawing scale), so dimensions measure real sizes on every sheet. A scale set by hand (typed or calibrated) stays with the page it was set on.
+
+**Layers of the drawing:** Layers → *Layers from DXF / DWG* lists the drawing's layers, with their color and how many objects each has. The eye hides a layer: it is left out of the page, the snap, the text search and every export (in the DXF of the original drawing it is only turned off, so it is one click away in CAD). As in CAD, what a block or a dimension draws on layer 0 belongs to the layer of the block or dimension. *Show all* brings them back.
 
 The drawing is plotted as with a monochrome plot style: every color black (yellow or cyan lines would be unreadable on paper), white wipeouts kept. Line weights come from the drawing (0.25 mm where not set). Texts in SHX fonts (romans, isocp, txt…), which are not available outside AutoCAD, and in any font missing on the machine, are drawn in osifont (ISO 3098) and are real text: searchable with Ctrl+F, copied with the page text, snapped at their insertion point. Lines, arcs and circles snap like on any vector PDF.
 

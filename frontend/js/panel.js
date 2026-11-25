@@ -270,7 +270,7 @@ export class Panel {
     const pg = d.pages[app.page];
     return `<div class="sec"><div class="h">Document</div>
         <div class="title" style="word-break:break-all">${esc(d.name)}</div>
-        <div class="sub">${d.kind === "image" ? `imagine · ${Math.round(d.dpi || 0)} DPI` : "PDF"} · ${d.pages.length} pagini · pagina ${app.page + 1}: ${fmtNum(pg.w / K, ",", 1)} × ${fmtNum(pg.h / K, ",", 1)} mm${pg.rot ? ` · rotită ${pg.rot}°` : ""}</div>
+        <div class="sub">${d.kind === "image" ? `imagine · ${Math.round(d.dpi || 0)} DPI` : { dxf: "DXF", dwg: "DWG" }[d.kind] || "PDF"} · ${d.pages.length} pagini · pagina ${app.page + 1}${pg.name ? ` (${esc(pg.name)})` : ""}: ${fmtNum(pg.w / K, ",", 1)} × ${fmtNum(pg.h / K, ",", 1)} mm${pg.rot ? ` · rotită ${pg.rot}°` : ""}</div>
         ${d.kind === "pdf" && pg.paths === 0 ? `<div class="note warn">Pagina nu are geometrie vectorială (probabil scan). Snap-ul pe desen nu e disponibil; ștergerea se face doar prin acoperire.</div>` : ""}
         ${Math.max(pg.w, pg.h) / K > 900 && (d.kind === "image" || pg.paths === 0) ? `<div class="note warn">Foaia are ${fmtNum(pg.w / K, ",", 0)} × ${fmtNum(pg.h / K, ",", 0)} mm (imaginea are probabil DPI greșit), așa că cotele și textele par mici. Alege mărimea reală a foii (A3, A4…).
           <div style="margin-top:6px"><button class="ghost" data-act="pages">Mărimea foii…</button></div></div>` : ""}
@@ -279,8 +279,9 @@ export class Panel {
       <div class="sec"><div class="h">Scara desenului</div>
         <div class="row"><div class="field"><label for="dScale">mm reali / mm hârtie</label><input type="text" class="mono" id="dScale" value="${fmtNum(S.scale, ",", 4)}"></div>
         <button class="ghost" data-act="calib" style="align-self:flex-end">Calibrează</button></div>
-        <div class="sub">1 = scara 1:1 · 2 = scara 1:2 · 0,5 = scara 2:1</div>
+        <div class="sub">1 = scara 1:1 · 2 = scara 1:2 · 0,5 = scara 2:1${d.dxf && d.pages.length > 1 ? " · fiecare planșă are scara ei" : ""}</div>
       </div>
+      ${this.dxfLayersHtml()}
       <div class="sec"><div class="h">Straturi</div>
         ${[["orig", "background:var(--layer-orig)", "Original PDF", "neatins"], ["add", "background:var(--layer-add)", "Adăugate", counts.add], ["rev", "background:var(--layer-rev)", "Revizii", counts.rev], ["del", "border:1px dashed var(--layer-del)", "Ștergeri / acoperiri", counts.del], ["review", "background:var(--layer-review)", "Comentarii (nu se tipăresc)", counts.review]]
           .map(([k, st, name, n]) => {
@@ -295,6 +296,23 @@ export class Panel {
         <div class="sub">Pune peste pagina aceasta o pagină dintr-o revizie mai veche: roșu = doar în cea veche, verde = doar în cea deschisă.</div>
         <div class="btns"><button class="ghost" data-act="compare">Compară cu altă revizie…</button></div></div>
       ${this.inkHtml()}`;
+  }
+
+  /** Layers of the drawing opened from DXF / DWG: shown or hidden for the page, snap, search and export. */
+  dxfLayersHtml() {
+    const d = this.app.doc;
+    const layers = (d.dxf && d.dxf.layers) || [];
+    if (!layers.length) return "";
+    const hidden = new Set(d.dxf.hidden || []);
+    const eye = (off) => `<svg viewBox="0 0 24 24">${off ? '<path d="M3 3l18 18M10.6 6.1A9.7 9.7 0 0 1 12 6c5 0 9 6 9 6a16 16 0 0 1-2.6 3.2M6.6 6.6C4.3 8.1 3 12 3 12s4 6 9 6a8.8 8.8 0 0 0 4.4-1.2"/>' : '<path d="M3 12s4-6 9-6 9 6 9 6-4 6-9 6-9-6-9-6z"/><circle cx="12" cy="12" r="2.5"/>'}</svg>`;
+    return `<div class="sec"><div class="h">Straturi din ${d.kind === "dwg" ? "DWG" : "DXF"}</div>
+      <div class="dxflayers">${layers.map((la) => {
+        const off = hidden.has(la.name);
+        return `<div class="layer ${off ? "off" : ""}"><i style="background:${la.color ? esc(la.color) : "var(--text)"}"></i><span class="nm" translate="no" title="${esc(la.name)}">${esc(la.name)}</span><span class="mono sub">${la.n}</span>
+          <button class="icon eye" data-act="dxflayer" data-v="${esc(la.name)}" aria-pressed="${!off}" aria-label="${off ? "Arată" : "Ascunde"} ${esc(la.name)}" title="${off ? "Arată" : "Ascunde"}">${eye(off)}</button></div>`;
+      }).join("")}</div>
+      ${hidden.size ? `<div class="btns"><button class="ghost" data-act="dxfall">Arată toate</button></div>` : ""}
+      <div class="sub">Un strat ascuns lipsește din pagină, din snap, din căutare și din export; în DXF-ul original e doar oprit.</div></div>`;
   }
 
   /** List of annotations on the page: click = select and center, bin = delete. */
@@ -1192,6 +1210,15 @@ export class Panel {
         app.toggleLayer(v);
         this.render();
         break;
+      case "dxflayer":
+      case "dxfall": {
+        const hid = new Set((app.doc.dxf && app.doc.dxf.hidden) || []);
+        if (act === "dxfall") hid.clear();
+        else if (hid.has(v)) hid.delete(v);
+        else hid.add(v);
+        app.setDxfHidden([...hid]).catch((e) => toast(e.message));
+        break;
+      }
       case "bmadd":
         upd((x) => {
           const rows = x.rows || [];

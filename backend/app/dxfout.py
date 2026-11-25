@@ -30,6 +30,7 @@ from .pdfcore import (
     R,
     _bez_as_arc,
     _bez_at,
+    _is_hidden,
     _obj_matrix,
     _path_points,
     _text_of,
@@ -174,6 +175,8 @@ def page_content(pdf_bytes: bytes, page_index: int) -> dict:
             tp = page.get_textpage()
             paths, texts, images = [], [], []
             for _oid, obj, typ, parent_total, _c, _n in _walk(page.raw):
+                if _is_hidden(obj, typ):
+                    continue  # a layer hidden in the editor (drawing opened from DXF)
                 if typ == R.FPDF_PAGEOBJ_PATH:
                     total = mat_mul(_obj_matrix(obj), parent_total)
                     fill = ctypes.c_int()

@@ -293,6 +293,9 @@ export class StateHistory {
     this.frame = (this.frame || 0) + 1; // annotations may change: the per-frame cache is no longer valid
     if ("revNo" in patch && String(patch.revNo) !== String(this.settings.revNo || "1")) this.revPending = false;
     const inkBefore = JSON.stringify(this.settings.ink || null);
+    // a drawing opened from DXF / DWG: a scale set by hand belongs to the current page's layout
+    const p = this.doc && this.doc.dxf && this.doc.pages[this.page];
+    if ("scale" in patch && p && p.src != null) patch = { ...patch, scaleBySrc: { ...(this.settings.scaleBySrc || {}), [p.src]: Number(patch.scale) || 1 } };
     this.settings = { ...this.settings, ...patch };
     this.cache.clear();
     this.panel.render();
@@ -332,23 +335,38 @@ export class StateHistory {
   }
 
   // ------------------------------------------------------------ annotations
-  S() {
+  /** Drawing scale of page i: a drawing opened from DXF / DWG keeps one per layout (a scale set by
+   *  hand on a page stays with that page); any other document has one for all its pages. */
+  pageScale(i = this.page) {
+    const p = this.doc && this.doc.pages[i];
+    const by = this.settings.scaleBySrc;
+    if (p && p.src != null && by && by[p.src] != null) return Number(by[p.src]) || 1;
+    if (p && p.dscale > 0) return p.dscale;
+    return Number(this.settings.scale) || 1;
+  }
+
+  S(page = this.page) {
     // the page sizes too: a title block shows its sheet format and "sheet n / total"
     const pagesWH = this.doc ? this.doc.pages.map((p) => [p.w, p.h]) : [];
-    const key = JSON.stringify(this.settings) + JSON.stringify(pagesWH);
-    if (!this._S || this._Skey !== key) {
-      this._Skey = key;
-      this._S = { ...derive(this.settings), pagesWH };
+    const scale = this.pageScale(page);
+    const key = JSON.stringify(this.settings) + JSON.stringify(pagesWH) + "|" + scale;
+    this._Sm = this._Sm || new Map();
+    let S = this._Sm.get(key);
+    if (!S) {
+      if (this._Sm.size > 32) this._Sm.clear();
+      S = { ...derive({ ...this.settings, scale }), pagesWH, _key: key };
+      this._Sm.set(key, S);
     }
-    return this._S;
+    this._Skey = key;
+    return S;
   }
 
   builtOf(a) {
-    const S = this.S();
+    const S = this.S(a.page);
     const c = this.cache.get(a.id);
     // within the same event (one mouse move, one frame) geometry does not change: no JSON.stringify
     if (c && c.frame === this.frame && c.obj === a) return c.built;
-    const stamp = JSON.stringify(a) + this._Skey;
+    const stamp = JSON.stringify(a) + S._key;
     if (c && c.stamp === stamp) {
       c.frame = this.frame;
       c.obj = a;

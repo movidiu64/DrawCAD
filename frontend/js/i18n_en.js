@@ -7,6 +7,7 @@ export const EN = {
   "+ (abateri)": "+ (deviations)",
   "+ Rând nou": "+ New row",
   "1 = scara 1:1 · 2 = scara 1:2 · 0,5 = scara 2:1": "1 = scale 1:1 · 2 = scale 1:2 · 0.5 = scale 2:1",
+  "1 = scara 1:1 · 2 = scara 1:2 · 0,5 = scara 2:1{}": "1 = scale 1:1 · 2 = scale 1:2 · 0.5 = scale 2:1{}",
   "1× = lungimile din ISO 128-20 (liniuță 12d, linie lungă 24d, gol 3d); se ajustează ca linia să înceapă și să se termine cu liniuță.": "1× = the ISO 128-20 lengths (dash 12d, long dash 24d, gap 3d); adjusted so each line starts and ends with a dash.",
   "; la polilinie o termină. Spațiu ținut + tragere mută desenul, Esc renunță. Tastele directe nu se folosesc în acest mod.": "; on a polyline it finishes it. Space held + drag pans the drawing, Esc cancels. Direct keys are not used in this mode.",
   "Abatere inferioară": "Lower deviation",
@@ -1410,4 +1411,8 @@ export const EN = {
   "· {} imagini lăsate deoparte": "· {} images left out",
   "DXF R12: nu poate primi adnotările DrawCAD (salvează-l ca DXF 2000 sau mai nou)": "DXF R12: cannot take DrawCAD's annotations (save it as DXF 2000 or newer)",
   "Desen salvat din Inventor: vederile, chenarul și indicatorul au fost așezate din nou din blocurile lui.": "Drawing saved from Inventor: the views, the border and the title block were placed again from its blocks.",
+  "Straturi din {}": "Layers from {}",
+  "Un strat ascuns lipsește din pagină, din snap, din căutare și din export; în DXF-ul original e doar oprit.": "A hidden layer is left out of the page, snap, search and export; in the original DXF it is only turned off.",
+  "· fiecare planșă are scara ei": "· each layout has its own scale",
+  "Arată toate": "Show all",
 };

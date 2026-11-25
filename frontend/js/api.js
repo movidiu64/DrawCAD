@@ -111,6 +111,16 @@ export async function runOcr(id, n, force = false) {
 
 export const pageText = (id, n, v = 0) => fetch(`api/doc/${id}/page/${n}/text?v=${v}`).then(jsonOrThrow);
 
+/** Layers of a drawing opened from DXF / DWG hidden on the server (page, snap, search, export). */
+export async function dxfLayers(id, hidden) {
+  const r = await fetch(`api/doc/${id}/dxf-layers`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ hidden }),
+  });
+  return jsonOrThrow(r);
+}
+
 export async function pageOp(id, body) {
   const r = await fetch(`api/doc/${id}/pages`, {
     method: "POST",

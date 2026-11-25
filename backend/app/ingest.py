@@ -87,6 +87,11 @@ def dxf_pdf(data: bytes, out_dir: str) -> tuple[bytes, dict]:
     # which DXF entity each PDF object comes from: removals made in DrawCAD reach the DXF export
     with open(os.path.join(out_dir, "original.dxfmap.json"), "w", encoding="utf-8") as f:
         json.dump(info.pop("handles"), f, separators=(",", ":"))
+    # the layer of each PDF object: layers can be hidden in the editor
+    lm = info.pop("layer_map")
+    with open(os.path.join(out_dir, "original.dxflayers.json"), "w", encoding="utf-8") as f:
+        json.dump({"names": lm["names"], "pages": lm["pages"]}, f, separators=(",", ":"))
+    info["layers"] = lm["layers"]
     return pdf, info
 
 

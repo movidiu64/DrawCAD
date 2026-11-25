@@ -95,6 +95,7 @@ class _Canvas(BackendInterface):
         self._lw = 0.25
         self._min_lw = 0.05
         self.handles: list[str] = []  # the DXF entity of each PDF object, in drawing order
+        self.layers: list[str] = []  # and its layer (inside a block: the layer it is drawn on)
 
     # --- state
     def _stroke(self, props):
@@ -142,11 +143,13 @@ class _Canvas(BackendInterface):
         self._stroke(props)
         self.c.line(pos.x, pos.y, pos.x, pos.y)
         self.handles.append(props.handle)
+        self.layers.append(props.layer)
 
     def draw_line(self, start, end, props) -> None:
         self._stroke(props)
         self.c.line(start.x, start.y, end.x, end.y)
         self.handles.append(props.handle)
+        self.layers.append(props.layer)
 
     def draw_solid_lines(self, lines, props) -> None:
         if not lines:
@@ -158,6 +161,7 @@ class _Canvas(BackendInterface):
             p.lineTo(b.x, b.y)
         self.c.drawPath(p, stroke=1, fill=0)
         self.handles.append(props.handle)
+        self.layers.append(props.layer)
 
     def draw_path(self, path, props) -> None:
         if len(path) == 0:
@@ -167,6 +171,7 @@ class _Canvas(BackendInterface):
         self._add(p, path, False)
         self.c.drawPath(p, stroke=1, fill=0)
         self.handles.append(props.handle)
+        self.layers.append(props.layer)
 
     def draw_filled_paths(self, paths, props) -> None:
         if not any(len(q) for q in paths):
@@ -177,6 +182,7 @@ class _Canvas(BackendInterface):
             self._add(p, path, True)
         self.c.drawPath(p, stroke=0, fill=1, fillMode=0)  # even-odd
         self.handles.append(props.handle)
+        self.layers.append(props.layer)
 
     def draw_filled_polygon(self, points, props) -> None:
         pts = [(float(q[0]), float(q[1])) for q in points.to_list()]
@@ -190,6 +196,7 @@ class _Canvas(BackendInterface):
         p.close()
         self.c.drawPath(p, stroke=0, fill=1)
         self.handles.append(props.handle)
+        self.layers.append(props.layer)
 
     def draw_image(self, image_data, props) -> None:
         from PIL import Image
@@ -204,6 +211,7 @@ class _Canvas(BackendInterface):
         pil = Image.fromarray(img, mode="RGBA")
         self.c.drawImage(ImageReader(pil), min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys), mask="auto")
         self.handles.append(props.handle)
+        self.layers.append(props.layer)
 
     def clear(self) -> None:
         pass
@@ -314,7 +322,7 @@ class _Texts:
 
             portal.foreach_stage(through)
             pts = seen
-        self.items.append((text, m, properties.color, pts, pipe._current_entity_handle))
+        self.items.append((text, m, properties.color, pts, pipe._current_entity_handle, properties.layer))
 
 
 _OSI_CAP = 1515 / 2048  # osifont: cap height / em (the size given to the PDF font)
@@ -344,7 +352,7 @@ def _record(doc, layout_obj) -> _Drawing:
     return _Drawing(rec, texts.items)
 
 
-def _place(drw: _Drawing, c, page_mm: tuple[float, float], box: BoundingBox2d) -> tuple[list, list[str]]:
+def _place(drw: _Drawing, c, page_mm: tuple[float, float], box: BoundingBox2d) -> tuple[list, tuple[list[str], list[str]]]:
     """The recorded drawing, its `box` (drawing units) filling the page (no margins: the box already has
     the sheet's proportions), on a new page of the canvas. → (the drawing → PDF points transform
     [a, b, c, d, e, f], the DXF entity handle of each PDF object on the page, in order)."""
@@ -361,10 +369,10 @@ def _place(drw: _Drawing, c, page_mm: tuple[float, float], box: BoundingBox2d) -
     be = _Canvas(c, wmm * MM, hmm * MM)
     be.configure(_config())
     player.replay(be)
-    handles = be.handles
+    handles, layers = be.handles, be.layers
     if drw.texts:
         pdfcore._register_font()
-        for text, tm, color, _pts, handle in drw.texts:
+        for text, tm, color, _pts, handle, lay in drw.texts:
             t = tm @ m
             c.saveState()
             c.setFillGray(_ink(color))
@@ -373,8 +381,9 @@ def _place(drw: _Drawing, c, page_mm: tuple[float, float], box: BoundingBox2d) -
             c.drawString(0, 0, text)
             c.restoreState()
             handles.append(handle)
+            layers.append(lay)
     c.showPage()
-    return [round(float(m[i, j]), 12) for i, j in ((0, 0), (0, 1), (1, 0), (1, 1), (3, 0), (3, 1))], handles
+    return [round(float(m[i, j]), 12) for i, j in ((0, 0), (0, 1), (1, 0), (1, 1), (3, 0), (3, 1))], (handles, layers)
 
 
 def fit_sheet(width: float, height: float) -> tuple[str, float, float, float]:
@@ -591,8 +600,8 @@ def dxf_to_pdf(data: bytes, max_entities: int = 0) -> tuple[bytes, dict]:
         sw, sh, scale = dc
         rec = _record(doc, doc.modelspace())
         box = BoundingBox2d([Vec2(0, 0), Vec2(sw * scale / unit, sh * scale / unit)])
-        tf, hs = _place(rec, c, (sw, sh), box)
-        maps.append(hs)
+        tf, hl = _place(rec, c, (sw, sh), box)
+        maps.append(hl)
         pages.append({"name": "Model", "space": "model", "sheet": [round(sw, 3), round(sh, 3)], "scale": round(scale, 6), "tf": tf})
     if not pages:
         # paper-space layouts with something on them, in tab order
@@ -607,8 +616,8 @@ def dxf_to_pdf(data: bytes, max_entities: int = 0) -> tuple[bytes, dict]:
             if not (wmm > 1 and hmm > 1):
                 continue
             box = _paper_box(lay, rec.bbox(), wmm, hmm)
-            tf, hs = _place(rec, c, (wmm, hmm), box)
-            maps.append(hs)
+            tf, hl = _place(rec, c, (wmm, hmm), box)
+            maps.append(hl)
             vps = [v for v in lay.viewports() if v.dxf.get("status", 1) > 1 and v.dxf.view_height > 0]
             scale = (vps[0].dxf.view_height / vps[0].dxf.height) * unit if vps else 1.0
             pages.append({"name": lay.name, "space": "paper", "sheet": [round(wmm, 2), round(hmm, 2)], "scale": round(scale, 6), "tf": tf})
@@ -626,8 +635,8 @@ def dxf_to_pdf(data: bytes, max_entities: int = 0) -> tuple[bytes, dict]:
         cx, cy = b.center.x, b.center.y
         half = Vec2(sw / sc / unit / 2, sh / sc / unit / 2)
         box = BoundingBox2d([Vec2(cx, cy) - half, Vec2(cx, cy) + half])
-        tf, hs = _place(rec, c, (sw, sh), box)
-        maps.append(hs)
+        tf, hl = _place(rec, c, (sw, sh), box)
+        maps.append(hl)
         pages.append({"name": "Model", "space": "model", "sheet": [sw, sh], "scale": round(1 / sc, 6), "iso": name, "tf": tf})
         if outliers:
             pages[-1]["outliers"] = outliers
@@ -638,12 +647,60 @@ def dxf_to_pdf(data: bytes, max_entities: int = 0) -> tuple[bytes, dict]:
         s = io.StringIO()
         doc.write(s)
         fixed = s.getvalue().encode("utf-8")
+    checked = _checked_maps(pdf, [h for h, _l in maps])
     info = {"pages": pages, "fixes": len(auditor.fixes), "errors": len(auditor.errors), "units_mm": unit,
-            "inventor": rebuilt,
-            "handles": _checked_maps(pdf, maps)}
+            "inventor": rebuilt, "handles": checked,
+            "layer_map": _layer_map(doc, [(h, lay) if ok is not None else None for (h, lay), ok in zip(maps, checked)])}
     if rebuilt:
         info["fixed_dxf"] = fixed
     return pdf, info
+
+
+def _layer_map(doc, per_page: list) -> dict:
+    """The layer of each PDF object, as indices into `names`, and the layers with their color and how
+    many objects they have (for the layer list in the editor). As in CAD, what is drawn on layer 0
+    inside a block (a dimension's lines, a block's geometry) belongs to the layer of the block itself."""
+    names: list[str] = []
+    idx: dict[str, int] = {}
+    pages = []
+    count: dict[str, int] = {}
+    top: dict[str, str] = {}
+
+    def top_layer(h):
+        if h not in top:
+            e = doc.entitydb.get(h) if h else None
+            top[h] = e.dxf.get("layer", "0") if e is not None else "0"
+        return top[h]
+
+    for item in per_page:
+        if item is None:
+            pages.append(None)
+            continue
+        row = []
+        for h, n in zip(*item):
+            n = n or "0"
+            if n == "0":
+                n = top_layer(h) or "0"
+            if n not in idx:
+                idx[n] = len(names)
+                names.append(n)
+            row.append(idx[n])
+            count[n] = count.get(n, 0) + 1
+        pages.append(row)
+    summary = []
+    for n in sorted(names, key=str.casefold):
+        col = "#000000"
+        try:
+            la = doc.layers.get(n)
+            if la is not None:
+                tc = la.dxf.get("true_color")
+                rgb = ezdxf.colors.int2rgb(tc) if tc is not None else ezdxf.colors.aci2rgb(abs(la.color) or 7)
+                col = "#%02x%02x%02x" % tuple(rgb)
+        except Exception:  # noqa: BLE001
+            pass
+        # ACI 7 (black on white, white on black): the editor shows it in the text color
+        summary.append({"name": n, "color": None if col == "#ffffff" else col, "n": count[n]})
+    return {"names": names, "pages": pages, "layers": summary}
 
 
 def _checked_maps(pdf: bytes, maps: list[list[str]]) -> list:
@@ -691,12 +748,13 @@ def load(data: bytes):
     return recover.read(io.BytesIO(data))
 
 
-def export_source(data: bytes, pages: list[dict], color: str = "black") -> tuple[bytes, dict]:
+def export_source(data: bytes, pages: list[dict], color: str = "black", hidden: list[str] | None = None) -> tuple[bytes, dict]:
     """The DXF export of a drawing opened from DXF / DWG: the original drawing, entities and all, with
     what was done in DrawCAD. pages: [{"page": its dxfin info, "H": height pt, "kp": resize, "prims":
     annotations, "handles": the entity of each PDF object or None, "gone": / "cut": PDF objects removed
     whole / cut, "zones": zone removal rectangles}]. Entities removed whole are deleted; partly removed
-    ones (a block, a line cut by a zone) stay, and the zones are covered by a wipeout."""
+    ones (a block, a line cut by a zone) stay, and the zones are covered by a wipeout. Layers hidden in
+    DrawCAD are turned off."""
     from collections import Counter
 
     from . import dxfout
@@ -705,6 +763,10 @@ def export_source(data: bytes, pages: list[dict], color: str = "black") -> tuple
     if doc.dxfversion < "AC1015":
         raise ValueError("DXF R12: nu poate primi adnotările DrawCAD (salvează-l ca DXF 2000 sau mai nou)")
     counts: dict = {}
+    for name in hidden or []:
+        la = doc.layers.get(name)
+        if la is not None:
+            la.off()  # hidden in DrawCAD: off in the DXF (still there, one click away in CAD)
 
     def add(k, n=1):
         counts[k] = counts.get(k, 0) + n

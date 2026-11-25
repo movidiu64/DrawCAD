@@ -76,3 +76,12 @@ Unit tests (backend: render of lines, arcs, text, hatch, dimension, layout with 
 scale choice; round trip of a DrawCAD export; DWG sample through dwg2dxf where the binary exists),
 e2e (open a DXF, a dimension snaps on its geometry, export PDF and DXF), security smoke (malformed DXF,
 huge entity counts, a DWG that is not one).
+
+## After the first round (dev.9 →)
+
+- Drawings saved from Inventor: the views, border and title block placed again from Inventor's *I blocks
+  (its own block references are lost without the Inventor object enabler).
+- Layer list of the opened drawing, each layer shown / hidden: hidden objects are made see-through in
+  the working PDF (ids stay the same, so removals and the entity map still match), skipped by snap,
+  object picking and search, removed from the PDF export, turned off in the original-DXF export.
+- One drawing scale per layout (pages carry `src`, `name`, `dscale`); the page tabs show the layout names.
