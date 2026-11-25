@@ -18,7 +18,7 @@ Self-hosted, runs in your browser, no CAD license needed.
 
 </div>
 
-Open a PDF exported from CAD, or a scan or photo of a drawing, add dimensions, tolerances, GD&T and revisions with AutoCAD-style snapping, then export a clean vector PDF or a DXF. The original file is never modified: annotations are stored separately and applied only on export.
+Open a PDF exported from CAD, a DXF or DWG drawing, or a scan or photo of a drawing, add dimensions, tolerances, GD&T and revisions with AutoCAD-style snapping, then export a clean vector PDF or a DXF. The original file is never modified: annotations are stored separately and applied only on export.
 
 ## Features
 
@@ -32,6 +32,7 @@ Open a PDF exported from CAD, or a scan or photo of a drawing, add dimensions, t
 - 🧾 **Drawing tools**: notes, parts list, section and detail views, balloons, lines, arcs, hatches, break lines, with ISO 128 line types.
 - 🧽 **Edit the original**: white-out or truly remove PDF objects, turn faint colored drawings black for printing, rotate, reorder and resize pages (with undo).
 - 🔎 **Search and OCR**: Ctrl+F finds any text; scans are recognized with Tesseract (English and Romanian included) and can be exported as searchable PDFs.
+- 📂 **Opens DXF and DWG** (DWG through LibreDWG): layouts become pages at their scale, model space is fitted on an ISO sheet; print it to PDF, annotate it, export it back as the original DXF plus your annotations.
 - 📐 **DXF export** for AutoCAD / Allplan: real lines, arcs, circles and texts, at paper size or true scale. Scans can be vectorized (experimental).
 - ⌨️ **AutoCAD habits**: command line (`L`, `C`, `PL`, `DLI`…) with prompts and options, typed points (`x,y`, `@dx,dy`, `@d<a`) from a page origin or a UCS, snap overrides (`END`, `CEN`…) and Tab cycling, MOVE / COPY / ERASE, hot grips (Space: stretch, move, rotate at any angle, scale, mirror), `acad.pgp` import, command history (F2), typed length and angle while drawing, area and perimeter (`DI` → `A`). **Ctrl+K** finds any command by name, **?** lists every key.
 - 🌗 **Dark or light** interface (or as the system), in English or Romanian.

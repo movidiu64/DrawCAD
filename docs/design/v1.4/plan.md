@@ -11,7 +11,7 @@ DWG through **LibreDWG**, inside DrawCAD (Docker image and Windows executable), 
 | V14-2 | Open DXF in the editor: pages, scale, the original kept | done |
 | V14-3 | DWG through LibreDWG (`dwg2dxf`): Docker image and Windows executable | done (CI to confirm the image and exe builds) |
 | V14-4 | DXF export of a DXF / DWG: the original entities, the DrawCAD annotations on their layers | done |
-| V14-5 | Guide, limits, tests on real files | planned |
+| V14-5 | Guide, limits, tests on real files | done |
 
 ## V14-1 — DXF → vector PDF
 

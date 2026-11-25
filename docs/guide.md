@@ -17,6 +17,7 @@ DrawCAD is a self-hosted web app (Docker) for adding to a PDF or a scan:
 - **blackening the original for printing**: colored drawings (light green, yellow) come out black, for the whole drawing or only for chosen lines; scans become black and white;
 - vector **PDF export**, with an embedded ISO 3098 font and an attached editable layer;
 - **search and OCR**: find any text on the drawing (Ctrl+F); on scanned drawings the text is recognized with Tesseract and can be placed invisibly in the PDF (searchable PDF);
+- **opening DXF and DWG** drawings (DWG through LibreDWG): each layout becomes a page at its scale, or the model space is fitted on an ISO sheet; the drawing can be printed to PDF, annotated, and exported back to DXF as the original drawing plus the annotations;
 - **DXF export** for AutoCAD / Allplan: the PDF geometry as real lines, arcs, circles and texts, the DrawCAD dimensions on their own layer, at paper size or at real size; scans are vectorized (experimental), with the recognized text as text.
 
 The original is never modified. Annotations are stored separately and applied only on export.
@@ -133,6 +134,9 @@ The app was originally called "Cotare": the old `COTARE_*` variables are still a
 | `DRAWCAD_MODE` | `private` | `personal`, `private` or `session` (see [Modes](#modes-personal-or-for-work)) |
 | `DRAWCAD_MAX_PAGES` | `300` | maximum number of pages per document |
 | `DRAWCAD_MAX_IMAGE_MPX` | `400` | maximum megapixels of an uploaded image (a scan opened as a document; images placed on a drawing are limited to 100) |
+| `DRAWCAD_MAX_DXF_ENTITIES` | `400000` | maximum entities of an opened DXF / DWG, counted with blocks expanded |
+| `DRAWCAD_DWG_TIMEOUT` | `90` | maximum seconds for converting a DWG (LibreDWG) |
+| `DRAWCAD_DWG2DXF` | — | path of LibreDWG's `dwg2dxf`, when it is not on PATH (the image and the Windows app have it) |
 | `DRAWCAD_MAX_IMAGE_MB` | `40` | maximum size of an image placed on a drawing (logo, photo) |
 | `DRAWCAD_PASSWORD` | empty | HTTP Basic password (user `drawcad`); empty = no password |
 | `DRAWCAD_CACHE_MB` | `256` | maximum memory of the in-RAM caches (PDFs, renders); only used as needed |
@@ -468,6 +472,27 @@ The "Show recognized text on the drawing" checkbox draws the boxes of the found 
 
 **Searchable PDF:** in the PDF export, the "Invisible recognized text (OCR)" checkbox puts the recognized text over the image, invisibly. In the resulting PDF the text can be searched and copied, as in a vector PDF.
 
+### Opening DXF and DWG
+
+Open a `.dxf` (ASCII or binary, any version) or a `.dwg` like a PDF: from the start page, by dragging it onto the window, or with Open. A DWG is first converted to DXF by LibreDWG (`dwg2dxf`), shipped in the Docker image and the Windows app; where it is missing, the server says so and a DXF opens as usual.
+
+How the pages are made:
+- **paper-space layouts** with something on them: one page per layout, at the layout's paper size; the drawing scale is the scale of the layout's first viewport (a 1:2 viewport → scale 1:2);
+- **model space only**: the drawing is fitted on an ISO sheet with a 10 mm margin, at a standard scale: a small part is enlarged on A4 (10:1, 5:1, 2:1), otherwise 1:1 on the smallest sheet it fits (A4 … A0), a larger drawing is reduced (1:2, 1:5, 1:10 …). A few entities lost far away (a point kilometres off) do not shrink the drawing: they are left off the sheet;
+- **a DXF exported by DrawCAD** opens on its own page, at its own scale (DrawCAD writes both in the DXF header).
+
+The opening message says which pages were made and at what scale; the drawing scale (Layers → Drawing scale) is set from it, so dimensions measure the real sizes.
+
+The drawing is plotted as with a monochrome plot style: every color black (yellow or cyan lines would be unreadable on paper), white wipeouts kept. Line weights come from the drawing (0.25 mm where not set). Texts in SHX fonts (romans, isocp, txt…), which are not available outside AutoCAD, and in any font missing on the machine, are drawn in osifont (ISO 3098) and are real text: searchable with Ctrl+F, copied with the page text, snapped at their insertion point. Lines, arcs and circles snap like on any vector PDF.
+
+**Export:** PDF as for any drawing. **DXF** offers two choices:
+- **The original DXF / DWG drawing** (default): the DXF itself, every entity, layer, block and layout unchanged, with the DrawCAD dimensions and annotations on their layers (DRAWCAD-COTE…), in the space the page shows (the layout's paper space, or model space in the drawing's units). What was removed in DrawCAD is deleted from the DXF: an entity whose objects were all removed is deleted; one only partly removed (a block, a line cut by a zone) stays and the zone is covered by a wipeout. A DWG comes out this way as DXF of the same version. Placed images are left out (said in the export message);
+- **Rebuilt from the page**: the generic export below, as for a PDF.
+
+Pages turned in the editor are exported rebuilt. DXF R12 files cannot take the annotations: save them as DXF 2000 or newer.
+
+Limits: `DRAWCAD_MAX_DXF_ENTITIES` (default 400 000) counts entities with blocks expanded, so a drawing whose few blocks stand for millions of lines is refused; a DWG conversion longer than `DRAWCAD_DWG_TIMEOUT` (90 s) is stopped.
+
 ### DXF export
 
 In the export dialog pick **DXF**. Each page becomes one DXF file (AutoCAD 2010, millimeters); several pages come out in a ZIP archive.
@@ -552,6 +577,8 @@ backend/    Starlette
   app/sanitize.py removal of active content from PDFs (JavaScript, actions, attachments)
   app/ocr.py     OCR with Tesseract: straightening, line removal, horizontal and vertical text
   app/dxfout.py  DXF export (ezdxf): geometry, texts, annotations, layers
+  app/dxfin.py   DXF / DWG opening: drawing → vector PDF (ezdxf drawing add-on), pages and scale,
+                 the DXF export of the original drawing
   app/vectorize.py vectorization of scans, in a separate process (thinning, graph, arcs, circles)
 desktop/    the Windows app: launcher (pywebview), PyInstaller spec, Inno Setup installer
 ```
@@ -599,4 +626,5 @@ python tools/e2e_smoke.py http://127.0.0.1:8080 out     # browser: full workflow
 - **No authentication and no simultaneous editing** of the same document by several users.
 - **OCR on drawings** is good on the title block, notes and clear dimensions, weaker on small, crowded text or text touching lines. Tesseract does not know the GD&T symbols, and Ø, ± and ° are recognized only partly (Ø is corrected from context). Uncertain readings show in orange.
 - **Vectorization of scans** is experimental. Dashed lines, arrows and hatches come out simplified. On poor-quality scans (below 200 DPI, blots, faded lines) the result needs cleaning up in CAD.
+- **Opening DXF / DWG:** what ezdxf does not draw stays out of the page: 3D solids (ACIS), OLE objects, fields not yet updated; proxy entities show their stored graphics. Texts in TrueType fonts present on the machine stay as outlines (not searchable), and so do texts cut by a viewport edge. DWG reading is LibreDWG's: very new or damaged files may convert with errors (the message says how many were repaired).
 - **DXF:** blocks in the PDF (Form XObject) come out as separate entities, not as blocks. Texts use the ISOCPEUR style: if the font is missing, the CAD program substitutes another one, with a different width.
