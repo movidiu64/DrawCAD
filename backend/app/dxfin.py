@@ -1,0 +1,342 @@
+"""Opening DXF drawings (V14): the entities drawn as a vector PDF, one page per paper-space layout with
+something on it, or model space fitted on an ISO sheet at a standard scale.
+
+ezdxf's drawing add-on resolves entities, blocks, line types, hatches, dimensions and text (as outlines)
+and records them; a small ReportLab backend writes the record as PDF paths, so the result is a PDF like
+one exported from CAD: DrawCAD snaps on it, removes from it, exports it to DXF again.
+
+Called only in the limited child process (ingest.py) for uploaded files: DXF input is untrusted.
+"""
+from __future__ import annotations
+
+import io
+import math
+from pathlib import Path
+
+import ezdxf
+from ezdxf.addons.drawing import config, frontend, layout, recorder
+from ezdxf.addons.drawing.backend import BackendInterface
+from ezdxf.addons.drawing.properties import RenderContext
+from ezdxf.colors import RGB
+from ezdxf.math import BoundingBox2d, Vec2
+from ezdxf.path import Command
+
+MM = 72 / 25.4  # pt per mm
+# ISO sheets (mm, landscape) tried from the smallest; standard scales (paper mm per drawing mm)
+SHEETS = [("A4", 297, 210), ("A3", 420, 297), ("A2", 594, 420), ("A1", 841, 594), ("A0", 1189, 841)]
+SCALES = [50, 20, 10, 5, 2, 1, 1 / 2, 1 / 2.5, 1 / 5, 1 / 10, 1 / 20, 1 / 25, 1 / 50, 1 / 100, 1 / 200, 1 / 500, 1 / 1000]
+MARGIN = 10  # mm of paper around a model-space drawing
+# custom header properties of a DXF exported by DrawCAD: its page (paper mm) and drawing scale
+DRAWCAD_VARS = ("DRAWCAD_SHEET_W", "DRAWCAD_SHEET_H", "DRAWCAD_SCALE")
+UNIT_MM = {0: 1.0, 1: 25.4, 2: 304.8, 4: 1.0, 5: 10.0, 6: 1000.0, 14: 100.0}  # $INSUNITS → mm
+
+
+class _Canvas(BackendInterface):
+    """ReportLab backend: the recorded, already placed output (pt, y up) on one PDF page."""
+
+    def __init__(self, c, w_pt: float, h_pt: float):
+        self.c = c
+        self.w = w_pt
+        self.h = h_pt
+        self._lw = 0.25
+        self._min_lw = 0.05
+
+    # --- state
+    def _stroke(self, props):
+        r, g, b = RGB.from_hex(props.color).to_floats()
+        self.c.setStrokeColorRGB(r, g, b)
+        self.c.setLineWidth(max(self._min_lw, props.lineweight) * MM)
+
+    def _fill(self, props):
+        r, g, b = RGB.from_hex(props.color).to_floats()
+        self.c.setFillColorRGB(r, g, b)
+
+    @staticmethod
+    def _add(p, path, close):
+        start = path.start
+        p.moveTo(start.x, start.y)
+        first = start
+        for cmd in path.commands():
+            e = cmd.end
+            if cmd.type == Command.MOVE_TO:
+                if close:
+                    p.close()
+                p.moveTo(e.x, e.y)
+                first = e
+            elif cmd.type == Command.LINE_TO:
+                p.lineTo(e.x, e.y)
+            elif cmd.type == Command.CURVE3_TO:
+                # quadratic → cubic
+                c0 = start
+                q = cmd.ctrl
+                p.curveTo(c0.x + 2 / 3 * (q.x - c0.x), c0.y + 2 / 3 * (q.y - c0.y),
+                          e.x + 2 / 3 * (q.x - e.x), e.y + 2 / 3 * (q.y - e.y), e.x, e.y)
+            elif cmd.type == Command.CURVE4_TO:
+                p.curveTo(cmd.ctrl1.x, cmd.ctrl1.y, cmd.ctrl2.x, cmd.ctrl2.y, e.x, e.y)
+            start = e
+        if close and first is not None:
+            p.close()
+
+    # --- BackendInterface
+    def configure(self, cfg) -> None:
+        if cfg.min_lineweight:
+            self._min_lw = max(0.05, cfg.min_lineweight * 25.4 / 300)
+
+    def set_background(self, color) -> None:
+        pass  # the sheet is white
+
+    def draw_point(self, pos, props) -> None:
+        self._stroke(props)
+        self.c.line(pos.x, pos.y, pos.x, pos.y)
+
+    def draw_line(self, start, end, props) -> None:
+        self._stroke(props)
+        self.c.line(start.x, start.y, end.x, end.y)
+
+    def draw_solid_lines(self, lines, props) -> None:
+        self._stroke(props)
+        p = self.c.beginPath()
+        for a, b in lines:
+            p.moveTo(a.x, a.y)
+            p.lineTo(b.x, b.y)
+        self.c.drawPath(p, stroke=1, fill=0)
+
+    def draw_path(self, path, props) -> None:
+        if len(path) == 0:
+            return
+        self._stroke(props)
+        p = self.c.beginPath()
+        self._add(p, path, False)
+        self.c.drawPath(p, stroke=1, fill=0)
+
+    def draw_filled_paths(self, paths, props) -> None:
+        self._fill(props)
+        p = self.c.beginPath()
+        for path in paths:
+            self._add(p, path, True)
+        self.c.drawPath(p, stroke=0, fill=1, fillMode=0)  # even-odd
+
+    def draw_filled_polygon(self, points, props) -> None:
+        pts = [(float(q[0]), float(q[1])) for q in points.to_list()]
+        if len(pts) < 3:
+            return
+        self._fill(props)
+        p = self.c.beginPath()
+        p.moveTo(*pts[0])
+        for q in pts[1:]:
+            p.lineTo(*q)
+        p.close()
+        self.c.drawPath(p, stroke=0, fill=1)
+
+    def draw_image(self, image_data, props) -> None:
+        from PIL import Image
+        from reportlab.lib.utils import ImageReader
+
+        img = image_data.image
+        h, w = img.shape[:2]
+        t = image_data.transform
+        corners = list(t.transform_vertices([Vec2(0, 0), Vec2(w, 0), Vec2(w, h), Vec2(0, h)]))
+        xs = [q.x for q in corners]
+        ys = [q.y for q in corners]
+        pil = Image.fromarray(img, mode="RGBA")
+        self.c.drawImage(ImageReader(pil), min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys), mask="auto")
+
+    def clear(self) -> None:
+        pass
+
+    def finalize(self) -> None:
+        pass
+
+    def enter_entity(self, entity, properties) -> None:
+        pass
+
+    def exit_entity(self, entity) -> None:
+        pass
+
+
+_FONTS_READY = False
+
+
+def _use_fonts() -> None:
+    """Texts in osifont (ISO 3098) when the drawing's font is not on this machine: SHX fonts (romans,
+    simplex, isocp, txt…) are never here, TrueType fonts may be (Arial on Windows)."""
+    global _FONTS_READY
+    if _FONTS_READY:
+        return
+    from ezdxf.fonts import fonts
+
+    from . import pdfcore
+
+    path = Path(pdfcore.FONT_PATH).resolve()
+    if path.is_file():
+        fm = fonts.font_manager
+        fm.scan_folder(path.parent)
+        if fm.has_font(path.name):
+            fm._fallback_font_name = path.name
+            # SHX names resolved by family ("TXT", "ROMANS") also go to osifont
+            fm.add_synonyms({path.name: n for n in fonts.SHX_FONTS.values()}, reverse=False)
+    _FONTS_READY = True
+
+
+def _config() -> config.Configuration:
+    # a white sheet: ACI 7 drawn black, line weights as in the drawing (0.25 mm by default)
+    return config.Configuration(
+        background_policy=config.BackgroundPolicy.WHITE,
+        color_policy=config.ColorPolicy.COLOR,
+        lineweight_policy=config.LineweightPolicy.ABSOLUTE,
+        min_lineweight=0.05 / 25.4 * 300,
+        hatch_policy=config.HatchPolicy.NORMAL,
+        proxy_graphic_policy=config.ProxyGraphicPolicy.SHOW,
+    )
+
+
+def _record(doc, layout_obj) -> recorder.Recorder:
+    _use_fonts()
+    rec = recorder.Recorder()
+    ctx = RenderContext(doc)
+    frontend.Frontend(ctx, rec, config=_config()).draw_layout(layout_obj, finalize=True)
+    return rec
+
+
+def _place(rec: recorder.Recorder, c, page_mm: tuple[float, float], box: BoundingBox2d) -> None:
+    """The recorded drawing, its `box` (drawing units) filling the page (no margins: the box already has
+    the sheet's proportions), on a new page of the canvas."""
+    wmm, hmm = page_mm
+    player = rec.player()
+    page = layout.Page(wmm, hmm, layout.Units.mm)
+    out = layout.Layout(box, flip_y=False)
+    settings = layout.Settings(fit_page=True, output_coordinate_space=max(wmm, hmm) * MM)
+    m = out.get_placement_matrix(page, settings=settings, top_origin=False)
+    player.transform(m)
+    c.setPageSize((wmm * MM, hmm * MM))
+    be = _Canvas(c, wmm * MM, hmm * MM)
+    be.configure(_config())
+    player.replay(be)
+    c.showPage()
+
+
+def fit_sheet(width: float, height: float) -> tuple[str, float, float, float]:
+    """An ISO sheet (landscape or portrait) and a standard scale for a model-space drawing of
+    width × height mm, with the margin: (name, sheet w, sheet h, scale paper/drawing).
+    A small part is enlarged on A4 (10:1, 5:1, 2:1); otherwise 1:1 on the smallest sheet it fits (up to
+    A0); a larger drawing is reduced, at the first standard scale that fits some sheet."""
+    def fits(sc, sw, sh):
+        for w, h in ((sw, sh), (sh, sw)):
+            if width * sc <= w - 2 * MARGIN and height * sc <= h - 2 * MARGIN:
+                return w, h
+        return None
+
+    a4 = SHEETS[0]
+    for sc in (10, 5, 2):
+        wh = fits(sc, a4[1], a4[2])
+        if wh:
+            return a4[0], wh[0], wh[1], sc
+    for sc in [1] + [s for s in SCALES if s < 1]:
+        for name, sw, sh in SHEETS:
+            wh = fits(sc, sw, sh)
+            if wh:
+                return name, wh[0], wh[1], sc
+    # larger than A0 at 1:1000: A0 at whatever scale it takes
+    name, sw, sh = SHEETS[-1]
+    sc = min((sw - 2 * MARGIN) / max(width, 1e-9), (sh - 2 * MARGIN) / max(height, 1e-9))
+    return name, sw, sh, sc
+
+
+def _bbox(rec: recorder.Recorder) -> BoundingBox2d | None:
+    b = rec.player().bbox()
+    return b if b.has_data else None
+
+
+def dxf_to_pdf(data: bytes) -> tuple[bytes, dict]:
+    """DXF (ASCII or binary) → (PDF, info). info: pages [{name, space, sheet, scale}] where scale is the
+    drawing scale for DrawCAD (real mm per paper mm), and the audit counts."""
+    from reportlab.pdfgen import canvas as rl
+
+    if data[:22] == b"AutoCAD Binary DXF\r\n\x1a\x00":
+        from ezdxf.document import Drawing
+        from ezdxf.lldxf.tagger import binary_tags_loader
+
+        doc = Drawing.load(binary_tags_loader(data, errors="surrogateescape"))
+        auditor = doc.audit()
+    else:
+        from ezdxf import recover
+
+        doc, auditor = recover.read(io.BytesIO(data))
+    unit = UNIT_MM.get(int(doc.header.get("$INSUNITS", 4) or 4), 1.0)
+    buf = io.BytesIO()
+    c = rl.Canvas(buf, pageCompression=1)
+    c.setTitle("DXF")
+    pages = []
+    # a DXF exported by DrawCAD: its page frame and scale, exactly
+    dc = drawcad_page(doc)
+    if dc:
+        sw, sh, scale = dc
+        rec = _record(doc, doc.modelspace())
+        frame = _drawcad_frame(doc)
+        if frame is not None:
+            _place(rec, c, (sw, sh), frame)
+            pages.append({"name": "Model", "space": "model", "sheet": [sw, sh], "scale": scale})
+    if not pages:
+        # paper-space layouts with something on them, in tab order
+        for lay in sorted(doc.layouts, key=lambda x: x.dxf.get("taborder", 0)):
+            if lay.is_modelspace or not len(lay):
+                continue
+            rec = _record(doc, lay)
+            if _bbox(rec) is None:
+                continue
+            page = layout.Page.from_dxf_layout(lay)
+            wmm, hmm = page.width_in_mm, page.height_in_mm
+            if not (wmm > 1 and hmm > 1):
+                continue
+            # the whole paper, in paper-space units (its origin is where the plot margins start)
+            lo, hi = lay.get_paper_limits()
+            box = BoundingBox2d([Vec2(lo), Vec2(hi)])
+            _place(rec, c, (wmm, hmm), box)
+            vps = [v for v in lay.viewports() if v.dxf.get("status", 1) > 1 and v.dxf.view_height > 0]
+            scale = (vps[0].dxf.view_height / vps[0].dxf.height) * unit if vps else 1.0
+            pages.append({"name": lay.name, "space": "paper", "sheet": [round(wmm, 2), round(hmm, 2)], "scale": round(scale, 6)})
+    if not pages:
+        rec = _record(doc, doc.modelspace())
+        b = _bbox(rec)
+        if b is None:
+            raise ValueError("Desenul DXF nu are nimic de afișat")
+        wmm, hmm = b.size.x * unit, b.size.y * unit
+        name, sw, sh, sc = fit_sheet(wmm, hmm)
+        cx, cy = b.center.x, b.center.y
+        half = Vec2(sw / sc / unit / 2, sh / sc / unit / 2)
+        box = BoundingBox2d([Vec2(cx, cy) - half, Vec2(cx, cy) + half])
+        _place(rec, c, (sw, sh), box)
+        pages.append({"name": "Model", "space": "model", "sheet": [sw, sh], "scale": round(1 / sc, 6), "iso": name})
+    c.save()
+    info = {"pages": pages, "fixes": len(auditor.fixes), "errors": len(auditor.errors), "units_mm": unit}
+    return buf.getvalue(), info
+
+
+def drawcad_page(doc) -> tuple[float, float, float] | None:
+    """(sheet w, sheet h, scale) written by DrawCAD's DXF export, or None."""
+    cv = doc.header.custom_vars
+    try:
+        vals = tuple(float(cv.get(k)) for k in DRAWCAD_VARS)
+    except (TypeError, ValueError):
+        return None
+    sw, sh, sc = vals
+    if not (1 <= sw <= 20000 and 1 <= sh <= 20000 and 1e-6 <= sc <= 1e6):
+        return None
+    return vals
+
+
+def _drawcad_frame(doc) -> BoundingBox2d | None:
+    """The PAGINA rectangle of a DrawCAD export (its page border)."""
+    for e in doc.modelspace().query('LWPOLYLINE[layer=="PAGINA"]'):
+        pts = [Vec2(p[0], p[1]) for p in e.get_points("xy")]
+        if len(pts) >= 4:
+            return BoundingBox2d(pts)
+    return None
+
+
+if __name__ == "__main__":  # quick manual check: python -m app.dxfin file.dxf out.pdf
+    import sys
+
+    pdf, info = dxf_to_pdf(Path(sys.argv[1]).read_bytes())
+    Path(sys.argv[2]).write_bytes(pdf)
+    print(info)
