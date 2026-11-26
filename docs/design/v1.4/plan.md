@@ -89,3 +89,5 @@ huge entity counts, a DWG that is not one).
   process (`original-color.pdf`, checked to have the same objects page by page).
 - Texts in a TrueType font found on the machine are PDF text in that font (embedded subset).
 - The original-DXF export also takes pages turned in the editor and images placed in DrawCAD (ZIP).
+- A sheet frame drawn in model space (an ISO rectangle at a standard scale around the drawing) is the page,
+  edge to edge; between equivalent sizes (A6 1:1 / A4 2:1) the median text height decides.

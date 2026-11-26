@@ -162,6 +162,45 @@ class InventorTest(unittest.TestCase):
         self.assertGreater(ink(pdf), 0.005)
 
 
+class SheetFrameTest(unittest.TestCase):
+    """Drawings that bring their sheet in model space (SolidWorks, Solid Edge…): that sheet is the page."""
+
+    def frame_doc(self, w, h, text_h, lines=True, stray=True):
+        doc = ezdxf.new("R2010", units=4)
+        msp = doc.modelspace()
+        if lines:
+            for a, b in (((0, 0), (w, 0)), ((w, 0), (w, h)), ((w, h), (0, h)), ((0, h), (0, 0))):
+                msp.add_line(a, b)
+        else:
+            msp.add_lwpolyline([(0, 0), (w, 0), (w, h), (0, h)], close=True)
+        msp.add_circle((w / 2, h / 2), w / 8)
+        for k in range(5):
+            msp.add_text("INDICATOR", height=text_h).set_placement((w * 0.6, h * 0.05 + k * 2 * text_h))
+        if stray:
+            msp.add_text("în afara foii", height=text_h).set_placement((w * 0.2, -3 * text_h))  # a stray below
+        return doc
+
+    def page(self, doc):
+        pdf, info = dxfin.dxf_to_pdf(to_bytes(doc))
+        (w, h), = pdf_pages(pdf)
+        return info["pages"][0], round(w), round(h)
+
+    def test_solidworks_half_sheet(self):
+        """A4 exported at half size around a 2:1 drawing (A6-sized frame, 1.25 mm texts): A4 at 2:1."""
+        p, w, h = self.page(self.frame_doc(105, 148.5, 1.25))
+        self.assertEqual((p["iso"], p["scale"], p["frame"], w, h), ("A4", 0.5, True, 210, 297))
+
+    def test_full_size_sheet(self):
+        p, w, h = self.page(self.frame_doc(420, 297, 3.5, lines=False))
+        self.assertEqual((p["iso"], p["scale"], w, h), ("A3", 1.0, 420, 297))
+
+    def test_no_frame(self):
+        """A frame that is not an ISO sheet (only the inner border): fitted as before, with a margin."""
+        p, w, h = self.page(self.frame_doc(277, 190, 3.5, stray=False))
+        self.assertNotIn("frame", p)
+        self.assertEqual((p["iso"], w, h), ("A4", 297, 210))
+
+
 class FitSheetTest(unittest.TestCase):
     def test_choice(self):
         self.assertEqual(dxfin.fit_sheet(220, 175)[0::3], ("A4", 1))

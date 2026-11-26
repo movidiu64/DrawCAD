@@ -452,6 +452,70 @@ def fit_sheet(width: float, height: float) -> tuple[str, float, float, float]:
     return name, sw, sh, sc
 
 
+# sheet frames a drawing may carry in model space (SolidWorks, Solid Edge…): A6 … A0, mm
+ISO_FRAMES = [("A6", 148, 105), ("A5", 210, 148), *SHEETS]
+
+
+def sheet_frame(msp, full: BoundingBox2d, unit: float, max_entities: int = 50000):
+    """The sheet edge drawn in model space by CAD programs that export their drawing sheet there (a
+    rectangle of an ISO size, A6 … A0, at a standard scale, around nearly everything): that sheet is
+    the page, with no margin of its own. Rectangles are closed 4-corner polylines or four lines.
+    → (box, sheet name, sheet w, sheet h, scale paper/drawing) or None."""
+    tol = 0.01
+    horiz, vert, rects = [], [], []
+    for i, e in enumerate(msp):
+        if i >= max_entities:
+            return None
+        t = e.dxftype()
+        if t == "LINE":
+            a, b = Vec2(e.dxf.start), Vec2(e.dxf.end)
+            if abs(a.y - b.y) <= 1e-6 * max(1, abs(a.x - b.x)) and abs(a.x - b.x) > 0:
+                horiz.append((min(a.x, b.x), max(a.x, b.x), a.y))
+            elif abs(a.x - b.x) <= 1e-6 * max(1, abs(a.y - b.y)) and abs(a.y - b.y) > 0:
+                vert.append((min(a.y, b.y), max(a.y, b.y), a.x))
+        elif t == "LWPOLYLINE" and (e.closed or len(e) == 5):
+            pts = [Vec2(q) for q in e.get_points("xy")]
+            if len(pts) == 5 and pts[0].isclose(pts[4]):
+                pts = pts[:4]
+            if len(pts) == 4:
+                xs, ys = sorted({round(q.x, 6) for q in pts}), sorted({round(q.y, 6) for q in pts})
+                if len(xs) == 2 and len(ys) == 2:
+                    rects.append(BoundingBox2d([Vec2(xs[0], ys[0]), Vec2(xs[1], ys[1])]))
+    # four lines: the two longest horizontal ones with the same span, closed by vertical ones at their ends
+    span = max(full.size.x, full.size.y)
+    hs = sorted((h for h in horiz if h[1] - h[0] > 0.3 * span), key=lambda h: h[0] - h[1])[:12]
+    for i, (x0, x1, y0) in enumerate(hs):
+        for xa, xb, y1 in hs[i + 1:]:
+            if abs(xa - x0) > tol * span or abs(xb - x1) > tol * span or abs(y1 - y0) < 0.1 * span:
+                continue
+            lo, hi = min(y0, y1), max(y0, y1)
+            sides = [v for v in vert if abs(v[0] - lo) <= tol * span and abs(v[1] - hi) <= tol * span]
+            if any(abs(v[2] - x0) <= tol * span for v in sides) and any(abs(v[2] - x1) <= tol * span for v in sides):
+                rects.append(BoundingBox2d([Vec2(x0, lo), Vec2(x1, hi)]))
+    # around nearly everything (the full extents may stick out only a little: a stray text): the largest
+    rects = [r for r in rects if r.size.x >= 0.9 * full.size.x and r.size.y >= 0.9 * full.size.y]
+    if not rects:
+        return None
+    r = max(rects, key=lambda q: q.size.x * q.size.y)
+    w, h = r.size.x * unit, r.size.y * unit
+    fits = []
+    for name, sw, sh in ISO_FRAMES:
+        for pw, ph in ((sw, sh), (sh, sw)):
+            for sc in (1, 2, 5, 10, *[s for s in SCALES if s < 1]):
+                if abs(w * sc - pw) <= max(1.5, 0.006 * pw) and abs(h * sc - ph) <= max(1.5, 0.006 * ph):
+                    fits.append((r, name, pw, ph, sc))
+    if not fits:
+        return None
+    # ISO sizes are all alike (√2), so an A6 frame at 1:1 is also an A4 frame at 2:1 (SolidWorks exports
+    # the sheet scaled to the drawing like that): the texts decide, written 2.5 … 5 mm high on paper
+    hs = sorted(e.dxf.char_height if e.dxftype() == "MTEXT" else e.dxf.height
+                for e in msp.query("TEXT MTEXT") if (e.dxf.get("char_height") if e.dxftype() == "MTEXT" else e.dxf.get("height")))
+    if not hs:
+        return min(fits, key=lambda f: abs(math.log(f[4])))
+    med = hs[len(hs) // 2] * unit
+    return min(fits, key=lambda f: (abs(math.log(med * f[4] / 3.0)), abs(math.log(f[4]))))
+
+
 def core_extents(msp, full: BoundingBox2d, max_entities: int = 50000):
     """Model space without a few far-away strays (a point or block lost kilometres away, which makes
     "zoom extents" useless): the extents of the 97 % of entities nearest to the median, if the rest makes
@@ -676,17 +740,26 @@ def _dxf_to_pdf(data: bytes, max_entities: int) -> tuple[bytes, dict]:
         b = rec.bbox()
         if b is None:
             raise ValueError("Desenul DXF nu are nimic de afișat")
-        core = core_extents(doc.modelspace(), b)
-        if core is not None:
-            b, outliers = core
-        wmm, hmm = b.size.x * unit, b.size.y * unit
-        name, sw, sh, sc = fit_sheet(wmm, hmm)
-        cx, cy = b.center.x, b.center.y
-        half = Vec2(sw / sc / unit / 2, sh / sc / unit / 2)
-        box = BoundingBox2d([Vec2(cx, cy) - half, Vec2(cx, cy) + half])
+        frame = sheet_frame(doc.modelspace(), b, unit)
+        if frame is not None:
+            # the drawing brings its own sheet: that is the page, edge to edge
+            # (its own size: a frame drawn 148.5 tall for A6 is not cut by a 148 mm page)
+            box, name, _sw, _sh, sc = frame
+            sw, sh = round(box.size.x * unit * sc, 3), round(box.size.y * unit * sc, 3)
+        else:
+            core = core_extents(doc.modelspace(), b)
+            if core is not None:
+                b, outliers = core
+            wmm, hmm = b.size.x * unit, b.size.y * unit
+            name, sw, sh, sc = fit_sheet(wmm, hmm)
+            cx, cy = b.center.x, b.center.y
+            half = Vec2(sw / sc / unit / 2, sh / sc / unit / 2)
+            box = BoundingBox2d([Vec2(cx, cy) - half, Vec2(cx, cy) + half])
         tf, hl = _place(rec, c, (sw, sh), box)
         maps.append(hl)
         pages.append({"name": "Model", "space": "model", "sheet": [sw, sh], "scale": round(1 / sc, 6), "iso": name, "tf": tf})
+        if frame is not None:
+            pages[-1]["frame"] = True
         if outliers:
             pages[-1]["outliers"] = outliers
     c.save()
