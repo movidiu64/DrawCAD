@@ -369,6 +369,9 @@ export class Keyboard {
       }
       // the rail's flyout handles its own keys (arrows, Enter on a row, Esc)
       if (e.target && e.target.closest && e.target.closest("#railFly")) return;
+      // a button reached with the keyboard (Tab: the document tabs, header, panel) takes Enter and Space
+      // itself; one only clicked keeps them for the drawing (AutoCAD's Enter / Space repeat)
+      if ((e.key === "Enter" || e.key === " ") && e.target instanceof HTMLElement && e.target.matches("button:focus-visible, a:focus-visible")) return;
       // Ctrl+K: command search (UI-D9), also from the command line; F1: the shortcut sheet (UI-D14)
       if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "k" || e.key === "K")) {
         e.preventDefault();

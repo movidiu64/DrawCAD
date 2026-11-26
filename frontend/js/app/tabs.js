@@ -132,16 +132,18 @@ export class DocTabs {
     const box = $("docTabs");
     if (!box) return;
     const chip = box.querySelector(".docchip");
-    box.querySelectorAll(".doctab, .tabadd").forEach((e) => e.remove());
+    box.querySelectorAll(".doctab, .tabadd, .tabmorew").forEach((e) => e.remove());
     const cur = this.doc && this.doc.id;
     const ico = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6zM14 3v4h4"/></svg>`;
     const tab = (t) => `<div class="doctab"><button class="tb" data-tab="${t.id}" title="${esc(t.name)}">${ico}<span translate="no">${esc(t.name)}</span></button><button class="icon tx" data-tabclose="${t.id}" title="Închide fila" aria-label="Închide ${esc(t.name)}"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`;
     const i = this.tabs.findIndex((t) => t.id === cur);
     const before = i >= 0 ? this.tabs.slice(0, i) : [];
     const after = i >= 0 ? this.tabs.slice(i + 1) : this.tabs;
+    // little room (narrow window, many tabs): the other documents behind one button, in a menu
+    const more = after.length + before.length ? `<div class="split tabmorew"><button class="tabmore" aria-haspopup="menu" aria-expanded="false" title="Celelalte documente deschise">${ico}<span class="mono">${before.length + after.length}</span><svg class="dd" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button><div class="xmenu tabmenu" role="menu" hidden>${[...before, ...after].map((t) => `<div class="tmrow"><button role="menuitem" data-tab="${t.id}"><b translate="no">${esc(t.name)}</b><span>${esc({ image: "imagine", dxf: "DXF", dwg: "DWG" }[t.kind] || "PDF")}</span></button><button class="icon tx" data-tabclose="${t.id}" title="Închide fila" aria-label="Închide ${esc(t.name)}"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`).join("")}</div></div>` : "";
     const add = cur ? `<button class="icon tabadd" title="Deschide alt document într-o filă nouă" aria-label="Deschide alt document"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>` : "";
     chip.insertAdjacentHTML("beforebegin", before.map(tab).join(""));
-    chip.insertAdjacentHTML("afterend", after.map(tab).join("") + add);
+    chip.insertAdjacentHTML("afterend", after.map(tab).join("") + more + add);
     const plus = box.querySelector(".tabadd");
     if (plus) plus.addEventListener("click", () => dlg.openDialog(this));
     box.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => this.switchDoc(b.dataset.tab)));
@@ -150,5 +152,48 @@ export class DocTabs {
       this.closeTab(b.dataset.tabclose);
     }));
     box.classList.toggle("multi", this.tabs.length > 1);
+    const menu = box.querySelector(".tabmenu");
+    const mbtn = box.querySelector(".tabmore");
+    if (menu) {
+      const open = (v) => {
+        menu.hidden = !v;
+        mbtn.setAttribute("aria-expanded", String(v));
+        if (v) menu.querySelector("[data-tab]").focus();
+      };
+      mbtn.addEventListener("click", () => open(menu.hidden));
+      menu.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          open(false);
+          mbtn.focus();
+        }
+      });
+      if (!this._tabMenuOff) {
+        this._tabMenuOff = true;
+        document.addEventListener("pointerdown", (e) => {
+          const m = document.querySelector("#docTabs .tabmenu");
+          if (m && !m.hidden && !e.target.closest(".tabmorew")) {
+            m.hidden = true;
+            document.querySelector("#docTabs .tabmore").setAttribute("aria-expanded", "false");
+          }
+        });
+      }
+    }
+    this.fitDocTabs();
+    if (!this._tabsHdrRO && window.ResizeObserver) {
+      this._tabsHdrRO = new ResizeObserver(() => this.fitDocTabs());
+      this._tabsHdrRO.observe(box.parentElement);
+    }
+  }
+
+  /** The other tabs inline while each keeps a readable name, otherwise behind the "N ▾" button. */
+  fitDocTabs() {
+    const box = $("docTabs");
+    if (!box) return;
+    box.classList.remove("crowd");
+    const names = [...box.querySelectorAll(".doctab .tb span")];
+    const cramped = names.some((n) => n.scrollWidth > n.clientWidth && n.clientWidth < 72);
+    const cut = box.scrollWidth > box.clientWidth + 1;
+    box.classList.toggle("crowd", cramped || cut);
   }
 }

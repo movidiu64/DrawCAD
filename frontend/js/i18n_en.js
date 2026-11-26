@@ -248,6 +248,7 @@ export const EN = {
   "taste directe comenzi AutoCAD meniu radial": "commands menu direct keys AutoCAD commands radial menu",
   "Filtrează": "Filter",
   "Filele din dreapta": "Tabs to the right",
+  "Celelalte documente deschise": "The other open documents",
   "Deschide alt document": "Open another document",
   "Deschide alt document într-o filă nouă": "Open another document in a new tab",
   "Închide fila": "Close the tab",

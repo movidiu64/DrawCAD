@@ -805,12 +805,26 @@ def main(url, out):
         assert len(tabs) >= 2, tabs
         cur = page.evaluate("window.cotare.doc.id")
         other = [t for t in tabs if t != cur][-1]
-        page.click(f'#docTabs [data-tab="{other}"]')
-        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id === '{other}'")
-        page.click(f'#docTabs [data-tab="{cur}"]')
-        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id === '{cur}'")
-        while page.query_selector("#docTabs [data-tabclose]"):
-            page.click("#docTabs [data-tabclose] >> nth=0")
+
+        def crowd():  # little room: the other tabs are behind the "N ▾" button
+            return page.evaluate("document.getElementById('docTabs').classList.contains('crowd')")
+
+        def show_tab(doc_id):
+            if crowd():
+                page.click("#docTabs .tabmore")
+                page.click(f'#docTabs .tabmenu [data-tab="{doc_id}"]')
+            else:
+                page.click(f'#docTabs .doctab [data-tab="{doc_id}"]')
+            page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id === '{doc_id}'")
+
+        show_tab(other)
+        show_tab(cur)
+        while page.evaluate("window.cotare.tabs.length") > 1:
+            if crowd():
+                page.click("#docTabs .tabmore")
+                page.click("#docTabs .tabmenu [data-tabclose] >> nth=0")
+            else:
+                page.click("#docTabs .doctab [data-tabclose] >> nth=0")
         assert page.evaluate("window.cotare.tabs.length") == 1
         print("Tabs: OK")
         # closing without changes: straight to the start page
