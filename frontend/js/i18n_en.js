@@ -248,6 +248,7 @@ export const EN = {
   "taste directe comenzi AutoCAD meniu radial": "commands menu direct keys AutoCAD commands radial menu",
   "Filtrează": "Filter",
   "Filele din dreapta": "Tabs to the right",
+  "Toleranța cotelor noi, pentru tot documentul (fără: se aplică toleranța generală)": "Tolerance of new dimensions, for the whole document (none: the general tolerance applies)",
   "{} · {} · pagina {}{}: {} × {} mm{}": "{} · {} · page {}{}: {} × {} mm{}",
   "o pagină": "one page",
   "Un solid 3D (ACIS) nu se poate desena.": "One 3D solid (ACIS) cannot be drawn.",

@@ -8,6 +8,11 @@ import { PRESETS as LINE_PRESETS } from "../shapes.js";
 import { tr } from "../i18n.js";
 import { esc, $, GRIP_LIMIT, gripKey } from "./util.js";
 
+// the tools whose new dimensions take the default tolerance, and the defaults offered
+const TOL_DEF_TOOLS = new Set(["dimLin", "dimAli", "dimDia", "dimDiaC", "dimRad", "dimCont", "dimBase"]);
+const TOL_PM = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5];
+const TOL_FITS = ["H7", "H8", "H11", "h6", "h7", "h9", "g6", "k6", "p6"];
+
 export class ContextBar {
   // ------------------------------------------------------------ context bar (UI-D2, UI-D10)
   /**
@@ -53,6 +58,7 @@ export class ContextBar {
         const h = this.settings.textH || 3.5;
         const hs = [2.5, 3.5, 5, 7];
         defs = `<label class="cdef">Text<select id="ctxTextH" class="num" title="Înălțimea textului pe desen, pentru tot documentul">${hs.includes(h) ? "" : `<option selected>${fmtNum(h, ",", 2)} mm</option>`}${hs.map((v) => `<option value="${v}" ${v === h ? "selected" : ""}>${fmtNum(v, ",", 1)} mm</option>`).join("")}</select></label>`;
+        if (TOL_DEF_TOOLS.has(t.id)) defs += this.tolDefHtml();
       }
       html = `${ico(t.icon)}<b>${esc(tr(t.label))}</b><span class="ch" id="ctxHint" title="${esc(this.hintText || "")}">${esc(this.hintText || "")}</span>${defs ? `<span class="vs"></span>${defs}` : ""}`;
     }
@@ -86,6 +92,22 @@ export class ContextBar {
     });
     const th = box.querySelector("#ctxTextH");
     if (th) th.addEventListener("change", () => this.setSettings({ textH: parseFloat(th.value) }));
+    const td = box.querySelector("#ctxTol");
+    if (td) td.addEventListener("change", () => {
+      const [mode, v] = td.value.split(":");
+      this.setSettings({ tolDef: mode === "pm" ? { mode, pm: parseFloat(v) } : mode === "iso" ? { mode, fit: v } : { mode: "none" } });
+    });
+  }
+
+  /** The tolerance new dimensions get (UI-D2): none, ± a value or an ISO 286 fit, for the whole document. */
+  tolDefHtml() {
+    const sep = this.settings.sep || ",";
+    const t = this.settings.tolDef || { mode: "none" };
+    const cur = t.mode === "pm" ? `pm:${t.pm}` : t.mode === "iso" ? `iso:${t.fit}` : "none";
+    const opts = [["none", tr("Fără")], ...TOL_PM.map((v) => [`pm:${v}`, `±${fmtNum(v, sep, 2)}`]), ...TOL_FITS.map((f) => [`iso:${f}`, f])];
+    const known = opts.some(([v]) => v === cur);
+    const extra = known ? "" : `<option value="${esc(cur)}" selected>${esc(t.mode === "pm" ? `±${fmtNum(t.pm, sep, 3)}` : t.fit || "")}</option>`;
+    return `<label class="cdef">Toleranță<select id="ctxTol" class="num" title="Toleranța cotelor noi, pentru tot documentul (fără: se aplică toleranța generală)">${extra}${opts.map(([v, l]) => `<option value="${v}" ${v === cur ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`;
   }
 
   ctxAction(k) {

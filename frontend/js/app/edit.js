@@ -392,7 +392,14 @@ export class Editing {
     return rows;
   }
 
-  defaultTol() {
+  /**
+   * The tolerance of a new dimension: the document's default (context bar, UI-D2), or none (the general
+   * tolerance then applies). A fit (H7, h6…) is not given to radii.
+   */
+  defaultTol(prefix = "") {
+    const t = this.settings.tolDef;
+    if (t && t.mode === "pm" && t.pm > 0) return { mode: "pm", pm: t.pm };
+    if (t && t.mode === "iso" && t.fit && prefix !== "R") return { mode: "iso", fit: t.fit };
     return { mode: "none" };
   }
 

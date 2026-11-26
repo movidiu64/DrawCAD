@@ -56,7 +56,7 @@ commit that built it.
 | UI-D1a | A slot shows the family member used last; one click runs it and opens the list, moving onto the drawing closes it | built (e2dad48, revised after testing) | states |
 | UI-D1c | Hover with intent: 400 ms on a slot opens its list (no tool change); with a list open, hover switches families at once; 250 ms grace before closing on the drawing; option in Settings (NN/g and Baymard: hover delay against accidental opening and flicker) | built (v1.1) | — |
 | UI-D1b | `calib` leaves the rail (K, `CALIB`, Calibrate in Straturi) | built (e2dad48) | editor-layers |
-| UI-D2 | Context bar replaces the page-tab row; legend as a chip on the canvas | built (6f08861); tool defaults (tolerance, text height) not yet | editor-properties, editor-dimension-tool |
+| UI-D2 | Context bar replaces the page-tab row; legend as a chip on the canvas | built (6f08861); tool defaults: text height (v1.1), tolerance of new dimensions (v1.5) | editor-properties, editor-dimension-tool |
 | UI-D3 | Panel tabs Proprietăți / Straturi / Adnotări | built (b49c869) | editor-properties, editor-layers, editor-annotations |
 | UI-D3a | The keys summary leaves the panel when a document is open | built (b49c869); on the start screen as a link to the Keys dialog | — |
 | UI-D4 | Header: search field, icon buttons, Export split button; one document | built (5f27a88) | editor-* |
