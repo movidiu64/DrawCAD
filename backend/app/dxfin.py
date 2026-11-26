@@ -894,24 +894,41 @@ def rebuild_inventor(doc) -> int:
     tol0 = 0.02 * max(page0.width_in_mm, page0.height_in_mm)
     # blocks in sheet coordinates (border, title block, notes) are not views: shared out per sheet first
     on_sheet = [nb for nb in cand if _on_sheet(nb[1], page0, tol0)]
-    per_sheet = [_sheet_blocks(doc, on_sheet, len(sheets), i) for i in range(len(sheets))]
+    anchors = _anchors(doc, on_sheet, len(sheets))
+    per_sheet = [_sheet_blocks(doc, on_sheet, len(sheets), i, anchors) for i in range(len(sheets))]
     cand = [nb for nb in cand if nb not in on_sheet]
-    for lay, mine in zip(sheets, per_sheet):
-        # model windows of the viewports (the layout's own, id 1, is the paper itself), smallest first
+    for i, (lay, mine) in enumerate(zip(sheets, per_sheet)):
+        # the view blocks made with this sheet: those between its border and the next sheet's
+        pool = [nb for nb in cand if _sheet_index(anchors, _block_num(nb[0])) == i] if anchors else cand
+        # model windows of the viewports (the layout's own, id 1, is the paper itself), in creation order
         wins = []
-        for v in lay.query("VIEWPORT"):
+        for order, v in enumerate(lay.query("VIEWPORT")):
             if v.dxf.get("id", 0) == 1 or v.dxf.view_height <= 0 or v.dxf.height <= 0:
                 continue
             k = v.dxf.view_height / v.dxf.height
-            wins.append((Vec2(v.dxf.center), k, v.dxf.width * k, v.dxf.view_height))
-        wins.sort(key=lambda w: w[2] * w[3])
-        for pc, k, ww, wh in wins:
-            fits = [nb for nb in cand if nb[1].size.x <= ww + 1e-6 and nb[1].size.y <= wh + 1e-6]
-            if fits:
-                n, b = max(fits, key=lambda nb: nb[1].size.x * nb[1].size.y)
-                lay.add_blockref(n, pc - b.center / k, dxfattribs={"xscale": 1 / k, "yscale": 1 / k})
-                cand.remove((n, b))
-                placed += 1
+            wins.append((v.dxf.get("id", 0), order, Vec2(v.dxf.center), k, v.dxf.width * k, v.dxf.view_height))
+        wins.sort(key=lambda w: w[:2])
+        views = sorted(pool, key=lambda nb: _block_num(nb[0]))
+
+        def fits(nb, w):
+            return nb[1].size.x <= w[4] + 1e-6 and nb[1].size.y <= w[5] + 1e-6
+
+        if len(views) == len(wins) and all(fits(nb, w) for nb, w in zip(views, wins)):
+            # Inventor makes the frames and the view blocks in the same order: frames of equal size (top /
+            # bottom, left / right, isometric views) keep their own view
+            pairs = list(zip(views, wins))
+        else:  # otherwise by size: the largest view that fits each frame, smallest frame first
+            pairs = []
+            for w in sorted(wins, key=lambda w: w[4] * w[5]):
+                ok = [nb for nb in views if fits(nb, w)]
+                if ok:
+                    nb = max(ok, key=lambda nb: nb[1].size.x * nb[1].size.y)
+                    views.remove(nb)
+                    pairs.append((nb, w))
+        for (n, b), (_id, _o, pc, k, _ww, _wh) in pairs:
+            lay.add_blockref(n, pc - b.center / k, dxfattribs={"xscale": 1 / k, "yscale": 1 / k})
+            cand.remove((n, b))
+            placed += 1
         for n, _b in mine:
             lay.add_blockref(n, (0, 0))
             placed += 1
@@ -947,37 +964,50 @@ def _linework(blk) -> tuple:
     return tuple(sorted(out))
 
 
-def _sheet_blocks(doc, on, sheets: int, index: int) -> list:
+def _block_num(name: str) -> int:
+    return int(re.sub(r"\D", "", name) or 0)
+
+
+def _groups(doc, on) -> list:
+    """Sheet blocks grouped by their lines (the same border or title block several times), oldest first."""
+    groups: dict = {}
+    for nb in sorted(on, key=lambda nb: _block_num(nb[0])):
+        sig = _linework(doc.blocks.get(nb[0]))
+        groups.setdefault(sig if sig else nb[0], []).append(nb)
+    return list(groups.values())
+
+
+def _anchors(doc, on, sheets: int) -> list[int]:
+    """With several sheets: the block numbers of their borders (the largest block that repeats once per
+    sheet), in order; [] for one sheet or when no border repeats."""
+    if sheets <= 1:
+        return []
+    borders = [g[-sheets:] for g in _groups(doc, on) if len(g) >= sheets]
+    if not borders:
+        return []
+    big = max(borders, key=lambda g: g[0][1].size.x * g[0][1].size.y)
+    return [_block_num(nb[0]) for nb in big]
+
+
+def _sheet_index(anchors: list[int], num: int) -> int:
+    """The sheet a block belongs to: the one whose border came last before it (the first, for earlier ones)."""
+    return max(sum(1 for a in anchors if a <= num) - 1, 0)
+
+
+def _sheet_blocks(doc, on, sheets: int, index: int, anchors: list[int]) -> list:
     """The blocks drawn in sheet coordinates (border, title block, notes) that belong on sheet `index` of
     `sheets`. Inventor may leave an older copy of the border and the title block (same lines, other
     texts) beside the current one: of blocks with the same lines, the latest ones (highest *I number)
     are kept, one per sheet. With several sheets, a block goes to the sheet whose border came before it."""
-    def num(n: str) -> int:
-        return int(re.sub(r"\D", "", n) or 0)
-
-    on = sorted(on, key=lambda nb: num(nb[0]))
-    groups: dict = {}
-    for nb in on:
-        sig = _linework(doc.blocks.get(nb[0]))
-        groups.setdefault(sig if sig else nb[0], []).append(nb)
     kept = []
-    for sig, members in groups.items():
-        kept += members[-sheets:] if sig and len(members) > 1 else members
-    kept.sort(key=lambda nb: num(nb[0]))
+    for members in _groups(doc, on):
+        kept += members[-sheets:] if len(members) > 1 and _linework(doc.blocks.get(members[0][0])) else members
+    kept.sort(key=lambda nb: _block_num(nb[0]))
     if sheets <= 1:
         return kept
-    # the border: the largest block that repeats once per sheet
-    borders = [nb for members in groups.values() if len(members) >= sheets for nb in members[-sheets:]]
-    if not borders:
+    if not anchors:
         return kept if index == 0 else []
-    big = max(borders, key=lambda nb: nb[1].size.x * nb[1].size.y)
-    anchors = sorted(num(nb[0]) for nb in borders if _linework(doc.blocks.get(nb[0])) == _linework(doc.blocks.get(big[0])))
-    out = []
-    for nb in kept:
-        k = sum(1 for a in anchors if a <= num(nb[0])) - 1
-        if max(k, 0) == index:
-            out.append(nb)
-    return out
+    return [nb for nb in kept if _sheet_index(anchors, _block_num(nb[0])) == index]
 
 
 def dxf_to_pdf(data: bytes, max_entities: int = 0, colors: bool = False) -> tuple[bytes, dict]:

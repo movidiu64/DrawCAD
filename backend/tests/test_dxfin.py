@@ -216,6 +216,28 @@ class InventorTest(unittest.TestCase):
         self.assertEqual(names("Sheet2"), {"*I4", "*I5", "*I6"})
 
 
+    def test_equal_frames_keep_their_view(self):
+        """Frames of the same size (left / right views, isometric views) get their views in the order
+        Inventor made both, not swapped by size."""
+        doc = inventor_doc()
+        lay = doc.layouts.get("Sheet")
+        for v in list(lay.query("VIEWPORT")):
+            lay.delete_entity(v)
+        doc.blocks.delete_block("*I3", safe=False)
+        doc.blocks.delete_block("*I2", safe=False)
+        right = doc.blocks.new("*I3")  # stored first: the block table order is not the creation order
+        right.add_lwpolyline([(-10, -40), (10, -40), (10, 40), (-10, 40)], close=True)
+        right.add_circle((5, 0), 3)
+        left = doc.blocks.new("*I2")
+        left.add_lwpolyline([(-10, -40), (10, -40), (10, 40), (-10, 40)], close=True)
+        left.add_circle((-5, 0), 3)  # the hub on the left
+        lay.add_viewport(center=(100, 150), size=(40, 100), view_center_point=(-10000, 0), view_height=100)
+        lay.add_viewport(center=(300, 150), size=(40, 100), view_center_point=(-10100, 0), view_height=100)
+        self.assertEqual(dxfin.rebuild_inventor(doc), 3)
+        refs = {e.dxf.name: tuple(e.dxf.insert)[:2] for e in lay.query("INSERT")}
+        self.assertEqual((refs["*I2"], refs["*I3"]), ((100, 150), (300, 150)))
+
+
 class SheetFrameTest(unittest.TestCase):
     """Drawings that bring their sheet in model space (SolidWorks, Solid Edge…): that sheet is the page."""
 

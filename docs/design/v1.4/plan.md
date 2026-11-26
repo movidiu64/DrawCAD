@@ -111,3 +111,7 @@ huge entity counts, a DWG that is not one).
   may keep an older copy of the border and title block (same lines, other texts): of blocks with the
   same lines only the latest ones are placed, one per sheet; with several sheets each block goes to the
   sheet whose border came before it.
+- Inventor sheets (dev.18): views are paired with their frames in creation order (viewport order ↔ *I
+  block number) when every view fits its frame; by size otherwise. Frames of equal size (top / bottom,
+  left / right, isometric) were swapped by the size match. With several sheets, the view blocks of a sheet
+  are those between its border and the next sheet's.
