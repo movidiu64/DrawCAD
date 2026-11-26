@@ -225,7 +225,10 @@ export class View {
   setPage(docId, n, w, h, keepView = false) {
     this.docId = docId;
     imgDoc = docId;
-    imgRedraw = () => this.redraw();
+    imgRedraw = () => {
+      this.layer = null; // an image annotation finished loading: the cached layer has its outline
+      this.redraw();
+    };
     this.pageN = n;
     this.pageW = w;
     this.pageH = h;
@@ -591,10 +594,28 @@ export class View {
     const vy0 = -this.panY / z - m;
     const vx1 = (this.canvas.width / d - this.panX) / z + m;
     const vy1 = (this.canvas.height / d - this.panY) / z + m;
-    for (const { a, built } of app.visibleBuilt()) {
+    // the annotations that are neither selected nor blended (highlighter) are drawn once into a cached
+    // layer and reused while they and the view stay the same (cursor moves, hover, snap, previews); the
+    // others are drawn live on top, as before
+    const items = app.visibleBuilt();
+    const still = [];
+    const live = [];
+    for (const it of items) {
+      const { a, built } = it;
       const on = app.isSelected(a.id);
       const bb = built.bbox;
       if (!on && bb && (bb[2] < vx0 || bb[0] > vx1 || bb[3] < vy0 || bb[1] > vy1)) continue;
+      if (built.blend === undefined) built.blend = built.prims.some((p) => p.blend || p.op != null);
+      if (on || built.blend) live.push(it);
+      else {
+        still.push(built);
+        // under the cursor: stays in the layer, and is drawn again on top over its highlight
+        if (hv && hv.a && hv.a.id === a.id && hv.kind === "body") live.push(it);
+      }
+    }
+    this.drawLayer(still, z, d);
+    for (const { a, built } of live) {
+      const on = app.isSelected(a.id);
       if (hv && hv.a.id === a.id && hv.kind === "body" && !on) {
         // under the cursor: the outline lights up slightly, to show what would be grabbed
         ctx.globalAlpha = 0.22;
@@ -672,6 +693,49 @@ export class View {
     // label next to the cursor: what the handle / box under the cursor does, or the value while dragging
     if (app.dragTip) this.drawTip(app.dragTip.txt, app.dragTip.p[0], app.dragTip.p[1]);
     else if (hv && hv.label && app.hoverPt && !(ov && ov.snap) && !(app.gripMenu && app.gripMenu.shown)) this.drawTip(hv.label, app.hoverPt[0], app.hoverPt[1], true);
+  }
+
+  /**
+   * The cached annotation layer: drawn again only when the list of built annotations (each kept as the
+   * same object while unchanged) or the view changes, then copied onto the canvas.
+   */
+  drawLayer(builts, z, d) {
+    const cw = this.canvas.width;
+    const ch = this.canvas.height;
+    const key = `${this.docId}|${this.pageN}|${z}|${this.panX}|${this.panY}|${cw}|${ch}|${d}|${COLORS.canvasBg}`;
+    const L = this.layer;
+    const sameKey = !!L && L.key === key;
+    this.viewMoves = sameKey ? 0 : (this.viewMoves || 0) + 1;
+    if (sameKey && L.canvas && L.builts.length === builts.length && L.builts.every((b, i) => b === builts[i])) {
+      this.blitLayer(L.canvas);
+      return;
+    }
+    if (this.viewMoves >= 2) {
+      // panning or zooming: the view changes at every frame, so the layer is not kept meanwhile
+      this.layer = { key, builts, canvas: null, spare: L && (L.canvas || L.spare) };
+      drawPrims(this.ctx, builts.flatMap((b) => b.prims), z);
+      return;
+    }
+    const c = (L && (L.canvas || L.spare)) || document.createElement("canvas");
+    if (c.width !== cw || c.height !== ch) {
+      c.width = cw;
+      c.height = ch;
+    }
+    const lc = c.getContext("2d");
+    lc.setTransform(1, 0, 0, 1, 0, 0);
+    lc.clearRect(0, 0, cw, ch);
+    lc.setTransform(d * z, 0, 0, d * z, d * this.panX, d * this.panY);
+    for (const b of builts) drawPrims(lc, b.prims, z);
+    this.layer = { key, builts, canvas: c };
+    this.blitLayer(c);
+  }
+
+  blitLayer(c) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(c, 0, 0);
+    ctx.restore();
   }
 
   /** Recognized text (OCR): green boxes, with the read text above when it is large enough on screen. */
