@@ -275,17 +275,33 @@ button.danger { height: 34px; padding: 0 12px; border: 1px solid var(--bad-line)
 .how .lr { background: var(--layer-rev); }
 .howcard .ghost { align-self: flex-start; }
 .howcard .langsw { justify-content: flex-start; margin-top: 4px; }
-.recent { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
-.recent .ttl { grid-column: 1 / -1; font-size: 15px; font-weight: 600; color: var(--text); margin: 0; }
+.recent { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.recent .ttl { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; color: var(--text); margin: 0; }
+.recent .ttl .cnt { font-size: 12px; font-weight: 400; color: var(--muted); }
+.recent .rsearch { margin-left: auto; width: min(260px, 50%); height: 32px; font-size: 13px; font-weight: 400; }
 .recent > .sub { grid-column: 1 / -1; }
-.recent .item { display: flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
-.recent .item:hover { border-color: var(--line3); background: var(--panel2); }
-.recent button.open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 58px; padding: 8px 10px; border: 0; border-radius: 10px; background: transparent; text-align: left; }
-.recent button.del { flex: 0 0 34px; color: var(--muted); }
-.recent button.del:hover { color: var(--bad); background: transparent; }
+/* UI-D7a: card with the first page as a thumbnail */
+.recent .item { position: relative; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; }
+.recent .item:hover { border-color: var(--line3); }
+.recent .item[hidden] { display: none; }
+.recent button.open { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: stretch; gap: 0; padding: 0; border: 0; border-radius: 0; background: transparent; text-align: left; }
+.recent .thumb { position: relative; display: grid; place-items: center; height: 150px; background: var(--panel2); border-bottom: 1px solid var(--line); }
+.recent .thumb img { max-width: 76%; max-height: 120px; border: 1px solid var(--line2); box-shadow: 0 2px 8px rgba(var(--shade), 0.35); background: var(--paper); }
+.recent .thumb .badge { position: absolute; left: 8px; top: 8px; width: auto; height: 20px; padding: 0 6px; font-size: 10px; }
+.recent .item:hover .thumb { background: var(--raised); }
+.recent .info { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px 12px; min-width: 0; }
+.recent .info .nm { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recent .info .meta { font-size: 11px; color: var(--muted); }
+.recent .info .when { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; font-size: 12px; color: var(--text2); }
+.recent .revb { flex: none; padding: 1px 6px; border-radius: 4px; font-size: 11px; background: var(--bad-bg); color: var(--bad); }
+.recent button.del { position: absolute; right: 6px; top: 6px; width: 28px; height: 28px; color: var(--muted); background: rgba(var(--glass), 0.6); opacity: 0; }
+.recent .item:hover button.del, .recent button.del:focus-visible { opacity: 1; }
+.recent button.del:hover { color: var(--bad); background: rgba(var(--glass), 0.85); }
+@media (hover: none) { .recent button.del { opacity: 1; } }
 .badge { display: inline-grid; place-items: center; width: 34px; height: 30px; border-radius: 6px; font-size: 11px; font-weight: 700; }
 .badge.pdf { background: var(--bad-bg); color: var(--bad); }
 .badge.img { background: var(--info-bg); color: var(--info); }
+.badge.cad { background: var(--ok-bg); color: var(--ok); }
 
 /* ---------- panel */
 .panel { width: 320px; flex: 0 0 320px; background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }

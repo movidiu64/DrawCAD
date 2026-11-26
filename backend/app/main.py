@@ -552,9 +552,35 @@ async def api_docs(request: Request):
                 item = {k: m.get(k) for k in ("id", "name", "kind", "updated", "pages")}
                 item["updated"] = _last_used(m)
                 item["expires"] = _expires(m)
+                item.update(_state_summary(d))
                 out.append(item)
     out.sort(key=lambda m: m.get("updated") or 0, reverse=True)
     return JSONResponse(out[:30])
+
+
+_SUMMARIES: dict = {}  # doc dir → (state.json mtime, summary)
+
+
+def _state_summary(d: Path) -> dict:
+    """For the start screen: how many annotations the document has, and its revision when it has
+    revision marks (read from its saved state, kept until the state changes)."""
+    f = d / "state.json"
+    try:
+        mt = f.stat().st_mtime
+    except OSError:
+        return {"annots": 0, "rev": None}
+    hit = _SUMMARIES.get(str(d))
+    if hit and hit[0] == mt:
+        return hit[1]
+    st = _read_json(f, {}) or {}
+    annots = st.get("annots") if isinstance(st.get("annots"), list) else []
+    settings = st.get("settings") if isinstance(st.get("settings"), dict) else {}
+    has_rev = any(isinstance(a, dict) and a.get("layer") == "rev" for a in annots)
+    out = {"annots": len(annots), "rev": str(settings.get("revNo") or 1)[:12] if has_rev else None}
+    if len(_SUMMARIES) > 2000:
+        _SUMMARIES.clear()
+    _SUMMARIES[str(d)] = (mt, out)
+    return out
 
 
 def _last_used(meta: dict) -> float:
@@ -823,6 +849,65 @@ async def api_render(request: Request):
 
     png = await run_in_threadpool(work)
     return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=3600", "X-Scale": str(scale)})
+
+
+# thumbnails of recent documents (UI-D7a): the first page, at most this size in pixels (twice the card's
+# picture, for sharp screens), kept next to the document until the page itself changes
+THUMB_W, THUMB_H = 344, 240
+
+
+def _thumb_sig(d: Path, meta: dict) -> str:
+    """What the first page's picture depends on: the page and its order / rotation, hidden DXF layers and
+    colors, the file itself."""
+    import hashlib
+
+    dxf = meta.get("dxf") or {}
+    src = d / "original.pdf"
+    parts = [meta.get("layout"), dxf.get("hidden"), bool(dxf.get("colors")), (meta.get("pages") or [None])[0],
+             src.stat().st_mtime if src.is_file() else 0]
+    return hashlib.sha256(json.dumps(parts, sort_keys=True, default=str).encode()).hexdigest()[:24]
+
+
+async def api_thumb(request: Request):
+    """GET: a small PNG of the document's first page, as the start screen shows it (cached on disk)."""
+    doc_id = request.path_params["doc_id"]
+    try:
+        d = _doc_dir(doc_id)
+    except (ValueError, FileNotFoundError):
+        return _err("Document inexistent", 404)
+    meta = _read_json(d / "meta.json", {}) or {}
+    if not meta.get("pages"):
+        return _err("Document inexistent", 404)
+    sig = _thumb_sig(d, meta)
+    png_f, key_f = d / "thumb.png", d / "thumb.json"
+    headers = {"Cache-Control": "private, max-age=86400", "ETag": f'"{sig}"'}
+    if request.headers.get("if-none-match") == f'"{sig}"' and png_f.is_file():
+        return Response(status_code=304, headers=headers)
+    if png_f.is_file() and (_read_json(key_f, {}) or {}).get("sig") == sig:
+        return Response(png_f.read_bytes(), media_type="image/png", headers=headers)
+    p = meta["pages"][0]
+    scale = min(THUMB_W / max(p["w"], 1), THUMB_H / max(p["h"], 1))
+
+    def work():
+        # the plain file when nothing changes the page (no copy of every listed PDF in the memory cache)
+        dxf = meta.get("dxf") or {}
+        if _layout(doc_id) or _hidden_layers(doc_id) or dxf.get("colors"):
+            src = _original(doc_id)
+        else:
+            src = (d / "original.pdf").read_bytes()
+        return pdfcore.render_png(src, 0, scale)
+
+    try:
+        png = await run_in_threadpool(work)
+    except Exception:  # noqa: BLE001
+        logging.getLogger("drawcad").exception("thumbnail of %s", doc_id)
+        return _err("Miniatura nu poate fi făcută", 500)
+    with contextlib.suppress(OSError):
+        tmp = d / f"thumb.{uuid.uuid4().hex}.tmp"
+        tmp.write_bytes(png)
+        tmp.replace(png_f)
+        _write_json(key_f, {"sig": sig})
+    return Response(png, media_type="image/png", headers=headers)
 
 
 CLIP_MAX_PX = 24e6  # a detail area: a few times a 4K screen
@@ -1726,6 +1811,7 @@ routes = [
     Route("/api/doc/{doc_id}", api_doc, methods=["GET", "DELETE"]),
     Route("/api/doc/{doc_id}/state", api_state, methods=["PUT", "POST"]),  # POST for sendBeacon
     Route("/api/doc/{doc_id}/page/{n:int}/render", api_render),
+    Route("/api/doc/{doc_id}/thumb", api_thumb),
     Route("/api/doc/{doc_id}/page/{n:int}/preview", api_preview, methods=["POST"]),
     Route("/api/doc/{doc_id}/page/{n:int}/snap", api_snap),
     Route("/api/doc/{doc_id}/page/{n:int}/snapscan", api_snap_scan),

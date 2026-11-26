@@ -286,7 +286,8 @@ class SecurityTest(unittest.TestCase):
             names_b = [d["name"] for d in json.loads(self.call("GET", "/api/docs", headers={"Cookie": cb})[2])]
             self.assertIn("al-lui-A.pdf", names_a)
             self.assertNotIn("al-lui-A.pdf", names_b)
-            for path in (f"/api/doc/{doc['id']}", f"/api/doc/{doc['id']}/page/0/render?scale=0.3", f"/api/doc/{doc['id']}/page/0/snap"):
+            for path in (f"/api/doc/{doc['id']}", f"/api/doc/{doc['id']}/page/0/render?scale=0.3", f"/api/doc/{doc['id']}/page/0/snap",
+                         f"/api/doc/{doc['id']}/thumb"):
                 self.assertEqual(self.call("GET", path, headers={"Cookie": cb})[0], 404, path)
                 self.assertEqual(self.call("GET", path, headers={"Cookie": ca})[0], 200, path)
             self.assertEqual(self.call("DELETE", f"/api/doc/{doc['id']}", headers={"Cookie": cb})[0], 404)

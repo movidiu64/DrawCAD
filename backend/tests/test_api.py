@@ -37,6 +37,12 @@ def free_port():
     return p
 
 
+def appmain_thumb():
+    from app import main as appmain
+
+    return appmain.THUMB_W, appmain.THUMB_H
+
+
 class ApiTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -618,6 +624,37 @@ class ApiTest(unittest.TestCase):
 
         u = dx.modelspace().query("IMAGE")[0].dxf.u_pixel
         self.assertAlmostEqual(math.degrees(math.atan2(u.y, u.x)) % 360, 90, 3)  # upright on the turned page
+
+    def test_thumbnail_and_list(self):
+        """Start screen: a small PNG of the first page (kept on disk, 304 when unchanged, made again when the
+        pages change) and, in the list, the annotation count and the revision when there are revision marks."""
+        import struct
+
+        meta = self.open_sample()
+        png, h = self.req("GET", f"/api/doc/{meta['id']}/thumb", raw=True)
+        self.assertTrue(png.startswith(b"\x89PNG"))
+        w, hh = struct.unpack(">II", png[16:24])
+        self.assertTrue(w <= appmain_thumb()[0] and hh <= appmain_thumb()[1] and max(w, hh) > 100, (w, hh))
+        d = Path(TMP) / "docs" / meta["id"]
+        self.assertTrue((d / "thumb.png").is_file())
+        etag = h["ETag"]
+        r = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/doc/{meta['id']}/thumb", headers={"If-None-Match": etag})
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            urllib.request.urlopen(r)
+        self.assertEqual(e.exception.code, 304)
+        # the first page turned: another picture
+        self.req("POST", f"/api/doc/{meta['id']}/pages", {"op": "layout", "layout": [{"src": 0, "rot": 90}, {"src": 1, "rot": 0}]})
+        png2, h2 = self.req("GET", f"/api/doc/{meta['id']}/thumb", raw=True)
+        self.assertNotEqual(h2["ETag"], etag)
+        self.assertNotEqual(struct.unpack(">II", png2[16:24]), (w, hh))
+        self.req("PUT", f"/api/doc/{meta['id']}/state", {"v": 1, "settings": {"revNo": "3"}, "annots": [
+            {"id": "a", "type": "text", "layer": "rev", "page": 0, "p": [10, 10], "text": "x"},
+            {"id": "b", "type": "text", "layer": "add", "page": 0, "p": [20, 10], "text": "y"}]})
+        item = [x for x in self.req("GET", "/api/docs") if x["id"] == meta["id"]][0]
+        self.assertEqual((item["annots"], item["rev"]), (2, "3"))
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            self.req("GET", f"/api/doc/{'0' * 32}/thumb")
+        self.assertEqual(e.exception.code, 404)
 
     def test_fonts(self):
         """Fonts for DXF / DWG texts: added (checked in the limited process), used by the drawings opened

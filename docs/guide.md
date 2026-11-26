@@ -423,7 +423,7 @@ Every cell can be edited in the panel. **Update from dimensions** rebuilds the t
   - **Close and delete from server.**
 - **Saving to the server** is automatic, on every change, and also happens when the tab closes.
 - **How long documents stay on the server:** `DRAWCAD_RETENTION_DAYS` days (30 by default) after the last use; opening a document resets the countdown. Cleanup runs at startup and then every 6 hours.
-- **In Recent** you see how many days each document has left. The bin button deletes it immediately.
+- **In Recent** each document is a card with its first page as a small picture (made by the server once and kept until the page changes), its kind (PDF, IMG, DXF, DWG), the sheet, pages and annotations, when it was last used, how many days it has left and, when it has revision marks, its revision. With more than six documents a search field filters them by name. The bin button (on the card, when the mouse is over it) deletes it immediately.
 - **PDFs exported to your computer** are not affected by this cleanup.
 
 **Reopening:** a PDF exported with the editable layer can be reopened. The dimensions come back editable and the original is recovered from the file, so nothing gets drawn twice.

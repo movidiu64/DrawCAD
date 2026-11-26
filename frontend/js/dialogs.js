@@ -57,8 +57,14 @@ function ago(ts) {
   if (!ts) return "";
   const d = new Date(ts * 1000);
   const now = new Date();
+  const min = Math.floor((now - d) / 60000);
+  if (min < 1) return "acum";
+  if (min < 60) return `acum ${min} min`;
   const hm = d.toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" });
   if (d.toDateString() === now.toDateString()) return `azi, ${hm}`;
+  const y = new Date(now);
+  y.setDate(now.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return `ieri, ${hm}`;
   return d.toLocaleDateString("ro-RO");
 }
 
@@ -80,19 +86,39 @@ export function recentHtml(docs, retentionDays, mode = "personal") {
   const note = retentionDays > 0
     ? `<div class="sub" style="margin:6px 4px">Documentele stau pe server ${fmtNum(retentionDays, ",", 1)} zile de la ultima folosire, apoi se șterg automat. Ce ai exportat pe PC nu e afectat.</div>`
     : "";
-  return `<div class="ttl">${mode === "personal" ? "Recente" : "Documentele tale"}</div>` + docs.slice(0, 12).map((d) => `
-    <div class="item">
+  const kind = (d) => ({ image: ["img", "IMG"], dxf: ["cad", "DXF"], dwg: ["cad", "DWG"] })[d.kind] || ["pdf", "PDF"];
+  const search = docs.length > 6 ? `<input class="rsearch" type="search" placeholder="Caută după nume" aria-label="Caută după nume">` : "";
+  // UI-D7a: a card per document, its first page as a thumbnail (made by the server, cached)
+  return `<div class="ttl"><span>${mode === "personal" ? "Documente recente" : "Documentele tale"}</span><span class="cnt mono">${docs.length}</span>${search}</div>` + docs.map((d) => {
+    const [kc, kl] = kind(d);
+    const p = (d.pages || [])[0];
+    const n = (d.pages || []).length;
+    const meta = [p ? sheetName(p) : "", n === 1 ? "1 pag." : `${n} pag.`, d.annots ? `${d.annots} ${d.annots === 1 ? "adnotare" : "adnotări"}` : ""].filter(Boolean).join(" · ");
+    return `
+    <div class="item" data-name="${esc((d.name || "").toLowerCase())}">
       <button class="open" data-doc="${d.id}">
-        <span class="badge ${d.kind === "image" ? "img" : "pdf"}">${d.kind === "image" ? "IMG" : "PDF"}</span>
-        <span style="flex:1;display:flex;flex-direction:column;gap:2px;min-width:0"><span translate="no" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}</span>
-        <span class="muted" style="font-size:12px">${(d.pages || []).length} pagini · ${ago(d.updated)}${daysLeft(d.expires)}</span></span>
+        <span class="thumb"><img alt="" loading="lazy" decoding="async" src="api/doc/${d.id}/thumb?v=${Math.round((d.updated || 0) * 1000)}"><span class="badge ${kc}">${kl}</span></span>
+        <span class="info"><span class="nm" translate="no">${esc(d.name)}</span>
+        <span class="meta mono">${meta}</span>
+        <span class="when"><span>${ago(d.updated)}${daysLeft(d.expires)}</span>${d.rev ? `<span class="revb">Rev. ${esc(d.rev)}</span>` : ""}</span></span>
       </button>
       <button class="icon del" data-del="${d.id}" data-name="${esc(d.name)}" title="Șterge de pe server" aria-label="Șterge ${esc(d.name)} de pe server"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></button>
-    </div>`).join("") + note + modeNote;
+    </div>`;
+  }).join("") + note + modeNote;
 }
 
 /** Binds the buttons of the recent list: open and delete (with confirmation). */
 export function bindRecent(container, app, onOpen) {
+  // a thumbnail that cannot be made: the card keeps its kind badge
+  container.querySelectorAll(".thumb img").forEach((im) => im.addEventListener("error", () => {
+    im.closest(".thumb").classList.add("noimg");
+    im.remove();
+  }));
+  const q = container.querySelector(".rsearch");
+  if (q) q.addEventListener("input", () => {
+    const t = q.value.trim().toLowerCase();
+    container.querySelectorAll(".item").forEach((it) => { it.hidden = !!t && !it.dataset.name.includes(t); });
+  });
   container.querySelectorAll("[data-doc]").forEach((b) => b.addEventListener("click", () => {
     if (onOpen) onOpen();
     app.loadDoc(b.dataset.doc);

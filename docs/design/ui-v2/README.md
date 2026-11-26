@@ -64,7 +64,7 @@ commit that built it.
 | UI-D5 | Status bar: wide command line, toggle chips | built (452f1cc) | editor-*, states |
 | UI-D6 | Accent fill only for the primary action; `--accent-tint` for state; tabular figures for values (research F7) | built (452f1cc) | all |
 | UI-D7 | Start screen: drop zone, a card on layers with the Keys link, recent documents as cards | built (5f27a88) | start |
-| UI-D7a | Thumbnails of recent documents (needs a backend endpoint) | planned | start |
+| UI-D7a | Thumbnails of recent documents (needs a backend endpoint) | built (v1.5): `GET /api/doc/{id}/thumb`, cards as on the board, search by name | start |
 | UI-D8 | Export dialog: PDF / DXF kept, one line per format, OCR stays a PDF option; toast with the file size | built (v1.1) | states |
 | UI-D19 | Settings by scope: a section list on the left (Current document: Dimension style, Sheet and revisions; All documents: Interface, Commands and menu, Workspace), one pane at a time, a live preview of the dimension style; document panes take effect on Apply, app panes are saved at once | built (v1.1) | — |
 
