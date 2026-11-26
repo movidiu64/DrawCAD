@@ -799,6 +799,20 @@ def main(url, out):
             print("DWG: OK")
         else:
             print("DWG: LibreDWG not installed, skipped")
+        # the documents opened one after another stayed open as tabs (UI-D4a): one click shows another
+        # one again, × closes a tab; with the others closed, closing goes to the start page
+        tabs = page.evaluate("window.cotare.tabs.map((t) => t.id)")
+        assert len(tabs) >= 2, tabs
+        cur = page.evaluate("window.cotare.doc.id")
+        other = [t for t in tabs if t != cur][-1]
+        page.click(f'#docTabs [data-tab="{other}"]')
+        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id === '{other}'")
+        page.click(f'#docTabs [data-tab="{cur}"]')
+        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id === '{cur}'")
+        while page.query_selector("#docTabs [data-tabclose]"):
+            page.click("#docTabs [data-tabclose] >> nth=0")
+        assert page.evaluate("window.cotare.tabs.length") == 1
+        print("Tabs: OK")
         # closing without changes: straight to the start page
         page.click("#btnClose")
         page.wait_for_function("window.cotare.doc === null && !document.getElementById('emptyState').hidden")

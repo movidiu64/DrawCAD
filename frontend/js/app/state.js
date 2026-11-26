@@ -48,6 +48,7 @@ export class StateHistory {
   }
 
   doClose() {
+    const id = this.doc && this.doc.id;
     clearTimeout(this.saveTimer);
     this.saveTimer = null;
     this.doc = null;
@@ -74,6 +75,8 @@ export class StateHistory {
     this.panel.render();
     this.updateButtons();
     this.refreshRecent();
+    // other documents open as tabs: the neighbouring one is shown
+    if (id) this.afterClose(id);
   }
 
   scheduleSave() {

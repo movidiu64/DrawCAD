@@ -67,6 +67,11 @@ export class Documents {
   }
 
   setDoc(meta, state) {
+    // another document was open: it stays as a tab (UI-D4a), what lives only here is kept for it
+    if (this.doc && this.doc.id !== meta.id) {
+      this._tabFrom = this._tabFrom || this.doc.id;
+      this.leaveDoc(meta.id);
+    }
     this.compare = null;
     this.doc = meta;
     localStorage.setItem("cotare.lastDoc", meta.id);
@@ -93,6 +98,7 @@ export class Documents {
     document.title = `${meta.name} — DrawCAD`;
     this.setPage(0);
     this.updateButtons();
+    this.enterDoc(meta);
     // the first document ever opened here: three short tips (rail, command line, panel), once
     setTimeout(() => dlg.firstRunTips(), 600);
   }
@@ -150,7 +156,11 @@ export class Documents {
     dlg.toast(units === "mm" ? "Desenul se citește din nou în mm…" : "Desenul se citește din nou în inch…", 15000);
     const meta = await api.dxfUnits(old.id, units);
     this.setDoc(meta, meta.state);
-    if (!keep) api.deleteDoc(old.id).catch(() => {});
+    if (!keep) {
+      api.deleteDoc(old.id).catch(() => {});
+      if (this._sessions) this._sessions.delete(old.id);
+      this.forgetTab(old.id);
+    }
     dlg.toast(`${this.dxfOpenedText(meta)}${keep ? ` ${tr("Documentul de dinainte, cu adnotările lui, rămâne în lista de documente.")}` : ""}`, 9000);
   }
 

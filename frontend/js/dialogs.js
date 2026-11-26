@@ -127,6 +127,7 @@ export function bindRecent(container, app, onOpen) {
     if (!window.confirm(`Ștergi „${b.dataset.name}” de pe server? Cotele nesalvate în PDF se pierd.`)) return;
     try {
       await api.deleteDoc(b.dataset.del);
+      if (app.forgetTab) app.forgetTab(b.dataset.del);
       b.closest(".item").remove();
       toast("Document șters de pe server");
     } catch (e) {

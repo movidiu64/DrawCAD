@@ -586,7 +586,8 @@ export class Grips {
       this.loadDoc(m[1]);
       return;
     }
-    const last = localStorage.getItem("cotare.lastDoc");
+    this.renderDocTabs();
+    const last = localStorage.getItem("cotare.lastDoc") || (this.tabs[0] && this.tabs[0].id);
     if (last) this.loadDoc(last, true);
   }
 }

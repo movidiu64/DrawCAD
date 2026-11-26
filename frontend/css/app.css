@@ -133,6 +133,19 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .sep { width: 1px; height: 28px; background: var(--line); }
 .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 /* the document as a chip: name, save state, close */
+/* UI-D4a: other open documents as tabs beside the current one's chip */
+.doctabs { display: flex; align-items: center; gap: 2px; min-width: 0; flex: 0 1 auto; overflow: hidden; }
+.doctab { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; height: 34px; padding: 0 2px 0 8px; border-radius: 6px; color: var(--text2); }
+.doctab:hover { background: var(--raised); color: var(--text); }
+.doctab .tb { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 180px; height: 30px; padding: 0; border: 0; background: transparent; color: inherit; font-size: 13px; }
+.doctab .tb span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doctab svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.doctab .tx { width: 22px; height: 22px; opacity: 0; }
+.doctab .tx svg { width: 12px; height: 12px; }
+.doctab:hover .tx, .doctab .tx:focus-visible { opacity: 1; }
+.tabadd { width: 28px; height: 28px; flex: none; }
+.tabadd svg { width: 15px; height: 15px; }
+.doctabs.multi .docchip .docname #docName { max-width: 18vw; }
 .docchip { display: flex; align-items: center; gap: 4px; min-width: 0; height: 34px; padding: 0 2px 0 10px; border: 1px solid var(--line2); border-radius: 6px; background: var(--raised); }
 #app.nodoc .docchip { border-color: transparent; background: transparent; }
 .docchip button.icon { width: 26px; height: 26px; }
@@ -545,6 +558,8 @@ button.link { border: 0; background: none; padding: 0; height: auto; color: var(
 
 /* icon-only tools */
 @media (max-width: 900px) {
+  /* phone / narrow: only the current document in the header; the others stay open (Open → Recent) */
+  .doctab, .tabadd { display: none; }
   .zoom button.txt { display: none; }
   .top { flex-wrap: nowrap; }
   .top .lg { display: none; }

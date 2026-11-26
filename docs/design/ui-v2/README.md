@@ -60,7 +60,7 @@ commit that built it.
 | UI-D3 | Panel tabs Proprietăți / Straturi / Adnotări | built (b49c869) | editor-properties, editor-layers, editor-annotations |
 | UI-D3a | The keys summary leaves the panel when a document is open | built (b49c869); on the start screen as a link to the Keys dialog | — |
 | UI-D4 | Header: search field, icon buttons, Export split button; one document | built (5f27a88) | editor-* |
-| UI-D4a | Several documents as tabs | planned | editor-* (second chip) |
+| UI-D4a | Several documents as tabs | built (v1.5): one document loaded at a time, the others kept as tabs (undo, page, zoom kept in the browser), max 8, hidden on a phone | editor-* (second chip) |
 | UI-D5 | Status bar: wide command line, toggle chips | built (452f1cc) | editor-*, states |
 | UI-D6 | Accent fill only for the primary action; `--accent-tint` for state; tabular figures for values (research F7) | built (452f1cc) | all |
 | UI-D7 | Start screen: drop zone, a card on layers with the Keys link, recent documents as cards | built (5f27a88) | start |
@@ -152,8 +152,8 @@ commit that built it.
   a chevron next to it (`#btnExportMenu`) opens a small menu (PDF / DXF) that calls
   `exportDialog(app, { fmt })` with the format preselected.
 - The save state stays next to the document name.
-- Not in scope: several open documents as tabs (the second tab in the mockup is a future idea; the app
-  holds one document).
+- Several open documents as tabs: UI-D4a (v1.5), the editor still holds one document, the others are
+  kept as tabs and loaded again when shown.
 
 ### UI-D5 — Status bar and command line
 
