@@ -91,3 +91,14 @@ huge entity counts, a DWG that is not one).
 - The original-DXF export also takes pages turned in the editor and images placed in DrawCAD (ZIP).
 - A sheet frame drawn in model space (an ISO rectangle at a standard scale around the drawing) is the page,
   edge to edge; between equivalent sizes (A6 1:1 / A4 2:1) the median text height decides.
+- Samples from users (dev.14): LibreDWG writes every layout viewport with id 0 / status 0 (switched on
+  again), root dictionary entries pointing to handle 0 (dropped on a retry), sheet frames inside ISO 5457
+  margins; the text-height band (1.4–7 mm on paper, nearest 1:1) picks the scale.
+- Fonts (dev.15): styles that name only a family (font file empty, family in XDATA, as Inventor writes
+  ISOCPEUR / AIGDT) fell to a generic sans-serif: now osifont, like any missing font, and reported in the
+  opening message. GD&T symbol fonts (AIGDT, AMGDT, gdt.shx) missing here: their letters become the
+  Unicode symbols (n → Ø, j → ⌖…), which osifont has. Users add their own fonts (TTF / OTF / TTC / SHX):
+  `<data>/fonts`, `DRAWCAD_FONTS`, the Autodesk Fonts folders on Windows; from Settings in personal mode
+  and the desktop app, each file checked in the limited child first. Autodesk fonts are not shipped.
+- The backend reads ezdxf's generators once (an empty one made an empty path, dropped by PDFium, which
+  shifted the entity map on multi-layout drawings; `any()` on a generator lost the first filled path).

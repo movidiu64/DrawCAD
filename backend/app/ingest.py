@@ -7,6 +7,7 @@ and the server answers "file rejected". The result (the cleaned PDF) is written 
 
 Usage: python -m app.ingest <input> <output_folder> [dpi]
        python -m app.ingest --image <input> <output_folder>   (an image to place on a drawing)
+       python -m app.ingest --font <input> <output_folder>    (a font for DXF / DWG texts)
 Output on stdout: a single JSON object.
 """
 from __future__ import annotations
@@ -15,6 +16,7 @@ import json
 import os
 import re
 import sys
+from pathlib import Path
 
 
 def _env(name, default):
@@ -304,8 +306,63 @@ def dxf_colors(doc_dir: str) -> dict:
     return {}
 
 
+class _NullPen:
+    def __getattr__(self, _name):
+        return lambda *a, **k: None
+
+
+FONT_KINDS = {".ttf": "TrueType", ".otf": "OpenType", ".ttc": "TrueType", ".shx": "SHX"}
+
+
+def check_font(path: str, ext: str) -> dict:
+    """A font added for DXF / DWG texts, read the way the drawings will read it (fontTools for
+    TrueType / OpenType, ezdxf's reader for SHX) and drawn once. → {family, kind}"""
+    ext = ext.lower()
+    if ext not in FONT_KINDS:
+        raise Rejected("Font necunoscut: se acceptă .ttf, .otf, .ttc și .shx")
+    with open(path, "rb") as f:
+        head = f.read(32)
+    if ext == ".shx":
+        if not head.startswith(b"AutoCAD-86 "):
+            raise Rejected("Nu e un font SHX")
+        from ezdxf.fonts import shapefile
+
+        font = shapefile.readfile(path)
+        if not len(font):
+            raise Rejected("Fontul SHX nu are caractere")
+        family = Path(path).stem
+    else:
+        if head[:4] not in (b"\x00\x01\x00\x00", b"true", b"OTTO", b"ttcf"):
+            raise Rejected("Nu e un font TrueType / OpenType")
+        from fontTools.ttLib import TTFont
+
+        tt = TTFont(path, fontNumber=0)
+        family = ""
+        for rec in tt["name"].names:
+            if rec.nameID == 1:
+                family = rec.toUnicode()
+                break
+        glyphs = tt.getGlyphSet()
+        for ch in "AØ09":  # noqa: RUF001 (drawn once, as the drawings will)
+            name = tt.getBestCmap().get(ord(ch))
+            if name:
+                glyphs[name].draw(_NullPen())
+        tt.close()
+    return {"family": family[:100], "kind": FONT_KINDS[ext]}
+
+
 def main(argv):
     _limit_self()
+    if len(argv) > 3 and argv[1] == "--font":
+        try:
+            _emit(argv[3], {"ok": True, **check_font(argv[2], os.path.splitext(argv[2])[1])})
+            return 0
+        except Rejected as e:
+            _emit(argv[3], {"ok": False, "error": str(e)})
+            return 2
+        except Exception:  # noqa: BLE001
+            _emit(argv[3], {"ok": False, "error": "Font respins: nu poate fi citit"})
+            return 4
     if len(argv) > 2 and argv[1] == "--dxf-colors":
         try:
             _emit(argv[2], {"ok": True, **dxf_colors(argv[2])})

@@ -705,6 +705,7 @@ export function settingsDialog(app, startPane = null) {
     { id: "sheet", doc: true, label: "Foaie și revizii" },
     { id: "ui", doc: false, label: "Interfață" },
     { id: "cmds", doc: false, label: "Comenzi și meniu" },
+    { id: "fonts", doc: false, label: "Fonturi DXF / DWG", scope: "Server · pentru desenele DXF / DWG deschise de acum înainte" },
     ...(ws ? [{ id: "ws", doc: false, label: "Spațiu de lucru" }] : []),
   ];
   let cur = "style";
@@ -715,7 +716,7 @@ export function settingsDialog(app, startPane = null) {
   const navItem = (p) => `<button role="tab" id="stab-${p.id}" data-stab="${p.id}" aria-controls="spane-${p.id}">${p.label}</button>`;
   const pane = (id, body) => {
     const p = PANES.find((x) => x.id === id);
-    const scope = p.doc ? "Documentul curent · se aplică la „Aplică”" : "Toate documentele · se salvează imediat, în acest browser";
+    const scope = p.scope || (p.doc ? "Documentul curent · se aplică la „Aplică”" : "Toate documentele · se salvează imediat, în acest browser");
     return `<section class="spane" role="tabpanel" id="spane-${id}" aria-labelledby="stab-${id}" hidden>
       <div class="scope"><h3>${p.label}</h3><span class="${p.doc ? "doc" : ""}">${scope}</span></div>${body}</section>`;
   };
@@ -800,6 +801,14 @@ export function settingsDialog(app, startPane = null) {
             <div class="sub">Alegi trăgând spre comandă și eliberând butonul; pe ecran tactil, apăsare lungă.</div>
             <div class="mmgrid" id="sMm">${mmGridHtml(markingConfig())}</div>
             <div class="row"><button class="ghost" id="sMmReset">Revino la implicit</button></div>
+          </div>`)}
+        ${pane("fonts", `
+          <div class="sec">
+            <div class="h">Fonturi pentru textele din DXF / DWG</div>
+            <div class="sub">Un text cu un font care nu e aici se scrie cu osifont (ISO 3098). Simbolurile GD&T din fonturile AIGDT, AMGDT și GDT se convertesc (n → Ø, j → ⌖…). Pentru aspectul exact adaugă fonturile din instalarea ta AutoCAD / Inventor (ex.: isocpeur.ttf, aigdt.ttf, isocp.shx): DrawCAD nu le include.</div>
+            <div class="fontlist" id="sFonts"><span class="sub">…</span></div>
+            <div class="row" id="sFontAdd" hidden><button class="ghost" id="sFontPick">Adaugă fonturi…</button><input type="file" id="sFontFile" accept=".ttf,.otf,.ttc,.shx" multiple hidden><span class="sub">.ttf · .otf · .ttc · .shx</span></div>
+            <div class="sub" id="sFontNote"></div>
           </div>`)}
         ${ws ? pane("ws", `
           <div class="sec">
@@ -901,6 +910,42 @@ export function settingsDialog(app, startPane = null) {
       }
     });
   }
+  // fonts for DXF / DWG texts: kept by the server
+  const fontRows = (list, editable) => (list.length
+    ? list.map((f) => `<div class="fontrow"><span translate="no">${esc(f.name)}</span><span class="sub">${fmtNum(f.size / 1024, ",", 0)} kB</span>${editable ? `<button class="ghost" data-delfont="${esc(f.name)}" title="Șterge fontul" aria-label="Șterge fontul ${esc(f.name)}">×</button>` : ""}</div>`).join("")
+    : `<span class="sub">Niciun font adăugat.</span>`);
+  const showFonts = (r) => {
+    $d("#sFonts").innerHTML = fontRows(r.fonts || [], r.editable);
+    $d("#sFontAdd").hidden = !r.editable;
+    const where = r.dir ? `<span>Fonturile adăugate stau în <span translate="no">${esc(r.dir)}</span>.</span> ` : "";
+    const auto = (r.auto || []).length ? `<span>Se folosesc și fonturile programelor Autodesk de pe acest calculator: <span translate="no">${r.auto.map(esc).join(", ")}</span>.</span> ` : "";
+    $d("#sFontNote").innerHTML = r.editable
+      ? `${where}${auto}<span>Desenele deja deschise rămân cum sunt: deschide fișierul din nou.</span>`
+      : "Pe acest server fonturile le adaugă administratorul: fișierele se pun în folderul fonts din volumul de date (/data/fonts).";
+    dlg.querySelectorAll("[data-delfont]").forEach((b) => b.addEventListener("click", async () => {
+      try {
+        showFonts({ ...r, ...(await api.deleteFont(b.dataset.delfont)) });
+      } catch (e) {
+        toast(e.message);
+      }
+    }));
+  };
+  api.fonts().then(showFonts).catch(() => { $d("#sFonts").innerHTML = `<span class="sub">Lista fonturilor nu e disponibilă.</span>`; });
+  $d("#sFontPick").addEventListener("click", () => $d("#sFontFile").click());
+  $d("#sFontFile").addEventListener("change", async () => {
+    const files = [...$d("#sFontFile").files];
+    $d("#sFontFile").value = "";
+    let last = null;
+    for (const f of files) {
+      try {
+        last = await api.addFont(f);
+        toast(`Font adăugat: ${last.added.name}${last.added.family ? ` (${last.added.family})` : ""}`);
+      } catch (e) {
+        toast(`${f.name}: ${e.message}`, 6000);
+      }
+    }
+    if (last) showFonts({ ...(await api.fonts()) });
+  });
   $d("#sKeys").addEventListener("click", () => keysDialog(app));
   dlg.querySelectorAll("[data-theme-set]").forEach((b) => b.addEventListener("click", () => {
     app.applyTheme(b.dataset.themeSet);
@@ -1264,6 +1309,7 @@ const SETTINGS_PAGES = [
   ["sheet", "Foaie și revizii", "scară revizie nume toleranțe generale ISO 2768 limba desenului"],
   ["ui", "Interfață", "limbă bara de unelte etichete temă"],
   ["cmds", "Comenzi și meniu", "taste directe comenzi AutoCAD meniu radial"],
+  ["fonts", "Fonturi DXF / DWG", "font lipsă ISOCPEUR AIGDT GDT SHX TrueType simboluri"],
 ];
 
 /** Ctrl+K: finds a tool, an action or a settings page by name (Romanian or English), alias or what it

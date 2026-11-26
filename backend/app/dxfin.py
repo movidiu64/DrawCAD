@@ -9,6 +9,7 @@ Called only in the limited child process (ingest.py) for uploaded files: DXF inp
 """
 from __future__ import annotations
 
+import copy
 import io
 import math
 import os
@@ -162,7 +163,10 @@ class _Canvas(BackendInterface):
         self.handles.append(props.handle)
         self.layers.append(props.layer)
 
+    # ezdxf may pass generators: read once into lists (an empty one would make an empty path, which
+    # PDFium drops, shifting the entity map; a test on a generator would eat its first items)
     def draw_solid_lines(self, lines, props) -> None:
+        lines = list(lines)
         if not lines:
             return
         self._stroke(props)
@@ -185,7 +189,8 @@ class _Canvas(BackendInterface):
         self.layers.append(props.layer)
 
     def draw_filled_paths(self, paths, props) -> None:
-        if not any(len(q) for q in paths):
+        paths = [q for q in paths if len(q)]
+        if not paths:
             return
         self._fill(props)
         p = self.c.beginPath()
@@ -240,9 +245,26 @@ class _Canvas(BackendInterface):
 _FONTS_READY = False
 
 
+def font_dirs() -> list[Path]:
+    """Folders with the fonts the user added (TrueType, OpenType, SHX): `<data>/fonts`, the folders in
+    DRAWCAD_FONTS and, on Windows, the Fonts folders of the Autodesk programs installed here."""
+    out = []
+    data = os.environ.get("DRAWCAD_DATA") or os.environ.get("COTARE_DATA") or "/data"
+    out.append(Path(data) / "fonts")
+    for d in (os.environ.get("DRAWCAD_FONTS") or "").split(os.pathsep):
+        if d.strip():
+            out.append(Path(d.strip()))
+    if os.name == "nt":
+        for base in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)")):
+            if base:
+                out += sorted(Path(base, "Autodesk").glob("*/Fonts"))
+    return [d for d in out if d.is_dir()]
+
+
 def _use_fonts() -> None:
     """Texts in osifont (ISO 3098) when the drawing's font is not on this machine: SHX fonts (romans,
-    simplex, isocp, txt…) are never here, TrueType fonts may be (Arial on Windows)."""
+    simplex, isocp, txt…) and CAD TrueType fonts (ISOCPEUR, AIGDT) are usually missing, others may be
+    here (Arial on Windows). Fonts the user added (`font_dirs`) are used first, SHX files too."""
     global _FONTS_READY
     if _FONTS_READY:
         return
@@ -250,15 +272,81 @@ def _use_fonts() -> None:
 
     from . import pdfcore
 
+    fm = fonts.font_manager
+    for d in font_dirs():
+        try:
+            fm.scan_folder(d)
+        except Exception:  # noqa: BLE001 (a font that cannot be read is skipped by ezdxf; a folder error here)
+            pass
+    # an SHX font the user added wins over its TrueType stand-in
+    ezdxf.options.set("drawing-addon", "shx_resolve_order", "stl")
     path = Path(pdfcore.FONT_PATH).resolve()
     if path.is_file():
-        fm = fonts.font_manager
         fm.scan_folder(path.parent)
         if fm.has_font(path.name):
             fm._fallback_font_name = path.name
             # SHX names resolved by family ("TXT", "ROMANS") also go to osifont
             fm.add_synonyms({path.name: n for n in fonts.SHX_FONTS.values()}, reverse=False)
     _FONTS_READY = True
+
+
+# GD&T symbol fonts: a letter stands for a symbol (n = diameter, j = position…), the same in AutoCAD's
+# gdt.shx / amgdt.shx and in the TrueType AIGDT / AMGDT
+_GDT_FONT = re.compile(r"(?i)^(ai|am)?gdt(\.(shx|ttf))?$")
+_GDT_CHARS = str.maketrans({
+    "a": "\u2220", "b": "\u22a5", "c": "\u23e5", "d": "\u2313", "e": "\u25cb", "f": "\u2225",
+    "g": "\u232d", "h": "\u2197", "i": "\u232f", "j": "\u2316", "k": "\u2312", "l": "\u24c1",
+    "m": "\u24c2", "n": "\u00d8", "o": "\u25a1", "p": "\u24c5", "q": "\u2104", "r": "\u25ce",
+    "s": "\u24c8", "t": "\u2330", "u": "\u23e4", "v": "\u2334", "w": "\u2335", "x": "\u21a7",
+    "y": "\u2332", "z": "\u2333",
+})
+
+
+def _font_found(name: str) -> bool:
+    """A font file (or, without an extension, a family) is on this machine."""
+    from ezdxf.fonts import fonts
+
+    if "." in name:
+        return fonts.font_manager.has_font(name)
+    return fonts.find_best_match(family=name) is not None
+
+
+def _fix_faces(ctx: RenderContext, doc) -> list[str]:
+    """Text styles whose font is missing here: drawn in osifont, the face keeping the font's name as its
+    family (GD&T fonts are recognised by it). A style with only a family name (the font file name
+    left empty, the family in XDATA: ISOCPEUR, AIGDT, Arial from Inventor) would otherwise fall to a
+    generic sans-serif. → the missing TrueType / GD&T font names."""
+    from ezdxf.fonts import fonts
+
+    from . import pdfcore
+
+    osi = Path(pdfcore.FONT_PATH).name
+    missing = []
+    for st in doc.styles:
+        key = st.dxf.name.lower()
+        face = ctx.fonts.get(key)
+        if face is None:
+            continue
+        file = (st.dxf.get("font") or "").strip()
+        family = ""
+        if not file and st.has_extended_font_data:
+            family = (st.get_extended_font_data()[0] or "").strip()
+        name = file or family
+        if not name:
+            continue
+        stem = Path(name).stem if "." in name else name
+        is_gdt = bool(_GDT_FONT.match(name))
+        shx = fonts.is_shx_font_name(file) if file else False
+        if shx and not is_gdt:
+            continue  # SHX text fonts: osifont is their usual stand-in
+        if _font_found(name if "." in name or not shx else f"{name}.shx"):
+            if is_gdt:
+                ctx.fonts[key] = face._replace(family=stem)
+            continue
+        ctx.fonts[key] = face._replace(filename=osi, family=stem)
+        if stem not in missing:
+            missing.append(stem)
+    return missing
 
 
 def _config() -> config.Configuration:
@@ -279,10 +367,20 @@ class _Texts:
     missing here, the drawing's own TrueType font when it is on this machine. Items: (string, matrix
     to drawing units of the em-size-1 text, color, corners, entity handle, layer, PDF font name)."""
 
-    def __init__(self, pipe):
+    def __init__(self, pipe, missing=()):
         from ezdxf.addons.drawing.pipeline import prepare_string_for_rendering
 
+        from ezdxf.fonts import fonts
+
+        from . import pdfcore
+
         self.items = []
+        self._osi = Path(pdfcore.FONT_PATH).name
+        self._families = {"sans-serif", "serif", "monospace"}
+        self._missing = set(missing)
+        self.missing_used: set[str] = set()
+        self.used_gdt = False
+        self._gdt: dict[str, bool] = {}
         self._pipe = pipe
         self._orig = pipe.draw_text
         self._prep = prepare_string_for_rendering
@@ -302,9 +400,43 @@ class _Texts:
         name = _rl_font(path)
         return (name, per_cap) if name and per_cap > 0 else None
 
+    def _gdt_missing(self, face) -> bool:
+        """`face` is a GD&T symbol font that is not on this machine (its letters become the symbols)."""
+        name = face.family or ""
+        if face.filename and _GDT_FONT.match(face.filename):
+            name = face.filename
+        if not _GDT_FONT.match(name):
+            return False
+        if name not in self._gdt:
+            drawn = ""
+            try:
+                font = self._pipe.text_engine.get_font(face)
+                try:  # a TrueType font: the file it was read from (a missing one reads the fallback)
+                    drawn = font.glyph_cache.font.reader.file.name
+                except Exception:  # noqa: BLE001 (a shape font: gdt.shx itself, when the user added it)
+                    drawn = getattr(font, "name", "")
+            except Exception:  # noqa: BLE001
+                pass
+            self._gdt[name] = "gdt" not in Path(str(drawn)).name.lower()
+        return self._gdt[name]
+
     def draw_text(self, text, transform, properties, cap_height, dxftype="TEXT"):
         pipe = self._pipe
         face = properties.font or pipe.default_font_face
+        if face is not None and not face.filename and face.family and face.family not in self._families:
+            # a family named in MTEXT (\\FISOCPEUR|b0|…;) that is not here: osifont, as for styles
+            from ezdxf.fonts import fonts
+
+            if fonts.find_best_match(family=face.family) is None:
+                face = face._replace(filename=self._osi)
+                properties = copy.copy(properties)
+                properties.font = face
+                self._missing.add(face.family)
+        if face is not None and face.family in self._missing:
+            self.missing_used.add(face.family)
+        if face is not None and self._gdt_missing(face):
+            text = self._prep(text, dxftype).translate(_GDT_CHARS)
+            self.used_gdt = True
         pf = self._pdf_font(face) if text.strip() and face is not None else None
         if pf is None:
             return self._orig(text, transform, properties, cap_height, dxftype)
@@ -369,11 +501,13 @@ def _rl_font(path: str) -> str | None:
 
 
 class _Drawing:
-    """A layout as recorded by ezdxf (geometry) plus its texts."""
+    """A layout as recorded by ezdxf (geometry) plus its texts and the fonts missing for them."""
 
-    def __init__(self, rec, texts):
+    def __init__(self, rec, texts, missing=(), gdt=False):
         self.rec = rec
         self.texts = texts
+        self.missing = list(missing)
+        self.gdt = gdt  # GD&T letters drawn as symbols (the symbol font is missing)
 
     def bbox(self) -> BoundingBox2d | None:
         b = self.rec.player().bbox()
@@ -386,10 +520,12 @@ def _record(doc, layout_obj) -> _Drawing:
     _use_fonts()
     rec = recorder.Recorder()
     ctx = RenderContext(doc)
+    missing = _fix_faces(ctx, doc)
     fe = frontend.Frontend(ctx, rec, config=_config())
-    texts = _Texts(fe.pipeline)
+    texts = _Texts(fe.pipeline, missing)
     fe.draw_layout(layout_obj, finalize=True)
-    return _Drawing(rec, texts.items)
+    used = texts.missing_used
+    return _Drawing(rec, texts.items, [m for m in missing if m in used] + sorted(used - set(missing)), texts.used_gdt)
 
 
 def _place(drw: _Drawing, c, page_mm: tuple[float, float], box: BoundingBox2d) -> tuple[list, tuple[list[str], list[str]]]:
@@ -783,12 +919,19 @@ def _dxf_to_pdf(data: bytes, max_entities: int) -> tuple[bytes, dict]:
     c.setTitle("DXF")
     pages = []
     maps = []
+    missing: list[str] = []  # fonts drawn in osifont instead
+    gdt = []
+
+    def note(rec: _Drawing) -> _Drawing:
+        missing.extend(m for m in rec.missing if m not in missing)
+        gdt.append(rec.gdt)
+        return rec
     # a DXF exported by DrawCAD: its page frame and scale, exactly
     dc = drawcad_page(doc)
     if dc:
         # a DXF exported by DrawCAD: its page, exactly ((0, 0)…sheet × scale in model space)
         sw, sh, scale = dc
-        rec = _record(doc, doc.modelspace())
+        rec = note(_record(doc, doc.modelspace()))
         box = BoundingBox2d([Vec2(0, 0), Vec2(sw * scale / unit, sh * scale / unit)])
         tf, hl = _place(rec, c, (sw, sh), box)
         maps.append(hl)
@@ -798,7 +941,7 @@ def _dxf_to_pdf(data: bytes, max_entities: int) -> tuple[bytes, dict]:
         for lay in sorted(doc.layouts, key=lambda x: x.dxf.get("taborder", 0)):
             if lay.is_modelspace or not len(lay):
                 continue
-            rec = _record(doc, lay)
+            rec = note(_record(doc, lay))
             if rec.bbox() is None:
                 continue
             page = layout.Page.from_dxf_layout(lay)
@@ -812,7 +955,7 @@ def _dxf_to_pdf(data: bytes, max_entities: int) -> tuple[bytes, dict]:
             scale = (vps[0].dxf.view_height / vps[0].dxf.height) * unit if vps else 1.0
             pages.append({"name": lay.name, "space": "paper", "sheet": [round(wmm, 2), round(hmm, 2)], "scale": round(scale, 6), "tf": tf})
     if not pages:
-        rec = _record(doc, doc.modelspace())
+        rec = note(_record(doc, doc.modelspace()))
         outliers = 0
         b = rec.bbox()
         if b is None:
@@ -849,6 +992,7 @@ def _dxf_to_pdf(data: bytes, max_entities: int) -> tuple[bytes, dict]:
     checked = _checked_maps(pdf, [h for h, _l in maps])
     info = {"pages": pages, "fixes": len(auditor.fixes), "errors": len(auditor.errors), "units_mm": unit,
             "inventor": rebuilt, "handles": checked,
+            "fonts_missing": missing, "gdt_symbols": any(gdt),
             "layer_map": _layer_map(doc, [(h, lay) if ok is not None else None for (h, lay), ok in zip(maps, checked)])}
     if rebuilt:
         info["fixed_dxf"] = fixed

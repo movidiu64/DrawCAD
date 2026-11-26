@@ -619,6 +619,48 @@ class ApiTest(unittest.TestCase):
         u = dx.modelspace().query("IMAGE")[0].dxf.u_pixel
         self.assertAlmostEqual(math.degrees(math.atan2(u.y, u.x)) % 360, 90, 3)  # upright on the turned page
 
+    def test_fonts(self):
+        """Fonts for DXF / DWG texts: added (checked in the limited process), used by the drawings opened
+        afterwards, removed; anything else is refused; only in a single-user setup."""
+        import ezdxf
+
+        from app import main as appmain
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        import test_dxfin
+
+        self.assertEqual(self.req("GET", "/api/fonts")["fonts"], [])
+        ttf = Path(pdfcore.FONT_PATH).read_bytes()
+        r = self.req("POST", "/api/fonts", ttf, {"X-Filename": "isocpeur.ttf"})
+        self.assertEqual([f["name"] for f in r["fonts"]], ["isocpeur.ttf"])
+        self.assertEqual(r["added"]["family"], "osifont")
+        doc = ezdxf.new("R2010", units=4)
+        doc.styles.add("ISO", font="isocpeur.ttf")
+        doc.styles.add("AR", font="drawcad-missing.ttf")
+        doc.modelspace().add_text("Text", height=3.5, dxfattribs={"style": "ISO"}).set_placement((0, 0))
+        doc.modelspace().add_text("Arial", height=3.5, dxfattribs={"style": "AR"}).set_placement((0, 10))
+        doc.modelspace().add_line((0, -5), (100, -5))
+        meta = self.req("POST", "/api/open", test_dxfin.to_bytes(doc), {"X-Filename": "fonturi.dxf"})
+        self.assertEqual(meta["dxf"]["fonts_missing"], ["drawcad-missing"])
+        for name, data in (("x.ttf", b"\x00\x01\x00\x00" + b"\x00" * 200), ("x.shx", b"not a shape file"),
+                           ("x.woff", ttf), ("-x.ttf", ttf)):
+            with self.assertRaises(urllib.error.HTTPError) as e:
+                self.req("POST", "/api/fonts", data, {"X-Filename": name})
+            self.assertEqual(e.exception.code, 400, name)
+        r = self.req("POST", "/api/fonts", test_dxfin.make_shx(), {"X-Filename": "drawcadt.shx"})
+        self.assertEqual((r["added"]["kind"], len(r["fonts"])), ("SHX", 2))
+        self.req("DELETE", "/api/fonts?name=drawcadt.shx")
+        self.assertEqual(len(self.req("GET", "/api/fonts")["fonts"]), 1)
+        appmain.MODE = "private"
+        try:
+            self.assertFalse(self.req("GET", "/api/fonts")["editable"])
+            with self.assertRaises(urllib.error.HTTPError) as e:
+                self.req("DELETE", "/api/fonts?name=isocpeur.ttf")
+            self.assertEqual(e.exception.code, 403)
+        finally:
+            appmain.MODE = "personal"
+        self.assertEqual(self.req("DELETE", "/api/fonts?name=isocpeur.ttf")["fonts"], [])
+
     def test_dxf_layers_hidden(self):
         """Layers of an opened DXF: listed with their color; a hidden layer is gone from the page, the
         text search and the PDF export, turned off in the DXF of the original drawing, and back when shown."""

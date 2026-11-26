@@ -1568,6 +1568,94 @@ async def api_health(request: Request):
                          "version": VERSION})
 
 
+# fonts for DXF / DWG texts (ISOCPEUR, AIGDT, SHX files…), shared by every drawing opened on this server:
+# added from the interface only where one person uses the server (personal mode, the desktop app),
+# otherwise by whoever runs it, in <data>/fonts
+FONTS_DIR = DATA_DIR / "fonts"
+MAX_FONT = 30 * 1024 * 1024
+MAX_FONTS = 300
+_FONT_NAME = re.compile(r"^[\w][\w .()+&-]{0,95}\.(ttf|otf|ttc|shx)$", re.IGNORECASE)
+
+
+def _fonts_editable() -> bool:
+    return MODE == "personal" or DESKTOP
+
+
+def _font_list() -> list[dict]:
+    out = []
+    if FONTS_DIR.is_dir():
+        for f in sorted(FONTS_DIR.iterdir(), key=lambda x: x.name.lower()):
+            if f.is_file() and _FONT_NAME.match(f.name):
+                out.append({"name": f.name, "size": f.stat().st_size})
+    return out
+
+
+async def api_fonts(request: Request):
+    """GET: the fonts added; POST (a file, its name in X-Filename): checked in the limited process,
+    then kept; DELETE ?name=…: removed."""
+    if request.method == "GET":
+        from . import dxfin
+
+        auto = [str(d) for d in dxfin.font_dirs() if d.resolve() != FONTS_DIR.resolve()] if DESKTOP else []
+        return JSONResponse({"fonts": _font_list(), "editable": _fonts_editable(),
+                             "dir": str(FONTS_DIR) if DESKTOP else None, "auto": auto})
+    if not _fonts_editable():
+        return _err("Pe acest server fonturile se adaugă în folderul fonts al datelor", 403)
+    if request.method == "DELETE":
+        name = os.path.basename(request.query_params.get("name", ""))
+        f = FONTS_DIR / name
+        if not _FONT_NAME.match(name) or not f.is_file():
+            return _err("Font inexistent", 404)
+        f.unlink()
+        return JSONResponse({"fonts": _font_list()})
+    name = request.headers.get("x-filename", "")
+    with contextlib.suppress(UnicodeError):
+        name = bytes(name, "latin-1").decode("utf-8")
+    name = os.path.basename(name).strip()
+    if not _FONT_NAME.match(name):
+        return _err("Se acceptă fonturi .ttf, .otf, .ttc și .shx (nume fără caractere speciale)")
+    if len(_font_list()) >= MAX_FONTS:
+        return _err(f"Prea multe fonturi (limita e {MAX_FONTS})")
+    INCOMING.mkdir(parents=True, exist_ok=True)
+    tmp_id = uuid.uuid4().hex
+    upload = INCOMING / f"{tmp_id}{os.path.splitext(name)[1].lower()}"
+    out_dir = INCOMING / tmp_id
+    try:
+        try:
+            size = await _read_limited(request, MAX_FONT, upload)
+        except OverflowError:
+            return _err(f"Font prea mare (limita e {MAX_FONT // (1024 * 1024)} MB)", 413)
+        if not size:
+            return _err("Fișier gol")
+        out_dir.mkdir()
+        proc = await asyncio.create_subprocess_exec(
+            *_child_cmd("app.ingest", "--font", upload, out_dir),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+            cwd=str(Path(__file__).resolve().parents[1]), **_child_kw(),
+        )
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), INGEST_TIMEOUT)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            return _err("Font respins: citirea a durat prea mult")
+        try:
+            res = json.loads(out.decode("utf-8") or "{}")
+        except Exception:  # noqa: BLE001
+            res = {}
+        if not res:
+            res = _read_json(out_dir / "result.json", {}) or {}
+        if not res.get("ok"):
+            return _err(res.get("error") or "Font respins")
+        FONTS_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(upload), FONTS_DIR / name)
+        return JSONResponse({"fonts": _font_list(), "added": {"name": name, "family": res.get("family", ""), "kind": res.get("kind", "")}})
+    finally:
+        with contextlib.suppress(OSError):
+            upload.unlink()
+        shutil.rmtree(out_dir, ignore_errors=True)
+
+
 async def api_workspace(request: Request):
     """Workspace code (private modes only): copy it to continue in another
     browser; POST with another code moves this browser to that space."""
@@ -1594,6 +1682,7 @@ def _set_ws_cookie(resp, request, token):
 
 routes = [
     Route("/api/health", api_health),
+    Route("/api/fonts", api_fonts, methods=["GET", "POST", "DELETE"]),
     Route("/api/open", api_open, methods=["POST"]),
     Route("/api/docs", api_docs),
     Route("/api/workspace", api_workspace, methods=["GET", "POST"]),

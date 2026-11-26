@@ -74,6 +74,16 @@ def ink(data, page=0):
     return 1 - sum(hist[250:]) / sum(hist)
 
 
+def make_shx() -> bytes:
+    """A tiny SHX font ("AutoCAD-86 shapes 1.0"): only an "A", drawn as a hook of three strokes."""
+    import struct
+
+    shapes = [(0, b"TEST\x00" + bytes([8, 2, 0, 0])), (65, b"A\x00" + bytes([1, 0x84, 0x80, 0x8C, 0]))]
+    head = b"AutoCAD-86 shapes 1.0\r\n\x1a" + struct.pack("<HHH", 0, 65, len(shapes))
+    index = b"".join(struct.pack("<HH", n, len(d)) for n, d in shapes)
+    return head + index + b"".join(d for _n, d in shapes) + b"EOF"
+
+
 DWG = Path(__file__).parent / "fixtures" / "piesa_r2000.dwg"  # make_doc() saved as R2000 DWG by LibreDWG
 
 
@@ -376,6 +386,107 @@ class DxfToPdfTest(unittest.TestCase):
         msp.add_lwpolyline([(10, 10), (10, 10)])
         _, info = dxfin.dxf_to_pdf(to_bytes(doc))
         self.assertIsNotNone(info["handles"][0])
+
+    def test_family_only_styles(self):
+        """Styles that name only a font family (Inventor: the file name empty, the family in XDATA) are
+        drawn in osifont, not a generic sans-serif, and listed as missing; the GD&T font's letters
+        become the symbols (n → Ø)."""
+        doc = ezdxf.new("R2010", units=4)
+        for name, fam in (("ISO$0", "ISOCPEUR"), ("GDT$0", "AIGDT")):
+            doc.styles.add(name, font="").set_extended_font_data(fam)
+        msp = doc.modelspace()
+        msp.add_text("Bohrung 20", height=3.5, dxfattribs={"style": "ISO$0"}).set_placement((0, 0))
+        msp.add_text("n", height=3.5, dxfattribs={"style": "GDT$0"}).set_placement((0, 10))
+        msp.add_text("6", height=3.5, dxfattribs={"style": "ISO$0"}).set_placement((3, 10))
+        msp.add_line((0, -5), (100, -5))
+        pdf, info = dxfin.dxf_to_pdf(to_bytes(doc))
+        self.assertEqual(info["fonts_missing"], ["ISOCPEUR", "AIGDT"])
+        self.assertTrue(info["gdt_symbols"])
+        d = pdfium.PdfDocument(pdf)
+        txt = d[0].get_textpage().get_text_range()
+        d.close()
+        self.assertIn("Bohrung 20", txt)
+        self.assertIn("Ø", txt)
+        self.assertNotIn("n", txt.replace("Bohrung", ""))  # the letter became the symbol
+        self.assertNotIn(b"DejaVu", pdf)
+        self.assertNotIn(b"Liberation", pdf)
+
+    def test_mtext_gdt(self):
+        """An MTEXT switching to the GD&T font (\\Fgdt;) and to a missing family: symbols, osifont."""
+        doc = ezdxf.new("R2010", units=4)
+        msp = doc.modelspace()
+        msp.add_mtext("{\\Fgdt;j}0,1 A {\\FISOCPEUR|b0|i0;Text}", dxfattribs={"char_height": 3.5}).set_location((0, 20))
+        msp.add_line((0, 0), (100, 0))
+        pdf, info = dxfin.dxf_to_pdf(to_bytes(doc))
+        d = pdfium.PdfDocument(pdf)
+        txt = d[0].get_textpage().get_text_range()
+        d.close()
+        self.assertIn("\u2316", txt)  # position
+        self.assertIn("0,1", txt)
+        self.assertIn("ISOCPEUR", info["fonts_missing"])
+        self.assertNotIn(b"Liberation", pdf)
+
+    def test_added_font(self):
+        """A font the user added (a folder in DRAWCAD_FONTS) is used: a GD&T font present here keeps
+        its letters, and it is not reported missing."""
+        import os
+        import shutil
+        import tempfile
+
+        from app import pdfcore
+
+        with tempfile.TemporaryDirectory() as d:
+            shutil.copy(pdfcore.FONT_PATH, Path(d) / "amgdt.ttf")
+            (Path(d) / "drawcadt.shx").write_bytes(make_shx())
+            old = os.environ.get("DRAWCAD_FONTS")
+            os.environ["DRAWCAD_FONTS"] = d
+            dxfin._FONTS_READY = False
+            try:
+                doc = ezdxf.new("R2010", units=4)
+                doc.styles.add("G", font="amgdt.ttf")
+                doc.styles.add("S", font="drawcadt.shx")
+                doc.modelspace().add_text("n", height=3.5, dxfattribs={"style": "G"}).set_placement((0, 0))
+                doc.modelspace().add_text("A", height=3.5, dxfattribs={"style": "S"}).set_placement((20, 0))
+                doc.modelspace().add_line((0, -5), (100, -5))
+                pdf, info = dxfin.dxf_to_pdf(to_bytes(doc))
+            finally:
+                if old is None:
+                    os.environ.pop("DRAWCAD_FONTS", None)
+                else:
+                    os.environ["DRAWCAD_FONTS"] = old
+                dxfin._FONTS_READY = False
+        d = pdfium.PdfDocument(pdf)
+        txt = d[0].get_textpage().get_text_range()
+        d.close()
+        self.assertEqual(info["fonts_missing"], [])
+        self.assertFalse(info["gdt_symbols"])
+        self.assertIn("n", txt)
+        self.assertNotIn("A", txt)  # drawn by the SHX font: strokes, not PDF text
+
+    def test_canvas_generators(self):
+        """The backend gets generators from ezdxf: an empty one draws nothing (no empty path for PDFium
+        to drop, the entity map stays aligned); every filled path is drawn, the first one too."""
+        from ezdxf.addons.drawing.properties import BackendProperties
+        from ezdxf.path import from_vertices
+        from reportlab.pdfgen import canvas as rl
+
+        buf = io.BytesIO()
+        c = rl.Canvas(buf, pagesize=(200, 200))
+        cv = dxfin._Canvas(c, 200, 200)
+        props = BackendProperties(handle="A1")
+        cv.draw_solid_lines(iter([]), props)
+        squares = [from_vertices([(x, 10), (x + 20, 10), (x + 20, 30), (x, 30)], close=True) for x in (10, 100)]
+        cv.draw_filled_paths(iter(squares), props)
+        c.showPage()
+        c.save()
+        self.assertEqual(cv.handles, ["A1"])
+        d = pdfium.PdfDocument(buf.getvalue())
+        objs = list(d[0].get_objects())
+        self.assertEqual(len(objs), 1)
+        left, _b, right, _t = objs[0].get_bounds()
+        d.close()
+        self.assertLess(left, 15)  # the first square is there
+        self.assertGreater(right, 115)
 
     def test_empty(self):
         with self.assertRaises(ValueError):

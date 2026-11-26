@@ -67,6 +67,16 @@ st, _h, _ = call("POST", f"/api/doc/{meta['id']}/images", b"\x89PNG\r\n\x1a\n", 
 assert st == 403, st
 st, _h, _ = call("GET", f"/api/doc/{meta['id']}/image/../../meta.json")
 assert st == 404, st
+# fonts for DXF / DWG: a cross-site upload is refused; a font that is not one (or a renamed executable)
+# is refused by the limited process; on a shared server nobody adds fonts from the browser
+st, _h, _ = call("POST", "/api/fonts", b"\x00\x01\x00\x00", {"X-Filename": "a.ttf", "Origin": "http://rau.example"})
+assert st == 403, st
+_fonts = json.loads(call("GET", "/api/fonts")[2])
+for name, bad in (("a.ttf", b"\x00\x01\x00\x00" + os.urandom(3000)), ("b.shx", b"MZ" + os.urandom(3000)), ("c.exe", b"MZ")):
+    st, _h, _ = call("POST", "/api/fonts", bad, {"X-Filename": name})
+    assert st == (400 if _fonts["editable"] else 403), f"font accepted: {name} {st}"
+st, _h, _ = call("DELETE", "/api/fonts?name=../meta.json")
+assert st in (403, 404), st
 st, _h, _ = call("GET", "/api/health")
 assert st == 200, "the server must keep working"
 mode = json.loads(call("GET", "/api/health")[2]).get("mode")

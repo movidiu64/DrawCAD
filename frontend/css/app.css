@@ -237,10 +237,17 @@ button.danger { height: 34px; padding: 0 12px; border: 1px solid var(--bad-line)
 .ctxtool .cdef { flex: none; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
 .ctxtool .cdef select { height: 26px; min-height: 26px; padding: 0 6px; font-size: 12px; max-width: 240px; }
 .ctxtool .ca.dng { color: var(--bad); border-color: var(--bad-line); }
-.ctxpages { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; min-width: 0; max-width: 45%; overflow-x: auto; }
-.ctxpages > button { height: 26px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--text2); font-size: 12px; white-space: nowrap; flex: none; }
-.ctxpages > button:hover { background: var(--raised); }
-.ctxpages > button.on { background: var(--line2); color: var(--on); }
+.ctxpages { flex: 0 1 auto; display: flex; align-items: center; gap: 2px; min-width: 0; max-width: 55%; }
+.pgscroll { display: flex; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.pgscroll::-webkit-scrollbar { display: none; }
+.pgscroll > button { height: 26px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: var(--text2); font-size: 12px; white-space: nowrap; flex: none; }
+.pgscroll > button:hover { background: var(--raised); }
+.pgscroll > button.on { background: var(--line2); color: var(--on); }
+.pgarr { display: none; flex: none; width: 22px; height: 26px; padding: 0; place-items: center; border: 0; border-radius: 4px; background: transparent; color: var(--text2); }
+.pgarr:hover:not(:disabled) { background: var(--raised); color: var(--text); }
+.pgarr:disabled { opacity: 0.35; cursor: default; }
+.pgarr svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ctxpages.ovf .pgarr { display: grid; }
 .legendchip { position: absolute; left: 14px; bottom: 12px; z-index: 2; display: flex; gap: 14px; padding: 5px 10px; border-radius: 6px; background: var(--chip-bg); font-size: 11px; color: var(--text2); pointer-events: none; }
 .legendchip span { display: flex; align-items: center; gap: 6px; }
 .legendchip i { width: 8px; height: 8px; border-radius: 2px; }
@@ -393,6 +400,11 @@ input[type="color"] { width: 44px; height: 34px; padding: 2px; border: 1px solid
 button.ghost.sw { width: 34px; height: 34px; padding: 0; display: grid; place-items: center; }
 button.ghost.sw i { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--line4); }
 button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
+.fontlist { display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow-y: auto; margin: 4px 0 8px; }
+.fontrow { display: flex; align-items: center; gap: 10px; min-height: 30px; padding: 0 4px 0 8px; border-radius: 5px; font-size: 13px; }
+.fontrow:hover { background: var(--raised); }
+.fontrow > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fontrow button { height: 24px; min-width: 24px; padding: 0 6px; }
 .railfams { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px 12px; font-size: 13px; }
 .mmgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .mmgrid .mmc { display: flex; flex-direction: column; gap: 3px; }
@@ -627,7 +639,7 @@ button.link { border: 0; background: none; padding: 0; height: auto; color: var(
 .keytab input.bad { border-color: var(--bad) !important; background: var(--bad-bg) !important; }
 
 /* page operations */
-.pgops { display: inline-flex; gap: 3px; margin-left: 8px; }
+.pgops { display: inline-flex; flex: none; gap: 3px; margin-left: 8px; }
 .pgops .mini, .pgcard .mini { width: 26px; height: 26px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line2); border-radius: 5px; background: var(--raised); color: var(--text2); }
 .pgops .mini:hover, .pgcard .mini:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
 .pgops svg, .pgcard .mini svg, .row .ghost svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: -3px; }

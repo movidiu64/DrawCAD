@@ -40,8 +40,14 @@ export class Documents {
     else if (pg.length === 1) what = `planșa ${pg[0].name}; scara ${sc}`;
     else what = `planșe: ${pg.map((p) => p.name).join(", ")}; scara ${sc}`;
     const n = (meta.dxf.fixes || 0) + (meta.dxf.errors || 0);
-    const fix = (n ? ` Fișierul avea ${n} erori, reparate la citire.` : "")
-      + (meta.dxf.inventor ? " Desen salvat din Inventor: vederile, chenarul și indicatorul au fost așezate din nou din blocurile lui." : "");
+    const fonts = meta.dxf.fonts_missing || [];
+    // each remark translated on its own: together they would not match one English entry
+    const fix = [
+      n ? `Fișierul avea ${n} erori, reparate la citire.` : "",
+      meta.dxf.inventor ? "Desen salvat din Inventor: vederile, chenarul și indicatorul au fost așezate din nou din blocurile lui." : "",
+      fonts.length ? `Fonturi înlocuite cu osifont: ${fonts.join(", ")}; le poți adăuga din Setări → Fonturi DXF / DWG.` : "",
+      meta.dxf.gdt_symbols ? "Simbolurile GD&T (font AIGDT / GDT) au fost convertite." : "",
+    ].filter(Boolean).map((t) => ` ${tr(t)}`).join("");
     return `Deschis: ${meta.name} — ${what}. Scara desenului e luată din fișier.${fix}`;
   }
 
@@ -212,10 +218,44 @@ export class Documents {
       <button class="mini" data-pgop="rl" title="Rotește pagina la stânga (ROTL)" aria-label="Rotește pagina la stânga">${ico("M4 4v6h6M4.6 15a8 8 0 1 0 1.9-8.3L4 10")}</button>
       <button class="mini" data-pgop="rr" title="Rotește pagina la dreapta (ROTR)" aria-label="Rotește pagina la dreapta">${ico("M20 4v6h-6M19.4 15a8 8 0 1 1-1.9-8.3L20 10")}</button>
       <button class="mini" data-pgop="dlg" title="Pagini: rotire, ordine, ștergere (PAGES)" aria-label="Pagini">${ico("M5 3h9l5 5v13H5zM14 3v5h5")}</button></span>`;
-    $("pageTabs").innerHTML = `${tabs}${ops}`;
+    // many pages (a DWG with 20 layouts): the tabs scroll sideways (wheel, arrows) without a scrollbar
+    // over them; the page buttons stay in place
+    const box = $("pageTabs");
+    const left = box.querySelector(".pgscroll")?.scrollLeft || 0;
+    const arr = (d, t) => `<button class="pgarr" data-pgstep="${d}" title="${t}" aria-label="${t}">${ico(d < 0 ? "M15 5l-7 7 7 7" : "M9 5l7 7-7 7")}</button>`;
+    box.innerHTML = `${arr(-1, "Filele din stânga")}<div class="pgscroll">${tabs}</div>${arr(1, "Filele din dreapta")}${ops}`;
     $("legend").hidden = false;
-    $("pageTabs").querySelectorAll("[data-pg]").forEach((b) => b.addEventListener("click", () => this.setPage(Number(b.dataset.pg))));
-    $("pageTabs").querySelectorAll("[data-pgop]").forEach((b) => b.addEventListener("click", () => {
+    const sc = box.querySelector(".pgscroll");
+    sc.scrollLeft = left;
+    const on = sc.querySelector("button.on");
+    if (on && (on.offsetLeft < sc.scrollLeft || on.offsetLeft + on.offsetWidth > sc.scrollLeft + sc.clientWidth)) {
+      sc.scrollLeft = on.offsetLeft - (sc.clientWidth - on.offsetWidth) / 2;
+    }
+    const ends = () => box.querySelectorAll("[data-pgstep]").forEach((b) => {
+      b.disabled = b.dataset.pgstep < 0 ? sc.scrollLeft <= 0 : sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1;
+    });
+    const fit = () => {
+      box.classList.toggle("ovf", sc.scrollWidth > sc.clientWidth + 1);
+      ends();
+    };
+    fit();
+    this._tabsFit = fit;
+    sc.addEventListener("scroll", ends, { passive: true });
+    if (!this._tabsRO && window.ResizeObserver) {
+      // the bar may still be hidden at the first render (no width yet), or the window resized
+      this._tabsRO = new ResizeObserver(() => this._tabsFit?.());
+      this._tabsRO.observe(box);
+    }
+    sc.addEventListener("wheel", (e) => {
+      if (sc.scrollWidth <= sc.clientWidth) return;
+      e.preventDefault();
+      sc.scrollLeft += Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    }, { passive: false });
+    box.querySelectorAll("[data-pgstep]").forEach((b) => b.addEventListener("click", () => {
+      sc.scrollBy({ left: Number(b.dataset.pgstep) * sc.clientWidth * 0.8, behavior: "smooth" });
+    }));
+    box.querySelectorAll("[data-pg]").forEach((b) => b.addEventListener("click", () => this.setPage(Number(b.dataset.pg))));
+    box.querySelectorAll("[data-pgop]").forEach((b) => b.addEventListener("click", () => {
       const k = b.dataset.pgop;
       if (k === "dlg") dlg.pagesDialog(this);
       else this.pageOp({ op: "rotate", pages: [this.page], delta: k === "rr" ? 90 : -90 }).catch((e) => dlg.toast(e.message));
