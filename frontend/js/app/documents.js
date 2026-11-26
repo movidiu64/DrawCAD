@@ -34,7 +34,8 @@ export class Documents {
     const k = pg[0].scale;
     const sc = k >= 1 ? `1:${fmtNum(k, ",", 3)}` : `${fmtNum(1 / k, ",", 3)}:1`;
     let what;
-    if (pg.length === 1 && pg[0].space === "model" && pg[0].iso) what = `spațiul model pe ${pg[0].iso}, scara ${sc}`;
+    if (pg.length === 1 && pg[0].space === "model" && pg[0].frame) what = `foaia din desen, ${pg[0].iso}, scara ${sc}`;
+    else if (pg.length === 1 && pg[0].space === "model" && pg[0].iso) what = `spațiul model pe ${pg[0].iso}, scara ${sc}`;
     else if (pg.length === 1 && pg[0].space === "model") what = `pagina exportată din DrawCAD, scara ${sc}`;
     else if (pg.length === 1) what = `planșa ${pg[0].name}; scara ${sc}`;
     else what = `planșe: ${pg.map((p) => p.name).join(", ")}; scara ${sc}`;

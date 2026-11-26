@@ -1391,6 +1391,7 @@ export const EN = {
   "Click pe colțurile zonei modificate · Enter, click dreapta sau click pe primul punct închide norul": "Click the corners of the changed area · Enter, right-click or a click on the first point closes the cloud",
   "Deschis: {} — {}. Scara desenului e luată din fișier.{}": "Opened: {} — {}. The drawing scale is taken from the file.{}",
   "spațiul model pe {}, scara {}": "model space on {}, scale {}",
+  "foaia din desen, {}, scara {}": "the drawing's own sheet, {}, scale {}",
   "pagina exportată din DrawCAD, scara {}": "the page exported from DrawCAD, scale {}",
   "planșe: {}; scara {}": "layouts: {}; scale {}",
   "planșa {}; scara {}": "layout {}; scale {}",
