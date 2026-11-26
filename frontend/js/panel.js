@@ -200,6 +200,7 @@ export class Panel {
         <button data-g="layer" data-v="rev" class="${allRev ? "on" : ""}">Revizie</button></div></div>` : ""}
       <div class="sec"><div class="btns">
         <button class="ghost" data-g="copy">Copiază</button><button class="ghost" data-g="dup">Duplică</button>
+        <button class="ghost" data-g="sym" title="Salvează selecția în biblioteca de simboluri (B / BLOCK)">Ca simbol…</button>
         <button class="danger" data-g="del">Șterge ${list.length}</button></div>
       <div class="note">Trage de oricare dintre ele pentru a muta grupul · săgețile mută cu 0,5 mm (Shift: 5 mm) · Shift+click adaugă sau scoate din selecție · Esc renunță.</div></div>`;
   }
@@ -226,6 +227,9 @@ export class Panel {
           break;
         case "copy":
           app.copySelected();
+          break;
+        case "sym":
+          app.runCommand("symSave");
           break;
         case "dup":
           if (app.copySelected(true)) app.paste(true);

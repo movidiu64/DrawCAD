@@ -3,6 +3,12 @@ import { newId, K, dimSeries, parseNum, gdtAnchor } from "./annots.js";
 import { trackSweep } from "./shapes.js";
 import { gtolLabel } from "./iso2768.js";
 
+// tools of kind "pick" (OFFSET, TRIM, EXTEND, INSERT): click(app, raw, pt, shift), hover(app, raw, pt, shift, sn),
+// snaps(app) = whether the cursor point snaps now (objects are picked at the raw cursor)
+const MODIFY = {
+  click(app, raw, pt, shift) { app.modifyClick(this, raw, pt, shift); },
+  hover(app, raw, pt, shift, sn) { app.modPreview(this, raw, pt, shift, sn); },
+};
 const shape = (app, kind, pts, extra = {}) => ({ type: "shape", kind, pts, ...app.drawStyle, ...extra });
 const arcState = { key: null };
 
@@ -327,13 +333,28 @@ export const TOOLS = [
   { id: "redact", label: "Șterge", key: "X", group: "Revizie", icon: "M7 20h12M5 15.5l9-9 5 5-6.5 6.5H9z", kind: "rect",
     hint: "Trage un dreptunghi → alegi ce obiecte din original se elimină",
     make: (r) => ({ type: "redact", r, ids: [], objs: [] }) },
+  // own symbols (BLOCK / INSERT): a saved group of annotations placed with its base point at the click
+  { id: "symbol", label: "Simbol", key: "", group: "Documentare", icon: "M4 4h7v7H4zM15.5 4a3.5 3.5 0 1 0 0.01 0M4 20l3.5-6 3.5 6zM14 14h6M17 14v6M14 20h6",
+    kind: "pick", snaps: () => true,
+    click(app, raw, pt) { app.placeSymbol(pt); },
+    hover(app, raw, pt, shift, sn) {
+      app.view.overlay = { prims: app.symbolPreview(pt), snap: sn };
+      app.view.redraw();
+    },
+    hint: "Click pune simbolul ales, cu punctul lui de bază sub cursor · L = biblioteca (alt simbol) · repetă până la Enter / Esc" },
+  { id: "symSave", label: "Salvează ca simbol", key: "", group: "Documentare", hidden: true, icon: "M4 4h7v7H4zM15.5 4a3.5 3.5 0 1 0 0.01 0M12 15v6M9 18h6",
+    kind: "clicks", n: 1, hint: "Punctul de bază: cel care stă sub cursor când pui simbolul (de ex. vârful unei săgeți, un colț) · Esc renunță",
+    make(pts, app) {
+      app.symbolFromSel(pts[0]);
+      return null;
+    } },
   // OFFSET, TRIM, EXTEND on drawn shapes (CMD-D17): kind "pick" = objects are clicked, see js/app/modify.js
   { id: "offset", label: "Decalare", key: "", group: "Modificare", icon: "M4 18L18 4M8 20L20 8M3 12l3 3",
-    kind: "pick", hint: "Distanța (sau T = prin punct) → click pe linie, polilinie, dreptunghi, cerc sau arc → click pe partea copiei · repetă până la Enter / Esc" },
+    kind: "pick", ...MODIFY, snaps: (app) => app.clicks.length > 0, hint: "Distanța (sau T = prin punct) → click pe linie, polilinie, dreptunghi, cerc sau arc → click pe partea copiei · repetă până la Enter / Esc" },
   { id: "trim", label: "Taie", key: "", group: "Modificare", icon: "M4 12h16M12 4v16M15 9l5-5M17 4h3v3",
-    kind: "pick", hint: "Click pe bucata de tăiat: dispare până la cele mai apropiate intersecții (cu desenul sau cu alte linii desenate) · fără intersecții se șterge tot obiectul · Shift + click prelungește · Enter / Esc termină" },
+    kind: "pick", ...MODIFY, hint: "Click pe bucata de tăiat: dispare până la cele mai apropiate intersecții (cu desenul sau cu alte linii desenate) · fără intersecții se șterge tot obiectul · Shift + click prelungește · Enter / Esc termină" },
   { id: "extend", label: "Prelungește", key: "", group: "Modificare", icon: "M20 4v16M4 12h11M12 9l3 3-3 3",
-    kind: "pick", hint: "Click lângă capătul de prelungit: merge până la cea mai apropiată margine (desenul sau alte linii desenate) · Shift + click taie · Enter / Esc termină" },
+    kind: "pick", ...MODIFY, hint: "Click lângă capătul de prelungit: merge până la cea mai apropiată margine (desenul sau alte linii desenate) · Shift + click taie · Enter / Esc termină" },
   { id: "calib", label: "Calibrare", key: "K", group: "Revizie", icon: "M3 17h18M5 17v-4M9 17v-2M13 17v-4M17 17v-2M21 17v-4M3 7h18M3 7l3-2M3 7l3 2M21 7l-3-2M21 7l-3 2", kind: "clicks", n: 2,
     hint: "Click pe capetele unei cote cunoscute → introduci valoarea reală",
     preview(pts, cur) { return { line: [pts[0], cur] }; } },
@@ -364,6 +385,8 @@ const PROMPTS = {
   rect: ["Primul colț", "Colțul opus"],
   circle: ["Centrul", "Raza sau un punct pe cerc"],
   offset: ["Obiectul de decalat", "Un punct pe partea copiei"],
+  symbol: ["Punctul de inserție"],
+  symSave: ["Punctul de bază al simbolului"],
   trim: ["Obiectul de tăiat (Shift = prelungește)"],
   extend: ["Obiectul de prelungit (Shift = taie)"],
 };
@@ -378,7 +401,7 @@ const optText = {
   run: (app) => app.askValue("Textul cotei (un număr = valoarea nominală; gol = valoarea măsurată)", (v) => {
     app.cmdState.text = v;
     return true;
-  }),
+  }, true),
 };
 const optUndo = { key: "U", label: "Anulează pasul", en: ["UNDO", "ANULEAZA"], when: (app) => app.clicks.length > 0 || !!(app.chain && app.chain.ids.length), run: (app) => app.undoStep() };
 const optClose = { key: "C", label: "Închide", en: ["CLOSE"], run: (app) => app.closeStep() };
@@ -428,6 +451,7 @@ const OPTIONS = {
     { key: "T", label: "Prin punct", en: ["THROUGH"], when: (app) => !app.clicks.length, run: (app) => { app.offsetDist = null; } },
     { key: "U", label: "Anulează", en: ["UNDO"], when: (app) => !!(app.cmdState && app.cmdState.done), run: (app) => app.modUndo() },
   ],
+  symbol: [{ key: "L", label: "Bibliotecă", en: ["LIBRARY", "BLOCKS"], run: (app) => app.openSymbolLibrary() }],
   trim: [{ key: "U", label: "Anulează", en: ["UNDO"], when: (app) => !!(app.cmdState && app.cmdState.done), run: (app) => app.modUndo() }],
   extend: [{ key: "U", label: "Anulează", en: ["UNDO"], when: (app) => !!(app.cmdState && app.cmdState.done), run: (app) => app.modUndo() }],
   ucs: [{ key: "W", label: "Colțul paginii", en: ["WORLD"], run: (app) => app.ucsWorld() }],
@@ -465,6 +489,10 @@ export function promptFor(t, app) {
   if (app.cmdState && app.cmdState.orient) text += app.cmdState.orient === "h" ? " (orizontal)" : " (vertical)";
   else if (app.cmdState && app.cmdState.rotA != null && t.id === "dimLin") text += ` (rotit ${String(app.cmdState.rotA).replace(".", ",")}°)`;
   if (app.cmdState && app.cmdState.axis) text += ` (pe ${app.cmdState.axis.toUpperCase()})`;
+  if (t.id === "symbol" && app.currentSymbol) {
+    const s = app.currentSymbol();
+    if (s) text += ` (${s.name})`;
+  }
   if (t.id === "offset" && !n) text += app.offsetDist > 0 ? ` (${String(app.offsetDist).replace(".", ",")} mm)` : " (prin punct)";
   const opts = (OPTIONS[t.id] || []).filter((o) => !o.when || o.when(app));
   return { text, opts };
@@ -523,7 +551,7 @@ export const FAMILIES = [
   { id: "measure", label: "Măsoară", tools: ["measure", "ucs"] },
   { id: "dims", label: "Cote", sep: true, tools: ["dimLin", "dimAli", "dimDia", "dimDiaC", "dimRad", "dimAng", "chamfer", "dimOrd", "dimCont", "dimBase", "holes"] },
   { id: "tol", label: "Toleranțe", tools: ["rough", "gdt", "datum"] },
-  { id: "notes", label: "Adnotări", tools: ["text", "lead", "note", "revtab", "bom", "balloon", "tblock", "stamp", "qr", "image"] },
+  { id: "notes", label: "Adnotări", tools: ["text", "lead", "note", "revtab", "bom", "balloon", "tblock", "stamp", "qr", "image", "symbol"] },
   { id: "draw", label: "Desen", sep: true, tools: ["line", "poly", "rect", "circle", "arc", "cross", "hatch", "break", "offset", "trim", "extend"] },
   { id: "views", label: "Vederi", tools: ["section", "detail", "viewlabel"] },
   { id: "rev", label: "Revizie", sep: true, tools: ["strike", "cloud", "cloudp", "mark", "comment", "compare", "white", "ink", "redact"] },

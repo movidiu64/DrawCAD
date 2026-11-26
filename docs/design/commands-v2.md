@@ -540,6 +540,22 @@ Ovidiu's confirmation (behaviour in his AutoCAD, or a product choice) before it 
 - **Code:** geometry in `js/modify.js` (pure, `tests/modify.test.js`), the commands in
   `js/app/modify.js` (tool kind `"pick"`); e2e step 18b.
 
+### CMD-D18 — BLOCK / INSERT: own symbols (done on `v1.5`)
+
+- **`B` / BLOCK:** on the selection (or after Select objects): a base point, then the name (free text:
+  Space types a space at such prompts). The items are stored relative to the base point, without ids,
+  pages or server images (images go in as data, ≤ 300 kB each); a symbol with the same name is
+  replaced, as a redefined block. Types that belong to their drawing are left out (removal, cover,
+  struck value, comment, origin, watermark, hole table).
+- **`I` / INSERT:** places the chosen symbol at each click (with snap, the preview follows the cursor)
+  until Enter / Esc; `L` opens the library. The placed annotations are independent (exploded, in
+  AutoCAD terms) and selected after placing, so grips rotate or scale them.
+- Library in `localStorage` (`drawcad.symbols`), as the title blocks; files `.drawcad-sym.json` (one
+  symbol or `{ kind: "drawcad-symbols", symbols }`), cleaned on import (known types only, image data
+  only as PNG / JPEG / WebP data URLs, 2 MB per file).
+- **Code:** `js/blocks.js` (pure, `tests/blocks.test.js`), `js/app/blocks.js`, `symbolDialog` in
+  `dialogs.js`; e2e (B, I, L after the rectangle step).
+
 ## Phases
 
 1. **Points:** CMD-D1, D2, D3, D4, D8. Point input from the command line, origin and units, Shift.
@@ -576,6 +592,7 @@ After phases 1–5 the same weights give about **≈ 65 %** (estimate).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-26 | minor | BLOCK / INSERT, own symbol library (CMD-D18) on `v1.5` |
 | 2026-11-26 | minor | OFFSET, TRIM, EXTEND on drawn shapes (CMD-D17) on `v1.5` |
 | 2026-11-24 | minor | Grip menu (modes, add / remove vertex) on `v1.1`; grips 85 %; ≈ 81 % (estimate) |
 | 2026-11-24 | minor | Dynamic input on hot grips on `v1.1`; dynamic input 72 %, grips 78 %; ≈ 80 % (estimate) |

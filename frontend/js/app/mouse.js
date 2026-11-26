@@ -563,13 +563,13 @@ export class Mouse {
         cv.style.cursor = "crosshair";
       }
       if (t.kind === "pick" && !d) {
-        // OFFSET / TRIM / EXTEND: objects are picked at the cursor, without snap; OFFSET's side point snaps
+        // OFFSET / TRIM / EXTEND, INSERT: objects are picked at the cursor, without snap; points snap
         let pt = raw;
         let sn = null;
-        if (t.id === "offset" && this.clicks.length) ({ pt, sn } = this.snapPoint(raw, e, null));
+        if (t.snaps && t.snaps(this)) ({ pt, sn } = this.snapPoint(raw, e, null));
         this._dynPt = pt;
         this.showCoords(pt);
-        this.modPreview(t, raw, pt, e.shiftKey, sn);
+        t.hover(this, raw, pt, e.shiftKey, sn);
         return;
       }
       if (d && d.kind === "free") {

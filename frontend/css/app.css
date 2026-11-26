@@ -538,6 +538,16 @@ button.ghost.sw.on, button.ghost.on { border-color: var(--accent); }
 .tblist { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow: auto; }
 .tbrow { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); flex-wrap: wrap; }
 .tbname { flex: 1 1 200px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.symlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; max-height: 52vh; overflow: auto; padding: 2px; }
+.symlist .note { grid-column: 1 / -1; }
+.symcard { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); min-width: 0; }
+.symcard.cur { border-color: var(--accent); }
+.symput { display: flex; flex-direction: column; align-items: stretch; gap: 3px; padding: 8px; background: none; border: 0; border-radius: 8px 8px 0 0; color: var(--text); text-align: left; cursor: pointer; min-width: 0; }
+.symput:hover { background: var(--raised); }
+.symthumb { width: 100%; aspect-ratio: 132 / 84; object-fit: contain; background: var(--paper); border-radius: 4px; }
+.symname { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.symacts { display: flex; flex-wrap: wrap; gap: 2px; padding: 0 6px 6px; }
+.symacts button { padding: 2px 6px; font-size: 12px; }
 .cols { display: flex; gap: 20px; flex-wrap: wrap; }
 .cols > * { flex: 1 1 300px; min-width: 0; }
 .cards { display: flex; flex-direction: column; gap: 8px; }

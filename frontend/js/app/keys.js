@@ -145,6 +145,8 @@ export class Keyboard {
         mark();
         return;
       }
+      // a free-text answer (a name, a dimension text) keeps its spaces; elsewhere Space = Enter, as in AutoCAD
+      if (e.key === " " && this.cmdAsk && this.cmdAsk.free) return;
       if (e.key === "Enter" || e.key === " " || e.key === "Tab") {
         e.preventDefault();
         const v = inp.value.trim();
@@ -311,7 +313,7 @@ export class Keyboard {
     };
     if (TOOL_BY_ID[id]) {
       if (!needDoc()) return;
-      if (id === "moveSel" || id === "copySel") {
+      if (id === "moveSel" || id === "copySel" || id === "symSave") {
         this.moveCmd(id);
         return;
       }

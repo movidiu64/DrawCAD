@@ -40,6 +40,8 @@ export const DEFAULT_ALIASES = {
   cross: ["CM", "CENTERMARK", "DCE"],
   hatch: ["H", "HATCH", "BH"],
   break: ["BRL", "BREAKLINE"],
+  symbol: ["I", "INSERT", "SIMBOL"],
+  symSave: ["B", "BLOCK", "SIMBOLNOU"],
   offset: ["O", "OFFSET", "DECALARE"],
   trim: ["TR", "TRIM"],
   extend: ["EX", "EXTEND", "PRELUNGESTE"],

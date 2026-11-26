@@ -80,7 +80,7 @@ export class Editing {
     if (this.sel.size) this.prevSel = [...this.sel];
     this.selPrompt = null;
     if (p && p.cmd === "erase" && this.sel.size) this.deleteSelected();
-    if (p && (p.cmd === "moveSel" || p.cmd === "copySel") && this.sel.size) this.moveCmd(p.cmd);
+    if (p && (p.cmd === "moveSel" || p.cmd === "copySel" || p.cmd === "symSave") && this.sel.size) this.moveCmd(p.cmd);
     this.updateCmdPrompt();
   }
 

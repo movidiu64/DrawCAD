@@ -420,8 +420,8 @@ export class Grips {
   }
 
   /** An option that needs a value: the next Enter in the command line answers it. */
-  askValue(text, onValue) {
-    this.cmdAsk = { text, onValue };
+  askValue(text, onValue, free = false) {
+    this.cmdAsk = { text, onValue, free };
     this.updateCmdPrompt();
     this.focusCmdLine("");
     return true;

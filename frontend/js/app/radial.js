@@ -120,7 +120,7 @@ export class RadialMenu {
       // OFFSET, TRIM, EXTEND: an object under the cursor (a typed point picks there too)
       this.lastPick = pt;
       this.snapOverride = null;
-      this.modifyClick(t, raw || pt, pt, shift);
+      t.click(this, raw || pt, pt, shift);
       return;
     }
     this.lastPick = pt; // AutoCAD's LASTPOINT: what @ refers to

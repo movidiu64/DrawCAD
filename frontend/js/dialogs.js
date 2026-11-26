@@ -8,6 +8,7 @@ import { lang as uiLang, setLang, LANGS } from "./i18n.js";
 import { SHEETS } from "./pages.js";
 import { revName } from "./revision.js";
 import { isoTemplate, cleanTemplate, templateFields } from "./tblock.js";
+import { symbolsFromFile, symbolsFile, addSymbol, symbolSummary, SYMBOL_TYPES } from "./blocks.js";
 import { COLORS, drawPrims } from "./view.js";
 import { searchCommands, commandList, conflicts, defaultKeyConfig, keyConfig, saveKeyConfig, labelOf, RESERVED_KEYS, DEFAULT_ALIASES, ACTIONS, parsePgp, importPgp } from "./commands.js";
 
@@ -1274,6 +1275,121 @@ export function tblockDialog(app, opts = {}) {
     });
     obs.observe(modal(), { attributes: true, attributeFilter: ["hidden"] });
   }
+}
+
+/** Own symbols (BLOCK / INSERT): place, rename, export, delete; new from the selection; import. */
+export function symbolDialog(app) {
+  const lib = () => app.symbolLib();
+  const nSel = app.selectedAll().filter((a) => a.page === app.page && SYMBOL_TYPES.has(a.type)).length;
+  const fileName = (name) => `${String(name).replace(/[\\/:*?<>|\u0022]+/g, "_")}.drawcad-sym.json`;
+  const render = (q = "") => {
+    const all = lib();
+    const f = q.trim().toLowerCase();
+    const list = all.map((s, i) => ({ s, i })).filter(({ s }) => !f || s.name.toLowerCase().includes(f));
+    const rows = list.map(({ s, i }) => {
+      const { n, img } = symbolSummary(s);
+      return `<div class="symcard${s.id === app.symCur ? " cur" : ""}">
+        <button class="symput" data-symput="${i}" title="Pune pe desen"><img class="symthumb" src="${app.symbolThumb(s)}" alt=""><span class="symname">${esc(s.name)}</span>
+          <span class="sub">${n} ${n === 1 ? "obiect" : "obiecte"}${img ? ` · ${img} ${img === 1 ? "imagine" : "imagini"}` : ""}</span></button>
+        <div class="symacts"><button class="ghost" data-symren="${i}">Redenumește</button>
+          <button class="ghost" data-symexp="${i}">Exportă</button>
+          <button class="ghost danger" data-symdel="${i}" aria-label="Șterge ${esc(s.name)}">Șterge</button></div></div>`;
+    }).join("");
+    const empty = all.length
+      ? `<div class="note">Niciun simbol nu se potrivește cu „${esc(q)}”.</div>`
+      : `<div class="note">Niciun simbol încă. Desenează sau pune adnotările (o notă standard, un simbol al firmei, o rugozitate cu text), selectează-le și alege „Din selecție” (sau comanda B / BLOCK).</div>`;
+    const d = showModal(`
+      <h2>Simboluri</h2>
+      <div class="sub">Grupuri de adnotări salvate în acest browser, puse pe orice desen cu un click (I / INSERT). Le muți pe alt calculator cu Exportă / Importă.</div>
+      ${all.length > 6 ? `<div class="field"><input type="search" id="symQ" placeholder="Caută după nume" value="${esc(q)}" aria-label="Caută după nume"></div>` : ""}
+      <div class="symlist">${rows || empty}</div>
+      <div class="row"><button class="ghost" id="symSel" ${nSel ? "" : `disabled title="Selectează întâi adnotările simbolului"`}>Din selecție (${nSel})</button>
+        <button class="ghost" id="symImp">Importă…</button>
+        <button class="ghost" id="symExpAll" ${all.length ? "" : "disabled"}>Exportă tot</button>
+        <input type="file" id="symFile" accept=".json,application/json" hidden></div>
+      <div class="foot"><button class="ghost" data-close>Închide</button></div>`);
+    const qi = d.querySelector("#symQ");
+    if (qi) {
+      qi.addEventListener("input", () => {
+        render(qi.value);
+        const q2 = dialog().querySelector("#symQ");
+        if (q2) {
+          q2.focus();
+          q2.setSelectionRange(q2.value.length, q2.value.length);
+        }
+      });
+    }
+    const save = (list2) => {
+      if (app.saveSymbolLib(list2)) render(q);
+    };
+    d.querySelectorAll("[data-symput]").forEach((b) => b.addEventListener("click", () => {
+      app.symCur = lib()[Number(b.dataset.symput)].id;
+      closeModal();
+      if (app.tool === "symbol") app.updateCmdPrompt();
+      else app.setTool("symbol");
+    }));
+    d.querySelectorAll("[data-symren]").forEach((b) => b.addEventListener("click", () => {
+      const list2 = lib();
+      const s = list2[Number(b.dataset.symren)];
+      const name = window.prompt("Numele simbolului", s.name);
+      if (!name || !name.trim()) return;
+      const clean = name.replace(/\s+/g, " ").trim().slice(0, 80);
+      if (list2.some((x) => x !== s && x.name.toLowerCase() === clean.toLowerCase())) {
+        toast(`Există deja un simbol „${clean}”`);
+        return;
+      }
+      s.name = clean;
+      save(list2);
+    }));
+    d.querySelectorAll("[data-symexp]").forEach((b) => b.addEventListener("click", async () => {
+      const s = lib()[Number(b.dataset.symexp)];
+      await saveBlob(new Blob([symbolsFile([s])], { type: "application/json" }), fileName(s.name));
+    }));
+    d.querySelectorAll("[data-symdel]").forEach((b) => b.addEventListener("click", () => {
+      const list2 = lib();
+      const s = list2[Number(b.dataset.symdel)];
+      if (!window.confirm(`Ștergi simbolul „${s.name}” din bibliotecă? Desenele pe care e pus nu se schimbă.`)) return;
+      list2.splice(Number(b.dataset.symdel), 1);
+      if (app.symCur === s.id) app.symCur = null;
+      save(list2);
+    }));
+    d.querySelector("#symSel").addEventListener("click", () => {
+      closeModal();
+      if (app.tool !== "select") app.setTool("select");
+      app.runCommand("symSave");
+    });
+    d.querySelector("#symExpAll").addEventListener("click", async () => {
+      await saveBlob(new Blob([symbolsFile(lib())], { type: "application/json" }), "simboluri.drawcad-sym.json");
+    });
+    d.querySelector("#symImp").addEventListener("click", () => d.querySelector("#symFile").click());
+    d.querySelector("#symFile").addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const got = symbolsFromFile(await file.text());
+        let list2 = lib();
+        let repl = 0;
+        for (const s of got) {
+          const r = addSymbol(list2, s);
+          list2 = r.list;
+          if (r.replaced) repl++;
+        }
+        save(list2);
+        toast(`Importat: ${got.length} ${got.length === 1 ? "simbol" : "simboluri"}${repl ? ` (${repl} cu același nume înlocuite)` : ""}`, 5000);
+      } catch (err) {
+        toast(`Nu s-a putut importa: ${err.message}`, 6000);
+      }
+    });
+  };
+  render();
+  // opened by the tool with nothing to place and closed without choosing: back to Select
+  const obs = new MutationObserver(() => {
+    if (modal().hidden) {
+      obs.disconnect();
+      if (app.tool === "symbol" && !app.currentSymbol()) app.setTool("select");
+    }
+  });
+  obs.observe(modal(), { attributes: true, attributeFilter: ["hidden"] });
 }
 
 /** A new title block after ISO 7200: name, language of the labels, the owner (company) or a logo. */
