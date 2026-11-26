@@ -611,7 +611,7 @@ The frontend computes the geometry of each dimension once and sends it to the ex
 | ezdxf | MIT |
 | NumPy | BSD |
 | Tesseract OCR | Apache-2.0 |
-| LibreDWG (`dwg2dxf`, run as a separate program to open DWG; GPL text and source link shipped next to it) | GPL-3.0-or-later |
+| LibreDWG (`dwg2dxf`, run as a separate program to open DWG; GPL text and source link shipped next to it, its source tarball attached to every release) | GPL-3.0-or-later |
 | pywebview | BSD |
 | PyInstaller (build only; the bootloader has an exception for distributed programs) | GPL-2.0 with exception |
 

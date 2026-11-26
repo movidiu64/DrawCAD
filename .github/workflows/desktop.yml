@@ -99,9 +99,15 @@ jobs:
           # dwg2dxf.exe needs only libredwg-0.dll (and Windows' own kernel32 / msvcrt)
           Copy-Item "$tmp\dwg2dxf.exe", "$tmp\libredwg-0.dll", "$tmp\README.txt" $dst
           Copy-Item "desktop\licenses\LibreDWG-COPYING.txt" "$dst\COPYING.txt"
-          Set-Content -Path "$dst\SOURCE.txt" -Encoding ascii -Value "GNU LibreDWG $v (GPL-3.0-or-later), unmodified Windows build from https://github.com/LibreDWG/libredwg/releases/tag/$v`r`nSource: https://github.com/LibreDWG/libredwg/releases/download/$v/libredwg-$v.tar.xz"
+          Set-Content -Path "$dst\SOURCE.txt" -Encoding ascii -Value "GNU LibreDWG $v (GPL-3.0-or-later), unmodified Windows build from https://github.com/LibreDWG/libredwg/releases/tag/$v`r`nSource: libredwg-$v.tar.xz, attached to every DrawCAD release (https://github.com/movidiu64/DrawCAD/releases), and https://github.com/LibreDWG/libredwg/releases/download/$v/libredwg-$v.tar.xz"
           & "$dst\dwg2dxf.exe" --version
           "LIBREDWG_DIR=$dst" >> $env:GITHUB_ENV
+          # GPL-3.0: the source of the dwg2dxf we ship goes with each release (the same tarball the Docker
+          # image is built from), so it stays available even if upstream moves it
+          $src = Join-Path $env:RUNNER_TEMP "libredwg-$v.tar.xz"
+          Invoke-WebRequest "https://github.com/LibreDWG/libredwg/releases/download/$v/libredwg-$v.tar.xz" -OutFile $src
+          if ((Get-FileHash $src -Algorithm SHA256).Hash.ToLower() -ne "62ebb73b984f865960f20ed26619ea5f8789d5e3fd088fa40a2598384da81275") { Write-Host "::error::LibreDWG source checksum mismatch"; exit 1 }
+          "LIBREDWG_SRC=$src" >> $env:GITHUB_ENV
 
       - name: PyInstaller
         run: pyinstaller desktop/drawcad.spec --noconfirm --distpath dist --workpath build
@@ -184,7 +190,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ steps.ver.outputs.tag }}"
-          $files = (Get-ChildItem dist -File -Include *-setup.exe, *-portabil.zip -Recurse).FullName
+          $files = @((Get-ChildItem dist -File -Include *-setup.exe, *-portabil.zip -Recurse).FullName) + @($env:LIBREDWG_SRC)
           gh release view $tag --repo "${{ github.repository }}" *> $null
           if ($LASTEXITCODE -eq 0) {
             # release already published from the web page: attach the files to it
