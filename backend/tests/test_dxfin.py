@@ -339,6 +339,41 @@ class DxfToPdfTest(unittest.TestCase):
         self.assertEqual((p["iso"], p["scale"]), ("A3", 1.0))
         self.assertEqual(info["units_mm"], 25.4)
 
+    def test_set_units(self):
+        """A drawing made from an inch template but drawn in mm, read again in mm: ASCII (header value
+        replaced or added) and binary DXF; nothing else changes."""
+        import tempfile
+
+        doc = ezdxf.new("R2010", units=1)
+        doc.modelspace().add_lwpolyline([(0, 0), (250, 0), (250, 150), (0, 150)], close=True)
+        data = to_bytes(doc)
+        _, info = dxfin.dxf_to_pdf(data)
+        self.assertEqual((info["insunits"], info["units_mm"]), (1, 25.4))
+        mm = dxfin.set_insunits(data, 4)
+        self.assertEqual(len(mm.splitlines()), len(data.splitlines()))
+        _, info = dxfin.dxf_to_pdf(mm)
+        self.assertEqual((info["insunits"], info["units_mm"], info["pages"][0]["iso"], info["pages"][0]["scale"]), (4, 1.0, "A4", 1.0))
+        no_var = data.replace(b"  9\n$INSUNITS\n 70\n1\n", b"")
+        self.assertFalse(b"$INSUNITS" in no_var)
+        self.assertEqual(dxfin.dxf_to_pdf(dxfin.set_insunits(no_var, 4))[1]["units_mm"], 1.0)
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "b.dxf"
+            doc.saveas(f, fmt="bin")
+            binary = dxfin.set_insunits(f.read_bytes(), 4)
+        self.assertTrue(binary.startswith(b"AutoCAD Binary DXF"))
+        self.assertEqual(dxfin.dxf_to_pdf(binary)[1]["units_mm"], 1.0)
+
+    def test_not_drawn(self):
+        """ACIS solids and 3D layout views are counted (the opening message says they are not drawn)."""
+        doc = make_doc(layout=True)
+        doc.modelspace().add_3dsolid().sat = ["700 0 1 0", "@4 test @12 ACIS 7.0 NT @24 Thu Nov 26 12:00:00 2026",
+                                              "1 9.9999999999999995e-07 1e-10", "End-of-ACIS-data"]
+        lay = doc.layouts.get("Plansa 1")
+        vp = lay.add_viewport(center=(60, 60), size=(80, 60), view_center_point=(0, 0), view_height=100)
+        vp.dxf.view_direction_vector = (1, -1, 1)
+        _, info = dxfin.dxf_to_pdf(to_bytes(doc))
+        self.assertEqual((info["acis"], info["views_3d"]), (1, 1))
+
     def test_drawcad_round_trip(self):
         """A DXF exported by DrawCAD opens on its own page: same sheet, same scale."""
         from app.dxfout import DxfPage

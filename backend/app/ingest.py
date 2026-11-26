@@ -5,7 +5,7 @@ geometry extraction) runs here, not in the web server: if a crafted file makes
 the library hang, eat all the memory or crash, only this process stops,
 and the server answers "file rejected". The result (the cleaned PDF) is written to the given folder.
 
-Usage: python -m app.ingest <input> <output_folder> [dpi]
+Usage: python -m app.ingest <input> <output_folder> [dpi] [dxf units ($INSUNITS code)]
        python -m app.ingest --image <input> <output_folder>   (an image to place on a drawing)
        python -m app.ingest --font <input> <output_folder>    (a font for DXF / DWG texts)
 Output on stdout: a single JSON object.
@@ -178,7 +178,7 @@ def clean_upload_image(path: str, out_dir: str) -> dict:
     return {"id": iid, "ext": ext, "w": w, "h": h}
 
 
-def process(path: str, out_dir: str, dpi: float | None) -> dict:
+def process(path: str, out_dir: str, dpi: float | None, units: int | None = None) -> dict:
     from PIL import Image
 
     Image.MAX_IMAGE_PIXELS = int(MAX_IMAGE_MPX * 1e6)
@@ -200,6 +200,14 @@ def process(path: str, out_dir: str, dpi: float | None) -> dict:
         if is_dwg(head):
             data = dwg_dxf(data, out_dir)
             kind = "dwg"
+        if units:
+            # read again in other units ($INSUNITS), chosen by the user
+            from . import dxfin
+
+            try:
+                data = dxfin.set_insunits(data, units)
+            except Exception as e:  # noqa: BLE001
+                raise Rejected(f"DXF imposibil de citit: {e}") from e
         data, dxf = dxf_pdf(data, out_dir)
         data, removed = sanitize_pdf(data)  # our own PDF: nothing to remove, but every PDF goes through it
     elif b"%PDF-" not in head:
@@ -383,7 +391,8 @@ def main(argv):
             _emit(out_dir, {"ok": True, **res})
             return 0
         dpi = float(argv[3]) if len(argv) > 3 and argv[3] else None
-        res = process(argv[1], out_dir, dpi)
+        units = int(argv[4]) if len(argv) > 4 and argv[4] else None
+        res = process(argv[1], out_dir, dpi, units)
         _emit(out_dir, {"ok": True, **res})
         return 0
     except Rejected as e:

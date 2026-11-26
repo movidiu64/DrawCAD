@@ -661,6 +661,30 @@ class ApiTest(unittest.TestCase):
             appmain.MODE = "personal"
         self.assertEqual(self.req("DELETE", "/api/fonts?name=isocpeur.ttf")["fonts"], [])
 
+    def test_dxf_units(self):
+        """A DXF declared in inches read again in mm: a new document, same name, its page and scale in mm."""
+        import ezdxf
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        import test_dxfin
+
+        doc = ezdxf.new("R2010", units=1)
+        doc.modelspace().add_lwpolyline([(0, 0), (250, 0), (250, 150), (0, 150)], close=True)
+        meta = self.req("POST", "/api/open", test_dxfin.to_bytes(doc), {"X-Filename": "inch.dxf"})
+        self.assertEqual(meta["dxf"]["insunits"], 1)
+        new = self.req("POST", f"/api/doc/{meta['id']}/dxf-units", {"units": "mm"})
+        self.assertNotEqual(new["id"], meta["id"])
+        self.assertEqual((new["name"], new["kind"], new["dxf"]["insunits"], new["dxf"]["pages"][0]["iso"]), ("inch.dxf", "dxf", 4, "A4"))
+        self.assertAlmostEqual(new["pages"][0]["w"] / MM, 297, 0)
+        for body in ({"units": "furlong"}, {}):
+            with self.assertRaises(urllib.error.HTTPError) as e:
+                self.req("POST", f"/api/doc/{new['id']}/dxf-units", body)
+            self.assertEqual(e.exception.code, 400)
+        pdf_doc = self.open_sample()
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            self.req("POST", f"/api/doc/{pdf_doc['id']}/dxf-units", {"units": "mm"})
+        self.assertEqual(e.exception.code, 400)
+
     def test_dxf_layers_hidden(self):
         """Layers of an opened DXF: listed with their color; a hidden layer is gone from the page, the
         text search and the PDF export, turned off in the DXF of the original drawing, and back when shown."""

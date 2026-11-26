@@ -127,6 +127,12 @@ export async function deleteFont(name) {
   return jsonOrThrow(await fetch(`api/fonts?name=${encodeURIComponent(name)}`, { method: "DELETE" }));
 }
 
+/** A drawing from DXF / DWG read again in other units ("mm" | "in"): a new document → its meta. */
+export async function dxfUnits(id, units) {
+  const r = await fetch(`api/doc/${id}/dxf-units`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ units }) });
+  return jsonOrThrow(r);
+}
+
 export async function dxfLayers(id, hidden, colors) {
   const r = await fetch(`api/doc/${id}/dxf-layers`, {
     method: "POST",

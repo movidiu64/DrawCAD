@@ -38,6 +38,33 @@ DRAWCAD_VARS = ("DRAWCAD_SHEET_W", "DRAWCAD_SHEET_H", "DRAWCAD_SCALE")
 UNIT_MM = {0: 1.0, 1: 25.4, 2: 304.8, 4: 1.0, 5: 10.0, 6: 1000.0, 14: 100.0}  # $INSUNITS → mm
 
 
+# entities ezdxf cannot draw: ACIS solids and surfaces (their shape is a SAT / SAB model)
+ACIS_TYPES = {"3DSOLID", "BODY", "REGION", "SURFACE", "EXTRUDEDSURFACE", "LOFTEDSURFACE", "REVOLVEDSURFACE",
+              "SWEPTSURFACE", "PLANESURFACE", "NURBSURFACE"}
+
+
+def set_insunits(data: bytes, code: int) -> bytes:
+    """The DXF with its drawing units ($INSUNITS) set to `code` (1 inch, 4 mm…), the rest unchanged: a
+    drawing started from an inch template but drawn in millimetres (or the reverse) is read again in
+    the units it was drawn in. ASCII DXF: the header value is replaced (or added); binary DXF: written
+    again by ezdxf, binary."""
+    if not data.startswith(b"AutoCAD Binary DXF"):
+        m = re.search(rb"(\r?\n)[ \t]*9\r?\n\$INSUNITS\r?\n[ \t]*70\r?\n[ \t]*-?\d+", data)
+        if m:
+            nl = m.group(1)
+            return data[:m.start()] + nl + b"  9" + nl + b"$INSUNITS" + nl + b" 70" + nl + f"{code:6d}".encode() + data[m.end():]
+        m = re.search(rb"(\r?\n)[ \t]*2\r?\nHEADER\r?\n", data)
+        if not m:
+            raise ValueError("DXF fără secțiune HEADER")
+        nl = m.group(1)
+        return data[:m.end()] + b"  9" + nl + b"$INSUNITS" + nl + b" 70" + nl + f"{code:6d}".encode() + nl + data[m.end():]
+    doc, _aud = load(data)
+    doc.header["$INSUNITS"] = code
+    out = io.BytesIO()
+    doc.write(out, fmt="bin")
+    return out.getvalue()
+
+
 _COLORS = False  # set by dxf_to_pdf: the drawing's own colors instead of a monochrome plot
 
 
@@ -913,7 +940,12 @@ def _dxf_to_pdf(data: bytes, max_entities: int) -> tuple[bytes, dict]:
         n = expanded_count(doc, max_entities)
         if n > max_entities:
             raise TooLarge(n)
-    unit = UNIT_MM.get(int(doc.header.get("$INSUNITS", 4) or 4), 1.0)
+    insunits = int(doc.header.get("$INSUNITS", 4) or 4)
+    unit = UNIT_MM.get(insunits, 1.0)
+    # what is not drawn: ACIS solids, and layout views looking at the model from another direction
+    acis = sum(1 for e in doc.entitydb.values() if e.dxftype() in ACIS_TYPES)
+    views_3d = sum(1 for lay in doc.layouts if not lay.is_modelspace for v in lay.query("VIEWPORT")
+                   if v.dxf.get("status", 0) >= 1 and v.dxf.get("id", 0) != 1 and not v.is_top_view)
     buf = io.BytesIO()
     c = rl.Canvas(buf, pageCompression=1)
     c.setTitle("DXF")
@@ -992,7 +1024,7 @@ def _dxf_to_pdf(data: bytes, max_entities: int) -> tuple[bytes, dict]:
     checked = _checked_maps(pdf, [h for h, _l in maps])
     info = {"pages": pages, "fixes": len(auditor.fixes), "errors": len(auditor.errors), "units_mm": unit,
             "inventor": rebuilt, "handles": checked,
-            "fonts_missing": missing, "gdt_symbols": any(gdt),
+            "fonts_missing": missing, "gdt_symbols": any(gdt), "insunits": insunits, "acis": acis, "views_3d": views_3d,
             "layer_map": _layer_map(doc, [(h, lay) if ok is not None else None for (h, lay), ok in zip(maps, checked)])}
     if rebuilt:
         info["fixed_dxf"] = fixed

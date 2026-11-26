@@ -270,7 +270,7 @@ export class Panel {
     const pg = d.pages[app.page];
     return `<div class="sec"><div class="h">Document</div>
         <div class="title" style="word-break:break-all">${esc(d.name)}</div>
-        <div class="sub">${d.kind === "image" ? `imagine · ${Math.round(d.dpi || 0)} DPI` : { dxf: "DXF", dwg: "DWG" }[d.kind] || "PDF"} · ${d.pages.length} pagini · pagina ${app.page + 1}${pg.name ? ` (${esc(pg.name)})` : ""}: ${fmtNum(pg.w / K, ",", 1)} × ${fmtNum(pg.h / K, ",", 1)} mm${pg.rot ? ` · rotită ${pg.rot}°` : ""}</div>
+        <div class="sub">${d.kind === "image" ? `imagine · ${Math.round(d.dpi || 0)} DPI` : { dxf: "DXF", dwg: "DWG" }[d.kind] || "PDF"} · ${d.pages.length === 1 ? "o pagină" : `${d.pages.length} pagini`} · pagina ${app.page + 1}${pg.name ? ` (${esc(pg.name)})` : ""}: ${fmtNum(pg.w / K, ",", 1)} × ${fmtNum(pg.h / K, ",", 1)} mm${pg.rot ? ` · rotită ${pg.rot}°` : ""}</div>
         ${d.kind === "pdf" && pg.paths === 0 ? `<div class="note warn">Pagina nu are geometrie vectorială (probabil scan). Snap-ul pe desen nu e disponibil; ștergerea se face doar prin acoperire.</div>` : ""}
         ${Math.max(pg.w, pg.h) / K > 900 && (d.kind === "image" || pg.paths === 0) ? `<div class="note warn">Foaia are ${fmtNum(pg.w / K, ",", 0)} × ${fmtNum(pg.h / K, ",", 0)} mm (imaginea are probabil DPI greșit), așa că cotele și textele par mici. Alege mărimea reală a foii (A3, A4…).
           <div style="margin-top:6px"><button class="ghost" data-act="pages">Mărimea foii…</button></div></div>` : ""}
@@ -301,15 +301,26 @@ export class Panel {
   /** Layers of the drawing opened from DXF / DWG: shown or hidden for the page, snap, search and export. */
   dxfLayersHtml() {
     const d = this.app.doc;
-    const layers = (d.dxf && d.dxf.layers) || [];
-    if (!layers.length) return "";
+    if (!d.dxf) return "";
+    const layers = d.dxf.layers || [];
     const hidden = new Set(d.dxf.hidden || []);
+    // drawing units: as declared in the file; an inch template drawn in mm is read again in mm
+    const iu = d.dxf.insunits;
+    const cur = iu === 1 ? "in" : [0, 4, undefined].includes(iu) ? "mm" : "";
+    const other = { 2: "picioare", 5: "cm", 6: "m", 14: "dm" }[iu];
+    const units = `<div class="field"><span class="lbl">Unități</span><div class="seg">
+        <button data-act="dxfunits" data-v="mm" class="${cur === "mm" ? "on" : ""}">mm</button>
+        <button data-act="dxfunits" data-v="in" class="${cur === "in" ? "on" : ""}">inch</button></div></div>
+      ${other ? `<div class="sub">Fișierul e în ${other}.</div>` : ""}
+      ${d.dxf.acis ? `<div class="sub">${d.dxf.acis === 1 ? "Un solid 3D (ACIS) nu se poate desena." : `${d.dxf.acis} solide 3D (ACIS) nu se pot desena.`}</div>` : ""}`;
     const eye = (off) => `<svg viewBox="0 0 24 24">${off ? '<path d="M3 3l18 18M10.6 6.1A9.7 9.7 0 0 1 12 6c5 0 9 6 9 6a16 16 0 0 1-2.6 3.2M6.6 6.6C4.3 8.1 3 12 3 12s4 6 9 6a8.8 8.8 0 0 0 4.4-1.2"/>' : '<path d="M3 12s4-6 9-6 9 6 9 6-4 6-9 6-9-6-9-6z"/><circle cx="12" cy="12" r="2.5"/>'}</svg>`;
     const col = !!d.dxf.colors;
-    return `<div class="sec"><div class="h">Straturi din ${d.kind === "dwg" ? "DWG" : "DXF"}</div>
+    return `<div class="sec"><div class="h">Desen ${d.kind === "dwg" ? "DWG" : "DXF"}</div>
+      ${units}
       <div class="field"><span class="lbl">Culori</span><div class="seg">
         <button data-act="dxfcolors" data-v="0" class="${col ? "" : "on"}" title="Ca la un plot monocrom: totul negru, se citește bine pe hârtie">Negru</button>
         <button data-act="dxfcolors" data-v="1" class="${col ? "on" : ""}">Culorile desenului</button></div></div>
+      ${layers.length ? `<div class="lbl">Straturi</div>` : ""}
       <div class="dxflayers">${layers.map((la) => {
         const off = hidden.has(la.name);
         return `<div class="layer ${off ? "off" : ""}"><i style="background:${la.color ? esc(la.color) : "var(--text)"}"></i><span class="nm" translate="no" title="${esc(la.name)}">${esc(la.name)}</span><span class="mono sub">${la.n}</span>
@@ -1217,6 +1228,12 @@ export class Panel {
       case "dxfcolors":
         if ((v === "1") !== !!(app.doc.dxf && app.doc.dxf.colors)) app.setDxfHidden((app.doc.dxf && app.doc.dxf.hidden) || [], v === "1").catch((e) => toast(e.message));
         break;
+      case "dxfunits": {
+        const iu = app.doc.dxf && app.doc.dxf.insunits;
+        const now = iu === 1 ? "in" : [0, 4, undefined].includes(iu) ? "mm" : "";
+        if (v !== now) app.setDxfUnits(v).catch((e) => toast(e.message));
+        break;
+      }
       case "dxflayer":
       case "dxfall": {
         const hid = new Set((app.doc.dxf && app.doc.dxf.hidden) || []);

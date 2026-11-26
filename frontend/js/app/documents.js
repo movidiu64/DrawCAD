@@ -47,6 +47,11 @@ export class Documents {
       meta.dxf.inventor ? "Desen salvat din Inventor: vederile, chenarul și indicatorul au fost așezate din nou din blocurile lui." : "",
       fonts.length ? `Fonturi înlocuite cu osifont: ${fonts.join(", ")}; le poți adăuga din Setări → Fonturi DXF / DWG.` : "",
       meta.dxf.gdt_symbols ? "Simbolurile GD&T (font AIGDT / GDT) au fost convertite." : "",
+      meta.dxf.acis === 1 ? "Desenul are un solid 3D (ACIS), pe care DrawCAD nu îl poate desena: apare doar geometria 2D." : "",
+      meta.dxf.acis > 1 ? `Desenul are ${meta.dxf.acis} solide 3D (ACIS), pe care DrawCAD nu le poate desena: apare doar geometria 2D.` : "",
+      meta.dxf.views_3d === 1 ? "O vedere 3D dintr-o planșă rămâne goală: se desenează doar vederile de sus." : "",
+      meta.dxf.views_3d > 1 ? `${meta.dxf.views_3d} vederi 3D din planșe rămân goale: se desenează doar vederile de sus.` : "",
+      meta.dxf.insunits === 1 ? "Unitățile din fișier sunt inch; dacă desenul e în mm, alege mm în Straturi → Desen DXF / DWG." : "",
     ].filter(Boolean).map((t) => ` ${tr(t)}`).join("");
     return `Deschis: ${meta.name} — ${what}. Scara desenului e luată din fișier.${fix}`;
   }
@@ -133,6 +138,20 @@ export class Documents {
     this.doc.lv = res.lv;
     this.unexported = true;
     this.setPage(this.page);
+  }
+
+  /** The drawing read again in other units (an inch template drawn in mm, or the reverse): a new document;
+   *  the old one is removed when it has no annotations, otherwise it stays in the list. */
+  async setDxfUnits(units) {
+    if (!this.doc || !this.doc.dxf) return;
+    const old = this.doc;
+    const keep = this.annots.length > 0;
+    await this.flushSave();
+    dlg.toast(units === "mm" ? "Desenul se citește din nou în mm…" : "Desenul se citește din nou în inch…", 15000);
+    const meta = await api.dxfUnits(old.id, units);
+    this.setDoc(meta, meta.state);
+    if (!keep) api.deleteDoc(old.id).catch(() => {});
+    dlg.toast(`${this.dxfOpenedText(meta)}${keep ? ` ${tr("Documentul de dinainte, cu adnotările lui, rămâne în lista de documente.")}` : ""}`, 9000);
   }
 
   /** A scanned page (no vector lines in the PDF). */

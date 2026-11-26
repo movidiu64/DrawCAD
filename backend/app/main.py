@@ -435,7 +435,6 @@ async def api_open(request: Request):
     INCOMING.mkdir(parents=True, exist_ok=True)
     tmp_id = uuid.uuid4().hex
     upload = INCOMING / f"{tmp_id}.bin"
-    out_dir = INCOMING / tmp_id
     try:
         try:
             size = await _read_limited(request, MAX_UPLOAD, upload)
@@ -443,10 +442,20 @@ async def api_open(request: Request):
             return _err(f"Fișier prea mare (limita e {MAX_UPLOAD // (1024 * 1024)} MB)", 413)
         if not size:
             return _err("Fișier gol")
+        return await _ingest(request, upload, name, dpi_v)
+    finally:
+        upload.unlink(missing_ok=True)
+
+
+async def _ingest(request: Request, upload: Path, name: str, dpi_v=None, units: int | None = None, kind: str | None = None):
+    """A file read in the limited process and kept as a new document. `units`: a DXF / DWG read again in
+    these drawing units ($INSUNITS code); `kind`: the kind shown (a DWG read again from its DXF)."""
+    out_dir = INCOMING / uuid.uuid4().hex
+    try:
         out_dir.mkdir()
         # an unknown file is first read in a separate process, limited in memory and time
         proc = await asyncio.create_subprocess_exec(
-            *_child_cmd("app.ingest", upload, out_dir, dpi_v or ""),
+            *_child_cmd("app.ingest", upload, out_dir, dpi_v or "", units or ""),
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
             cwd=str(Path(__file__).resolve().parents[1]), **_child_kw(),
         )
@@ -484,7 +493,7 @@ async def api_open(request: Request):
         meta = {
             "id": doc_id,
             "name": name,
-            "kind": res["kind"],
+            "kind": kind or res["kind"],
             "dpi": res.get("dpi"),
             "created": time.time(),
             "updated": time.time(),
@@ -501,8 +510,36 @@ async def api_open(request: Request):
             _write_json(d / "state.json", state)
         return JSONResponse({**{k: v for k, v in meta.items() if k != "owner"}, "expires": _expires(meta), "state": state})
     finally:
-        upload.unlink(missing_ok=True)
         shutil.rmtree(out_dir, ignore_errors=True)
+
+
+async def api_dxf_units(request: Request):
+    """A drawing opened from DXF / DWG read again in other units (mm or inch): a new document, the
+    same drawing with its $INSUNITS changed (for a drawing made from an inch template but drawn in mm)."""
+    doc_id = request.path_params["doc_id"]
+    try:
+        d = _doc_dir(doc_id)
+    except (ValueError, FileNotFoundError):
+        return _err("Document inexistent", 404)
+    meta = _read_json(d / "meta.json", {}) or {}
+    if not meta.get("dxf") or not (d / "original.dxf").is_file():
+        return _err("Documentul nu e un desen DXF / DWG")
+    try:
+        body = await _json_body(request, 1024)
+    except (OverflowError, ValueError):
+        return _err("Cerere invalidă")
+    code = {"mm": 4, "in": 1}.get(str((body or {}).get("units", "")))
+    if code is None:
+        return _err("Unități necunoscute")
+    INCOMING.mkdir(parents=True, exist_ok=True)
+    upload = INCOMING / f"{uuid.uuid4().hex}.bin"
+    try:
+        shutil.copyfile(d / "original.dxf", upload)
+        return await _ingest(request, upload, meta.get("name", "desen.dxf"), units=code, kind=meta.get("kind"))
+    finally:
+        upload.unlink(missing_ok=True)
+
+
 
 
 async def api_docs(request: Request):
@@ -1697,6 +1734,7 @@ routes = [
     Route("/api/doc/{doc_id}/page/{n:int}/text", api_text),
     Route("/api/doc/{doc_id}/pages", api_pages, methods=["POST"]),
     Route("/api/doc/{doc_id}/dxf-layers", api_dxf_layers, methods=["POST"]),
+    Route("/api/doc/{doc_id}/dxf-units", api_dxf_units, methods=["POST"]),
     Route("/api/doc/{doc_id}/export", api_export, methods=["POST"]),
     Route("/api/doc/{doc_id}/images", api_image_add, methods=["POST"]),
     Route("/api/doc/{doc_id}/compare", api_compare, methods=["POST"]),

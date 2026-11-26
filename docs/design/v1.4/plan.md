@@ -102,3 +102,7 @@ huge entity counts, a DWG that is not one).
   and the desktop app, each file checked in the limited child first. Autodesk fonts are not shipped.
 - The backend reads ezdxf's generators once (an empty one made an empty path, dropped by PDFium, which
   shifted the entity map on multi-layout drawings; `any()` on a generator lost the first filled path).
+- Units (dev.16): a drawing from the inch template drawn in mm is read again in mm (or the reverse) from
+  the layer panel: `$INSUNITS` changed in the DXF by the limited child (ASCII: the header value only;
+  binary: written again by ezdxf), opened as a new document. The opening message counts ACIS solids and
+  3D layout views, which ezdxf does not draw.

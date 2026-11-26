@@ -915,6 +915,7 @@ export function settingsDialog(app, startPane = null) {
     ? list.map((f) => `<div class="fontrow"><span translate="no">${esc(f.name)}</span><span class="sub">${fmtNum(f.size / 1024, ",", 0)} kB</span>${editable ? `<button class="ghost" data-delfont="${esc(f.name)}" title="Șterge fontul" aria-label="Șterge fontul ${esc(f.name)}">×</button>` : ""}</div>`).join("")
     : `<span class="sub">Niciun font adăugat.</span>`);
   const showFonts = (r) => {
+    if (!$d("#sFonts")) return; // the dialog was closed before the list came
     $d("#sFonts").innerHTML = fontRows(r.fonts || [], r.editable);
     $d("#sFontAdd").hidden = !r.editable;
     const where = r.dir ? `<span>Fonturile adăugate stau în <span translate="no">${esc(r.dir)}</span>.</span> ` : "";
@@ -930,7 +931,9 @@ export function settingsDialog(app, startPane = null) {
       }
     }));
   };
-  api.fonts().then(showFonts).catch(() => { $d("#sFonts").innerHTML = `<span class="sub">Lista fonturilor nu e disponibilă.</span>`; });
+  api.fonts().then(showFonts).catch(() => {
+    if ($d("#sFonts")) $d("#sFonts").innerHTML = `<span class="sub">Lista fonturilor nu e disponibilă.</span>`;
+  });
   $d("#sFontPick").addEventListener("click", () => $d("#sFontFile").click());
   $d("#sFontFile").addEventListener("change", async () => {
     const files = [...$d("#sFontFile").files];
