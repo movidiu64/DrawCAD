@@ -397,8 +397,6 @@ class _Texts:
     def __init__(self, pipe, missing=()):
         from ezdxf.addons.drawing.pipeline import prepare_string_for_rendering
 
-        from ezdxf.fonts import fonts
-
         from . import pdfcore
 
         self.items = []
@@ -891,9 +889,14 @@ def rebuild_inventor(doc) -> int:
     papers = sorted((lay for lay in doc.layouts if not lay.is_modelspace), key=lambda x: x.dxf.get("taborder", 0))
     # the sheets Inventor made: layouts with view frames (an empty default layout gets nothing)
     framed = [lay for lay in papers if any(v.dxf.get("id", 0) != 1 for v in lay.query("VIEWPORT"))]
-    for lay in framed or papers[:1]:
-        page = layout.Page.from_dxf_layout(lay)
-        tol = 0.02 * max(page.width_in_mm, page.height_in_mm)
+    sheets = framed or papers[:1]
+    page0 = layout.Page.from_dxf_layout(sheets[0])
+    tol0 = 0.02 * max(page0.width_in_mm, page0.height_in_mm)
+    # blocks in sheet coordinates (border, title block, notes) are not views: shared out per sheet first
+    on_sheet = [nb for nb in cand if _on_sheet(nb[1], page0, tol0)]
+    per_sheet = [_sheet_blocks(doc, on_sheet, len(sheets), i) for i in range(len(sheets))]
+    cand = [nb for nb in cand if nb not in on_sheet]
+    for lay, mine in zip(sheets, per_sheet):
         # model windows of the viewports (the layout's own, id 1, is the paper itself), smallest first
         wins = []
         for v in lay.query("VIEWPORT"):
@@ -909,13 +912,72 @@ def rebuild_inventor(doc) -> int:
                 lay.add_blockref(n, pc - b.center / k, dxfattribs={"xscale": 1 / k, "yscale": 1 / k})
                 cand.remove((n, b))
                 placed += 1
-        for n, b in list(cand):
-            if (b.extmin.x >= -tol and b.extmin.y >= -tol
-                    and b.extmax.x <= page.width_in_mm + tol and b.extmax.y <= page.height_in_mm + tol):
-                lay.add_blockref(n, (0, 0))
-                cand.remove((n, b))
-                placed += 1
+        for n, _b in mine:
+            lay.add_blockref(n, (0, 0))
+            placed += 1
     return placed
+
+
+def _nice_scale(x: float) -> float:
+    """A viewport scale read from its sizes (0.999824): the standard scale it stands for, when within 0.5 %."""
+    for sc in SCALES:
+        k = 1 / sc  # SCALES are paper / real; DrawCAD keeps real / paper
+        if abs(x - k) <= 0.005 * k:
+            return k
+    return x
+
+
+def _on_sheet(b: BoundingBox2d, page, tol: float) -> bool:
+    return (b.extmin.x >= -tol and b.extmin.y >= -tol
+            and b.extmax.x <= page.width_in_mm + tol and b.extmax.y <= page.height_in_mm + tol)
+
+
+def _linework(blk) -> tuple:
+    """The lines of a block (texts left out), rounded: the same border or title block twice has the same."""
+    out = []
+    for e in blk:
+        t = e.dxftype()
+        if t == "LINE":
+            pts = sorted([(round(e.dxf.start.x, 1), round(e.dxf.start.y, 1)), (round(e.dxf.end.x, 1), round(e.dxf.end.y, 1))])
+            out.append(("L", *pts))
+        elif t == "LWPOLYLINE":
+            out.append(("P", *((round(x, 1), round(y, 1)) for x, y, *_r in e.get_points())))
+        elif t in ("CIRCLE", "ARC"):
+            out.append((t[0], round(e.dxf.center.x, 1), round(e.dxf.center.y, 1), round(e.dxf.radius, 1)))
+    return tuple(sorted(out))
+
+
+def _sheet_blocks(doc, on, sheets: int, index: int) -> list:
+    """The blocks drawn in sheet coordinates (border, title block, notes) that belong on sheet `index` of
+    `sheets`. Inventor may leave an older copy of the border and the title block (same lines, other
+    texts) beside the current one: of blocks with the same lines, the latest ones (highest *I number)
+    are kept, one per sheet. With several sheets, a block goes to the sheet whose border came before it."""
+    def num(n: str) -> int:
+        return int(re.sub(r"\D", "", n) or 0)
+
+    on = sorted(on, key=lambda nb: num(nb[0]))
+    groups: dict = {}
+    for nb in on:
+        sig = _linework(doc.blocks.get(nb[0]))
+        groups.setdefault(sig if sig else nb[0], []).append(nb)
+    kept = []
+    for sig, members in groups.items():
+        kept += members[-sheets:] if sig and len(members) > 1 else members
+    kept.sort(key=lambda nb: num(nb[0]))
+    if sheets <= 1:
+        return kept
+    # the border: the largest block that repeats once per sheet
+    borders = [nb for members in groups.values() if len(members) >= sheets for nb in members[-sheets:]]
+    if not borders:
+        return kept if index == 0 else []
+    big = max(borders, key=lambda nb: nb[1].size.x * nb[1].size.y)
+    anchors = sorted(num(nb[0]) for nb in borders if _linework(doc.blocks.get(nb[0])) == _linework(doc.blocks.get(big[0])))
+    out = []
+    for nb in kept:
+        k = sum(1 for a in anchors if a <= num(nb[0])) - 1
+        if max(k, 0) == index:
+            out.append(nb)
+    return out
 
 
 def dxf_to_pdf(data: bytes, max_entities: int = 0, colors: bool = False) -> tuple[bytes, dict]:
@@ -983,8 +1045,12 @@ def _dxf_to_pdf(data: bytes, max_entities: int) -> tuple[bytes, dict]:
             box = _paper_box(lay, rec.bbox(), wmm, hmm)
             tf, hl = _place(rec, c, (wmm, hmm), box)
             maps.append(hl)
-            vps = [v for v in lay.viewports() if v.dxf.get("status", 1) > 1 and v.dxf.view_height > 0]
-            scale = (vps[0].dxf.view_height / vps[0].dxf.height) * unit if vps else 1.0
+            # the drawing scale: the largest view (the layout's own viewport, id 1, is the paper; LibreDWG
+            # writes every viewport with status 1, so the status cannot tell)
+            vps = [v for v in lay.viewports() if v.dxf.get("id", 0) != 1 and v.dxf.get("status", 1) != 0
+                   and v.dxf.view_height > 0 and v.dxf.height > 0]
+            vp = max(vps, key=lambda v: v.dxf.width * v.dxf.height) if vps else None
+            scale = _nice_scale((vp.dxf.view_height / vp.dxf.height) * unit) if vp else 1.0
             pages.append({"name": lay.name, "space": "paper", "sheet": [round(wmm, 2), round(hmm, 2)], "scale": round(scale, 6), "tf": tf})
     if not pages:
         rec = note(_record(doc, doc.modelspace()))

@@ -106,3 +106,8 @@ huge entity counts, a DWG that is not one).
   the layer panel: `$INSUNITS` changed in the DXF by the limited child (ASCII: the header value only;
   binary: written again by ezdxf), opened as a new document. The opening message counts ACIS solids and
   3D layout views, which ezdxf does not draw.
+- Inventor at 2:1 (dev.17): the page scale comes from the largest view (not the first viewport with
+  status > 1: LibreDWG writes them all with status 1), snapped to a standard scale within 0.5 %. Inventor
+  may keep an older copy of the border and title block (same lines, other texts): of blocks with the
+  same lines only the latest ones are placed, one per sheet; with several sheets each block goes to the
+  sheet whose border came before it.

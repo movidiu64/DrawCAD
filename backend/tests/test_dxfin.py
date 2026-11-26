@@ -172,6 +172,50 @@ class InventorTest(unittest.TestCase):
         self.assertGreater(ink(pdf), 0.005)
 
 
+    def test_scale_two_to_one(self):
+        """Views at 2:1 (the model window half the frame) are drawn at 2:1 and the page gets that scale, even
+        with every viewport written with status 1 (as LibreDWG writes them)."""
+        doc = inventor_doc()
+        for v in doc.layouts.get("Sheet").query("VIEWPORT"):  # frames twice the model windows
+            v.dxf.width *= 2
+            v.dxf.height *= 2
+            v.dxf.status = 1
+        pdf, info = dxfin.dxf_to_pdf(to_bytes(doc))
+        self.assertEqual(info["pages"][0]["scale"], 0.5)
+        refs = {e.dxf.name: e for e in dxfin.load(info["fixed_dxf"])[0].layouts.get("Sheet").query("INSERT")}
+        self.assertEqual(refs["*I2"].dxf.xscale, 2)
+
+    def test_older_copy_left_out(self):
+        """An older copy of the border / title block (same lines, other texts) is not drawn over the current one."""
+        doc = inventor_doc()
+        old = doc.blocks.new("*I0")
+        old.add_lwpolyline([(10, 10), (410, 10), (410, 287), (10, 287)], close=True)
+        old.add_text("VECHI", height=5).set_placement((300, 20))
+        pdf, info = dxfin.dxf_to_pdf(to_bytes(doc))
+        self.assertEqual(info["inventor"], 3)
+        d = pdfium.PdfDocument(pdf)
+        txt = d[0].get_textpage().get_text_range()
+        d.close()
+        self.assertIn("CAPAC", txt)
+        self.assertNotIn("VECHI", txt)
+
+    def test_two_sheets(self):
+        """Two sheets: each gets its own border and the blocks that came after it."""
+        doc = inventor_doc()
+        b2 = doc.blocks.new("*I4")
+        b2.add_lwpolyline([(10, 10), (410, 10), (410, 287), (10, 287)], close=True)
+        b2.add_text("FOAIA 2", height=5).set_placement((300, 20))
+        doc.blocks.new("*I5").add_text("NOTA 2", height=3.5).set_placement((30, 250))
+        doc.blocks.new("*I6").add_circle((0, 0), 30)
+        lay2 = doc.layouts.new("Sheet2")
+        lay2.page_setup(size=(420, 297), margins=(0, 0, 0, 0), units="mm")
+        lay2.add_viewport(center=(200, 150), size=(80, 80), view_center_point=(-20000, 0), view_height=80)
+        self.assertEqual(dxfin.rebuild_inventor(doc), 6)
+        names = lambda n: {e.dxf.name for e in doc.layouts.get(n).query("INSERT")}  # noqa: E731
+        self.assertEqual(names("Sheet"), {"*I1", "*I2", "*I3"})
+        self.assertEqual(names("Sheet2"), {"*I4", "*I5", "*I6"})
+
+
 class SheetFrameTest(unittest.TestCase):
     """Drawings that bring their sheet in model space (SolidWorks, Solid Edge…): that sheet is the page."""
 
