@@ -80,16 +80,19 @@ const MODE_NOTE = {
   session: "Documentele tale sunt legate de această sesiune a browserului: după închiderea lui nu le mai regăsești aici (exportă PDF-ul înainte). Alți utilizatori nu le văd.",
 };
 
-export function recentHtml(docs, retentionDays, mode = "personal") {
-  const modeNote = MODE_NOTE[mode] ? `<div class="sub" style="margin:6px 4px">${MODE_NOTE[mode]}</div>` : "";
+/** The recent documents: cards with thumbnails on the start page; `compact`: one row each, for the Open
+ *  dialog, where the list scrolls inside a dialog of fixed height. */
+export function recentHtml(docs, retentionDays, mode = "personal", compact = false) {
+  const modeNote = MODE_NOTE[mode] ? `<div class="sub rnote">${MODE_NOTE[mode]}</div>` : "";
   if (!docs.length) return modeNote;
   const note = retentionDays > 0
-    ? `<div class="sub" style="margin:6px 4px">Documentele stau pe server ${fmtNum(retentionDays, ",", 1)} zile de la ultima folosire, apoi se șterg automat. Ce ai exportat pe PC nu e afectat.</div>`
+    ? `<div class="sub rnote">Documentele stau pe server ${fmtNum(retentionDays, ",", 1)} zile de la ultima folosire, apoi se șterg automat. Ce ai exportat pe PC nu e afectat.</div>`
     : "";
   const kind = (d) => ({ image: ["img", "IMG"], dxf: ["cad", "DXF"], dwg: ["cad", "DWG"] })[d.kind] || ["pdf", "PDF"];
-  const search = docs.length > 6 ? `<input class="rsearch" type="search" placeholder="Caută după nume" aria-label="Caută după nume">` : "";
+  const search = docs.length > 6 || (compact && docs.length > 3) ? `<input class="rsearch" type="search" placeholder="Caută după nume" aria-label="Caută după nume">` : "";
   // UI-D7a: a card per document, its first page as a thumbnail (made by the server, cached)
-  return `<div class="ttl"><span>${mode === "personal" ? "Documente recente" : "Documentele tale"}</span><span class="cnt mono">${docs.length}</span>${search}</div>` + docs.map((d) => {
+  const title = compact ? "Documentele tale" : mode === "personal" ? "Documente recente" : "Documentele tale";
+  return `<div class="ttl"><span>${title}</span><span class="cnt mono">${docs.length}</span>${search}</div>` + docs.map((d) => {
     const [kc, kl] = kind(d);
     const p = (d.pages || [])[0];
     const n = (d.pages || []).length;
@@ -175,18 +178,22 @@ export async function openDialog(app) {
   try {
     docs = await api.listDocs();
   } catch (_) { /* no list */ }
+  // a dialog of fixed height: the list scrolls inside it, however many documents there are
   const dlg = showModal(`
     <h2>Deschide desen</h2>
-    <div class="cols">
-      <div class="drop" id="dDrop" style="width:auto">
-        <strong>Trage aici un PDF, un DXF / DWG sau o imagine</strong>
-        <span class="muted">PDF · DXF · DWG · PNG · JPG · TIFF</span>
-        <button class="ghost" id="dPick">Alege fișier</button>
-        <div class="row" style="margin-top:8px"><label class="lbl" for="dDpi" style="white-space:nowrap">DPI imagine</label>
-        <input type="text" id="dDpi" class="mono" placeholder="din fișier / 300" style="width:140px"></div>
-        <span class="muted" style="font-size:12px">La scanuri, scara exactă se fixează apoi cu Calibrare (K).</span>
+    <div class="openlay">
+      <div class="openside">
+        <div class="drop" id="dDrop">
+          <div class="droptile"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg></div>
+          <strong>Trage aici un PDF, un DXF / DWG sau o imagine</strong>
+          <span class="fmts mono">PDF · DXF · DWG · PNG · JPG · TIFF</span>
+          <button class="primary" id="dPick">Alege fișier</button>
+        </div>
+        <div class="sec"><label class="lbl" for="dDpi">DPI imagine</label>
+          <input type="text" id="dDpi" class="mono" placeholder="din fișier / 300">
+          <span class="sub">La scanuri, scara exactă se fixează apoi cu Calibrare (K).</span></div>
       </div>
-      <div class="recent" style="width:auto">${recentHtml(docs, app.retentionDays, app.mode) || `<span class="muted">Niciun document deschis încă.</span>`}</div>
+      <div class="recent compact">${recentHtml(docs, app.retentionDays, app.mode, true) || `<span class="muted">Niciun document deschis încă.</span>`}</div>
     </div>
     <div class="foot"><button class="ghost" data-close>Închide</button></div>`);
   dlg.querySelector("#dPick").addEventListener("click", () => {

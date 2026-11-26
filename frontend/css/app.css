@@ -311,6 +311,28 @@ button.danger { height: 34px; padding: 0 12px; border: 1px solid var(--bad-line)
 .recent .item:hover button.del, .recent button.del:focus-visible { opacity: 1; }
 .recent button.del:hover { color: var(--bad); background: rgba(var(--glass), 0.85); }
 @media (hover: none) { .recent button.del { opacity: 1; } }
+/* Open dialog: fixed height, the drop zone on the left, the documents as rows that scroll on the right */
+.dialog:has(.openlay) { height: min(680px, calc(100vh - 32px)); }
+.openlay { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 22px; flex: 1 1 auto; min-height: 0; }
+.openside { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.openside .drop { flex: none; min-height: 250px; padding: 24px 18px; }
+.openside .drop strong { font-size: 16px; }
+.openside .droptile svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.openside .sec { display: flex; flex-direction: column; gap: 6px; }
+.recent.compact { display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow-y: auto; padding-right: 4px; }
+.recent.compact > * { flex: none; }
+.recent.compact .ttl { position: sticky; top: 0; z-index: 1; padding-bottom: 6px; background: var(--panel); }
+.recent.compact .item { flex-direction: row; align-items: center; flex: none; }
+.recent.compact button.open { flex-direction: row; align-items: center; gap: 12px; padding: 6px 8px; }
+.recent.compact .thumb { flex: none; width: 64px; height: 46px; border: 0; border-radius: 6px; }
+.recent.compact .thumb img { max-width: 56px; max-height: 40px; box-shadow: none; }
+.recent.compact .thumb .badge { left: auto; top: auto; right: 2px; bottom: 2px; height: 15px; padding: 0 4px; font-size: 9px; }
+.recent.compact .info { padding: 0; gap: 1px; }
+.recent.compact .info .when { margin-top: 0; }
+.recent.compact button.del { position: static; flex: none; margin-right: 6px; opacity: 1; background: transparent; }
+.recent.compact button.del:hover { background: transparent; }
+.recent > .rnote { margin: 6px 4px; }
+.recent.compact > .rnote { margin: 4px 2px; }
 .badge { display: inline-grid; place-items: center; width: 34px; height: 30px; border-radius: 6px; font-size: 11px; font-weight: 700; }
 .badge.pdf { background: var(--bad-bg); color: var(--bad); }
 .badge.img { background: var(--info-bg); color: var(--info); }
@@ -559,7 +581,7 @@ button.link { border: 0; background: none; padding: 0; height: auto; color: var(
 /* icon-only tools */
 @media (max-width: 900px) {
   /* phone / narrow: only the current document in the header; the others stay open (Open → Recent) */
-  .doctab, .tabadd { display: none; }
+  #docTabs .doctab, #docTabs .tabadd { display: none; }
   .zoom button.txt { display: none; }
   .top { flex-wrap: nowrap; }
   .top .lg { display: none; }
@@ -572,6 +594,9 @@ button.link { border: 0; background: none; padding: 0; height: auto; color: var(
 
 /* phone: compact header, the panel as a bottom sheet, hints over the drawing */
 @media (max-width: 640px) {
+  .openlay { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 14px; }
+  .openside .drop { min-height: 0; padding: 16px; }
+  .openside .drop strong, .openside .droptile, .openside .sec { display: none; }
   .top { gap: 6px; padding: 6px 8px; min-height: 48px; flex-wrap: nowrap; }
   .brand span, .sep, #docMeta, .zoom span, .savestate:not(.error), #btnMin, #btnRedo, .docsub, .top #btnOpen, .top #btnSettings { display: none; }
   .more { display: block; }
