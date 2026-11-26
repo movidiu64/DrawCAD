@@ -9,7 +9,8 @@ import { drawPrims, COLORS } from "./view.js";
 import { TOOL_BY_ID, DRAW_TOOLS } from "./tools.js";
 import { commandList, keyConfig } from "./commands.js";
 import { tr } from "./i18n.js";
-import { pagesDialog as dlgPages, toast, compareDialog, generalKeysHtml } from "./dialogs.js";
+import { pagesDialog as dlgPages, toast, compareDialog, generalKeysHtml, saveBlob } from "./dialogs.js";
+import { tableCsv, csvName } from "./csv.js";
 
 const ORIG_EDIT = new Set(["white", "redact", "ink"]); // changes to the original, no layer
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -574,7 +575,7 @@ export class Panel {
       </div>`).join("");
     return `<div class="sec"><div class="h">Rânduri</div>
       <div class="rtlist">${cells || `<span class="sub">Niciun rând.</span>`}</div>
-      <div class="btns"><button class="ghost" data-act="rtadd">+ Rând nou</button><button class="ghost" data-act="rtsync">Din cotele tăiate</button></div>
+      <div class="btns"><button class="ghost" data-act="rtadd">+ Rând nou</button><button class="ghost" data-act="rtsync">Din cotele tăiate</button><button class="ghost" data-act="csv" title="Tabelul ca fișier CSV, pentru Excel sau ERP">Descarcă CSV</button></div>
       <div class="sub">„Din cotele tăiate” adaugă câte un rând pentru fiecare număr de revizie folosit la unealta Taie cota și încă absent din tabel.</div></div>
       <div class="sec"><div class="h">Așezare</div><div class="seg">
         <button data-act="rthead" data-v="bottom" class="${a.headerBottom !== false ? "on" : ""}">Antet jos (peste cartuș)</button>
@@ -596,7 +597,7 @@ export class Panel {
       </div>`).join("");
     return `<div class="sec"><div class="h">Componente</div>
       <div class="rtlist">${cells || `<span class="sub">Niciun rând.</span>`}</div>
-      <div class="btns"><button class="ghost" data-act="bmadd">+ Rând nou</button><button class="ghost" data-act="bmsync">Din repere</button></div>
+      <div class="btns"><button class="ghost" data-act="bmadd">+ Rând nou</button><button class="ghost" data-act="bmsync">Din repere</button><button class="ghost" data-act="csv" title="Tabelul ca fișier CSV, pentru Excel sau ERP">Descarcă CSV</button></div>
       <div class="sub">„Din repere” adaugă câte un rând pentru fiecare număr de reper de pe desen încă absent din listă.</div></div>
       <div class="sec"><div class="h">Așezare</div><div class="seg">
         <button data-act="rthead" data-v="bottom" class="${a.headerBottom !== false ? "on" : ""}">Antet jos (peste cartuș)</button>
@@ -626,7 +627,7 @@ export class Panel {
       </div>`).join("");
     return `<div class="sec"><div class="h">Găuri</div>
       <div class="rtlist">${cells || `<span class="sub">Niciun rând.</span>`}</div>
-      <div class="btns"><button class="ghost" data-act="hlsync">Actualizează din cote</button></div>
+      <div class="btns"><button class="ghost" data-act="hlsync">Actualizează din cote</button><button class="ghost" data-act="csv" title="Tabelul ca fișier CSV, pentru Excel sau ERP">Descarcă CSV</button></div>
       <div class="sub">X și Y vin din cotele ordonate (DOR) cu aceeași bază, cu valorile corectate acolo; Ø din cel mai mic cerc al găurii. Găurile cu același diametru primesc aceeași literă. „Actualizează din cote” refă tabelul după ce ai schimbat cotele; diametrele scrise de mână rămân.</div></div>
       <div class="sec"><div class="h">Așezare</div>
       <div class="field"><span class="lbl">Etichete la găuri</span><div class="seg">
@@ -1151,6 +1152,12 @@ export class Panel {
       case "layer":
         upd((a) => { a.layer = v; });
         break;
+      case "csv": {
+        const a = app.selected();
+        if (a && (a.rows || []).length) saveBlob(new Blob([tableCsv(a, app.settings)], { type: "text/csv;charset=utf-8" }), csvName(app.doc && app.doc.name, a));
+        else toast("Tabelul nu are rânduri.");
+        break;
+      }
       case "gtolwrite": {
         const g = gtolFor(this.app.selected(), this.app.builtOf(this.app.selected()), this.app.settings);
         if (g) upd((a) => { a.tol = g.unit === "min" ? { mode: "pm", pm: g.pm / 60, dms: true } : { mode: "pm", pm: g.pm }; });

@@ -181,6 +181,7 @@ class Bridge:
             ".pdf": ("Document PDF (*.pdf)",),
             ".dxf": ("Desen DXF (*.dxf)",),
             ".zip": ("Arhivă ZIP (*.zip)",),
+            ".csv": ("Tabel CSV (*.csv)",),
         }.get(ext, ("Toate fișierele (*.*)",))
         kind = getattr(getattr(webview, "FileDialog", None), "SAVE", None)
         if kind is None:

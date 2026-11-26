@@ -337,6 +337,8 @@ The diameter dimension between generatrices remains the **Diameter** tool (`DDL`
 
 **Parts list:** click the top-right corner of the title block. The list sits above it, with the header at the bottom and item 1 next to the header (ISO 7573), one row for each balloon on the drawing. Columns: Item, Description, Qty, Material, Remarks. "From balloons" adds balloons placed later.
 
+**Tables as CSV:** the revision table, the parts list and the hole table have a **Download CSV** button in the panel: the rows in their order (item 1 / revision 1 first), the column titles in the drawing language, for Excel or an ERP. With a decimal comma (the default) the fields are separated by `;`, as Excel expects with Romanian or German settings; with a decimal point, by `,`. UTF-8, so the diacritics stay.
+
 **Grab, move, resize:** in Select mode the cursor and a short label show what a click would grab:
 - **over an annotation:** its outline lights up and the cursor becomes a move cross;
 - **over a handle of the selected annotation:** the handle gets a ring and the label says what it does ("Dimension point", "Dimension line position", "Move dimension text", "Leader elbow"…);
