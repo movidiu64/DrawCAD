@@ -10,7 +10,7 @@
   <Support>https://github.com/movidiu64/DrawCAD/issues</Support>
   <Project>https://github.com/movidiu64/DrawCAD</Project>
   <ReadMe>https://github.com/movidiu64/DrawCAD/blob/main/docs/guide.md</ReadMe>
-  <Overview>Dimension, tolerance and revise technical drawings right on the PDF, in the browser. Linear, ordinate, radius and angle dimensions with AutoCAD-style snapping, ISO 286 fits, GD&amp;T (ISO 1101), surface roughness, revision clouds and tables, OCR for scans, vector PDF and DXF export. The original file is never modified. Runs hardened: read-only filesystem, no extra privileges. No user accounts: keep it on the LAN or set a password.</Overview>
+  <Overview>Dimension, tolerance and revise technical drawings right on the PDF, in the browser. Linear, ordinate, radius and angle dimensions with AutoCAD-style snapping, ISO 286 fits, GD&amp;T (ISO 1101), surface roughness, revision clouds and tables, OCR for scans, opens DXF and DWG, vector PDF and DXF export. The original file is never modified. Runs hardened: read-only filesystem, no extra privileges. No user accounts: keep it on the LAN or set a password.</Overview>
   <Category>Productivity: Tools:</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/movidiu64/DrawCAD/main/unraid/drawcad.xml</TemplateURL>

@@ -111,6 +111,37 @@ export async function runOcr(id, n, force = false) {
 
 export const pageText = (id, n, v = 0) => fetch(`api/doc/${id}/page/${n}/text?v=${v}`).then(jsonOrThrow);
 
+/** Layers of a drawing opened from DXF / DWG hidden on the server (page, snap, search, export), and
+ *  its colors: black as a monochrome plot, or the drawing's own. */
+/** Fonts for DXF / DWG texts: the list, adding one (checked by the server), removing one. */
+export async function fonts() {
+  return jsonOrThrow(await fetch("api/fonts"));
+}
+
+export async function addFont(file) {
+  const r = await fetch("api/fonts", { method: "POST", body: file, headers: { "X-Filename": unescape(encodeURIComponent(file.name)) } });
+  return jsonOrThrow(r);
+}
+
+export async function deleteFont(name) {
+  return jsonOrThrow(await fetch(`api/fonts?name=${encodeURIComponent(name)}`, { method: "DELETE" }));
+}
+
+/** A drawing from DXF / DWG read again in other units ("mm" | "in"): a new document → its meta. */
+export async function dxfUnits(id, units) {
+  const r = await fetch(`api/doc/${id}/dxf-units`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ units }) });
+  return jsonOrThrow(r);
+}
+
+export async function dxfLayers(id, hidden, colors) {
+  const r = await fetch(`api/doc/${id}/dxf-layers`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ hidden, colors }),
+  });
+  return jsonOrThrow(r);
+}
+
 export async function pageOp(id, body) {
   const r = await fetch(`api/doc/${id}/pages`, {
     method: "POST",

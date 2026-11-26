@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 sys.path.insert(0, str(ROOT / "tools"))
 
 import uvicorn  # noqa: E402
+from PIL import Image  # noqa: E402
 
 import make_sample  # noqa: E402
 from app import pdfcore  # noqa: E402
@@ -524,6 +525,225 @@ class ApiTest(unittest.TestCase):
         p2 = zf.read("x_p2.pdf")
         self.assertEqual(len(pdfium.PdfDocument(p2)), 1)
         self.assertIsNotNone(pdfcore.extract_embedded(p2))
+
+    def test_dxf_source_export(self):
+        """A drawing opened from DXF exports as itself: every original entity, DrawCAD's line on its layer
+        in the space the page shows (model space 1:1 / the 1:2 layout's paper space), the circle deleted
+        in DrawCAD gone from the DXF."""
+        import ezdxf
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        import test_dxfin
+
+        for lay in (False, True):
+            src = test_dxfin.make_doc(layout=lay)
+            data = test_dxfin.to_bytes(src)
+            meta = self.req("POST", "/api/open", data, {"X-Filename": "piesa.dxf"})
+            self.assertEqual(meta["kind"], "dxf")
+            hmap = json.loads((Path(TMP) / "docs" / meta["id"] / "original.dxfmap.json").read_text())[0]
+            circle = src.modelspace().query("CIRCLE")[0].dxf.handle
+            ids = [str(n) for n, h in enumerate(hmap) if h == circle]
+            self.assertTrue(ids)
+            prims = {"0": [{"t": "L", "p": [10 * MM, 10 * MM, 50 * MM, 10 * MM], "w": 0.5, "c": "add"}]}
+            body = {"format": "dxf", "filename": "piesa.dxf", "pages": prims, "removals": {"0": [{"mode": "objects", "ids": ids}]}}
+            out, h = self.req("POST", f"/api/doc/{meta['id']}/export", body, raw=True)
+            self.assertEqual(h["X-Export-Kind"], "dxf")
+            self.assertEqual(json.loads(h["X-Dxf-Stats"])["source"]["deleted"], 1)
+            doc = ezdxf.read(io.StringIO(out.decode("utf-8")))
+            msp = doc.modelspace()
+            self.assertEqual(len(msp.query("CIRCLE")), 0)
+            self.assertEqual(len(msp.query("ARC")), 1)
+            self.assertEqual(len(msp.query("DIMENSION")), 1)
+            self.assertEqual(len(msp.query("HATCH")), 1)
+            if lay:
+                ln = doc.layouts.get("Plansa 1").query("LINE[layer=='DRAWCAD-COTE']")[0]
+                self.assertAlmostEqual(ln.dxf.start.x, 10, 3)
+                self.assertAlmostEqual(ln.dxf.start.y, 200, 3)
+                self.assertAlmostEqual(ln.dxf.end.x, 50, 3)
+            else:
+                a, _b, _c, d, e, f = meta["dxf"]["pages"][0]["tf"]
+                ln = msp.query("LINE[layer=='DRAWCAD-COTE']")[0]
+                self.assertAlmostEqual(ln.dxf.start.x, (10 * MM - e) / a, 3)
+                self.assertAlmostEqual(ln.dxf.start.y, (210 * MM - 10 * MM - f) / d, 3)
+                self.assertAlmostEqual(ln.dxf.end.x - ln.dxf.start.x, 40, 3)  # 1:1 on the sheet
+            # the page rebuilt instead (option): DrawCAD's own layers, the page frame
+            body["dxf"] = {"source": False}
+            out, _h = self.req("POST", f"/api/doc/{meta['id']}/export", body, raw=True)
+            doc = ezdxf.read(io.StringIO(out.decode("utf-8")))
+            self.assertTrue(doc.modelspace().query("LWPOLYLINE[layer=='PAGINA']"))
+
+    def test_dxf_source_turned_page_and_image(self):
+        """The original-DXF export of a page turned in the editor: a line drawn along the turned page lands
+        where it was drawn on the drawing; an image placed in DrawCAD comes in a ZIP next to the DXF."""
+        import zipfile
+
+        import ezdxf
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        import test_dxfin
+
+        meta = self.req("POST", "/api/open", test_dxfin.to_bytes(test_dxfin.make_doc()), {"X-Filename": "rot.dxf"})
+        doc_id = meta["id"]
+        r = self.req("POST", f"/api/doc/{doc_id}/pages", {"op": "rotate", "pages": [0], "delta": 90})
+        W, H = 297 * MM, 210 * MM  # the sheet before the turn; shown 210 wide, 297 tall
+        self.assertAlmostEqual(r["pages"][0]["w"], H, 0)
+        a, _b, _c, d, e, f = meta["dxf"]["pages"][0]["tf"]
+        # a vertical line on the turned page (10 → 50 mm down, 20 mm from the left) ...
+        line = {"t": "L", "p": [20 * MM, 10 * MM, 20 * MM, 50 * MM], "w": 0.5, "c": "add"}
+        buf = io.BytesIO()
+        Image.new("RGB", (40, 20), (0, 0, 200)).save(buf, "PNG")
+        img = self.req("POST", f"/api/doc/{doc_id}/images", buf.getvalue())
+        pic = {"t": "I", "p": [60 * MM, 60 * MM, 100 * MM, 80 * MM], "img": img["img"], "rot": 0, "op": 1, "c": "add"}
+        body = {"format": "dxf", "filename": "rot.dxf", "pages": {"0": [line, pic]}, "removals": {}}
+        out, h = self.req("POST", f"/api/doc/{doc_id}/export", body, raw=True)
+        self.assertEqual(h["X-Export-Kind"], "zip")
+        z = zipfile.ZipFile(io.BytesIO(out))
+        dxf_name = [n for n in z.namelist() if n.endswith(".dxf")][0]
+        self.assertEqual(len(z.namelist()), 2)
+        dx = ezdxf.read(io.StringIO(z.read(dxf_name).decode("utf-8")))
+        ln = dx.modelspace().query("LINE[layer=='DRAWCAD-COTE']")[0]
+        # ... is horizontal on the drawing: turned 90° clockwise, the page's top edge is its left edge
+        # (PDF /Rotate 90: visual (vx, vy) = (H - v, u) with u, v from the unturned top left corner)
+        def drawing(vx, vy):
+            u, v = vy, H - vx
+            return ((u - e) / a, ((H - v) - f) / d)
+
+        sx, sy = drawing(20 * MM, 10 * MM)
+        ex, ey = drawing(20 * MM, 50 * MM)
+        self.assertAlmostEqual(ln.dxf.start.x, sx, 3)
+        self.assertAlmostEqual(ln.dxf.start.y, sy, 3)
+        self.assertAlmostEqual(ln.dxf.end.x, ex, 3)
+        self.assertAlmostEqual(ln.dxf.start.y, ln.dxf.end.y, 3)
+        import math
+
+        u = dx.modelspace().query("IMAGE")[0].dxf.u_pixel
+        self.assertAlmostEqual(math.degrees(math.atan2(u.y, u.x)) % 360, 90, 3)  # upright on the turned page
+
+    def test_fonts(self):
+        """Fonts for DXF / DWG texts: added (checked in the limited process), used by the drawings opened
+        afterwards, removed; anything else is refused; only in a single-user setup."""
+        import ezdxf
+
+        from app import main as appmain
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        import test_dxfin
+
+        self.assertEqual(self.req("GET", "/api/fonts")["fonts"], [])
+        ttf = Path(pdfcore.FONT_PATH).read_bytes()
+        r = self.req("POST", "/api/fonts", ttf, {"X-Filename": "isocpeur.ttf"})
+        self.assertEqual([f["name"] for f in r["fonts"]], ["isocpeur.ttf"])
+        self.assertEqual(r["added"]["family"], "osifont")
+        doc = ezdxf.new("R2010", units=4)
+        doc.styles.add("ISO", font="isocpeur.ttf")
+        doc.styles.add("AR", font="drawcad-missing.ttf")
+        doc.modelspace().add_text("Text", height=3.5, dxfattribs={"style": "ISO"}).set_placement((0, 0))
+        doc.modelspace().add_text("Arial", height=3.5, dxfattribs={"style": "AR"}).set_placement((0, 10))
+        doc.modelspace().add_line((0, -5), (100, -5))
+        meta = self.req("POST", "/api/open", test_dxfin.to_bytes(doc), {"X-Filename": "fonturi.dxf"})
+        self.assertEqual(meta["dxf"]["fonts_missing"], ["drawcad-missing"])
+        for name, data in (("x.ttf", b"\x00\x01\x00\x00" + b"\x00" * 200), ("x.shx", b"not a shape file"),
+                           ("x.woff", ttf), ("-x.ttf", ttf)):
+            with self.assertRaises(urllib.error.HTTPError) as e:
+                self.req("POST", "/api/fonts", data, {"X-Filename": name})
+            self.assertEqual(e.exception.code, 400, name)
+        r = self.req("POST", "/api/fonts", test_dxfin.make_shx(), {"X-Filename": "drawcadt.shx"})
+        self.assertEqual((r["added"]["kind"], len(r["fonts"])), ("SHX", 2))
+        self.req("DELETE", "/api/fonts?name=drawcadt.shx")
+        self.assertEqual(len(self.req("GET", "/api/fonts")["fonts"]), 1)
+        appmain.MODE = "private"
+        try:
+            self.assertFalse(self.req("GET", "/api/fonts")["editable"])
+            with self.assertRaises(urllib.error.HTTPError) as e:
+                self.req("DELETE", "/api/fonts?name=isocpeur.ttf")
+            self.assertEqual(e.exception.code, 403)
+        finally:
+            appmain.MODE = "personal"
+        self.assertEqual(self.req("DELETE", "/api/fonts?name=isocpeur.ttf")["fonts"], [])
+
+    def test_dxf_units(self):
+        """A DXF declared in inches read again in mm: a new document, same name, its page and scale in mm."""
+        import ezdxf
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        import test_dxfin
+
+        doc = ezdxf.new("R2010", units=1)
+        doc.modelspace().add_lwpolyline([(0, 0), (250, 0), (250, 150), (0, 150)], close=True)
+        meta = self.req("POST", "/api/open", test_dxfin.to_bytes(doc), {"X-Filename": "inch.dxf"})
+        self.assertEqual(meta["dxf"]["insunits"], 1)
+        new = self.req("POST", f"/api/doc/{meta['id']}/dxf-units", {"units": "mm"})
+        self.assertNotEqual(new["id"], meta["id"])
+        self.assertEqual((new["name"], new["kind"], new["dxf"]["insunits"], new["dxf"]["pages"][0]["iso"]), ("inch.dxf", "dxf", 4, "A4"))
+        self.assertAlmostEqual(new["pages"][0]["w"] / MM, 297, 0)
+        for body in ({"units": "furlong"}, {}):
+            with self.assertRaises(urllib.error.HTTPError) as e:
+                self.req("POST", f"/api/doc/{new['id']}/dxf-units", body)
+            self.assertEqual(e.exception.code, 400)
+        pdf_doc = self.open_sample()
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            self.req("POST", f"/api/doc/{pdf_doc['id']}/dxf-units", {"units": "mm"})
+        self.assertEqual(e.exception.code, 400)
+
+    def test_dxf_layers_hidden(self):
+        """Layers of an opened DXF: listed with their color; a hidden layer is gone from the page, the
+        text search and the PDF export, turned off in the DXF of the original drawing, and back when shown."""
+        import ezdxf
+        import pypdfium2 as pdfium
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        import test_dxfin
+
+        src = test_dxfin.make_doc()
+        src.layers.add("COTE", color=3)
+        src.layers.add("TEXTE", color=2)
+        for e in src.modelspace():
+            if e.dxftype() == "DIMENSION":
+                e.dxf.layer = "COTE"
+            elif e.dxftype() == "TEXT":
+                e.dxf.layer = "TEXTE"
+        meta = self.req("POST", "/api/open", test_dxfin.to_bytes(src), {"X-Filename": "straturi.dxf"})
+        layers = {la["name"]: la for la in meta["dxf"]["layers"]}
+        self.assertEqual(set(layers), {"0", "COTE", "TEXTE"})
+        self.assertEqual(layers["COTE"]["color"], "#00ff00")
+        self.assertIsNone(layers["0"]["color"])  # ACI 7: shown in the text color
+        self.assertEqual((meta["pages"][0]["name"], meta["pages"][0]["dscale"]), ("Model", 1.0))
+        doc_id = meta["id"]
+
+        def texts():
+            return " ".join(t["text"] for t in self.req("GET", f"/api/doc/{doc_id}/page/0/text?v={time.time()}")["items"])
+
+        self.assertIn("ȘURUB", texts())
+        before, _h = self.req("GET", f"/api/doc/{doc_id}/page/0/render?scale=1", raw=True)
+        res = self.req("POST", f"/api/doc/{doc_id}/dxf-layers", {"hidden": ["TEXTE", "NU-EXISTA"]})
+        self.assertEqual(res["hidden"], ["TEXTE"])
+        self.assertNotIn("ȘURUB", texts())
+        self.assertIn("200", texts())  # the dimension's value, on COTE, stays
+        after, _h = self.req("GET", f"/api/doc/{doc_id}/page/0/render?scale=1&v={res['lv']}", raw=True)
+        self.assertNotEqual(before, after)
+        pdf, _h = self.req("POST", f"/api/doc/{doc_id}/export", {"filename": "x.pdf", "pages": {}, "removals": {}}, raw=True)
+        d = pdfium.PdfDocument(pdf)
+        self.assertNotIn("ȘURUB", d[0].get_textpage().get_text_range())
+        d.close()
+        out, _h = self.req("POST", f"/api/doc/{doc_id}/export", {"format": "dxf", "filename": "x.dxf", "pages": {}}, raw=True)
+        dx = ezdxf.read(io.StringIO(out.decode("utf-8")))
+        self.assertTrue(dx.layers.get("TEXTE").is_off())
+        self.assertEqual(len(dx.modelspace().query("TEXT")), 3)  # still there, on a layer turned off
+        self.req("POST", f"/api/doc/{doc_id}/dxf-layers", {"hidden": []})
+        self.assertIn("ȘURUB", texts())
+
+        # the drawing's own colors (the red hatch), then black again
+        def reds(v):
+            png, _h = self.req("GET", f"/api/doc/{doc_id}/page/0/render?scale=1&v={v}", raw=True)
+            img = Image.open(io.BytesIO(png)).convert("RGB")
+            return sum(1 for r, g, b in img.get_flattened_data() if r > 180 and g < 80 and b < 80)
+
+        res = self.req("POST", f"/api/doc/{doc_id}/dxf-layers", {"hidden": [], "colors": True})
+        self.assertTrue(res["colors"])
+        self.assertGreater(reds(res["lv"]), 50)
+        self.assertIn("ȘURUB", texts())  # same objects: search, snap and removals still match
+        res = self.req("POST", f"/api/doc/{doc_id}/dxf-layers", {"hidden": [], "colors": False})
+        self.assertEqual(reds(res["lv"]), 0)
 
     def test_dxf_export_vector(self):
         import zipfile

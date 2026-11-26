@@ -5,15 +5,18 @@ geometry extraction) runs here, not in the web server: if a crafted file makes
 the library hang, eat all the memory or crash, only this process stops,
 and the server answers "file rejected". The result (the cleaned PDF) is written to the given folder.
 
-Usage: python -m app.ingest <input> <output_folder> [dpi]
+Usage: python -m app.ingest <input> <output_folder> [dpi] [dxf units ($INSUNITS code)]
        python -m app.ingest --image <input> <output_folder>   (an image to place on a drawing)
+       python -m app.ingest --font <input> <output_folder>    (a font for DXF / DWG texts)
 Output on stdout: a single JSON object.
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import sys
+from pathlib import Path
 
 
 def _env(name, default):
@@ -26,10 +29,72 @@ MEM_MB = int(_env("WORKER_MEM_MB", "3072"))
 CPU_S = int(_env("WORKER_CPU_S", "120"))
 MAX_PAGE_PT = 14400  # 200 inches, the limit of the PDF specification
 MAX_STATE = 8 * 1024 * 1024
+MAX_DXF_ENTITIES = int(_env("MAX_DXF_ENTITIES", "400000"))
 
 
 class Rejected(Exception):
     pass
+
+
+def is_dwg(head: bytes) -> bool:
+    """A DWG by its version string: AC1012 (R13) … AC1032 (2018+), the old AC1.40 … AC2.10 too."""
+    return re.match(rb"AC(1\d{3}|[12]\.\d\d)", head[:6]) is not None
+
+
+def is_dxf(head: bytes) -> bool:
+    """A DXF by its content (the upload's name is not trusted): binary DXF sentinel, or an ASCII file
+    that starts with group code 0 SECTION (after optional 999 comments)."""
+    if head.startswith(b"AutoCAD Binary DXF"):
+        return True
+    lines = [ln.strip() for ln in head[:4096].decode("latin-1").splitlines()]
+    i = 0
+    while i + 1 < len(lines) and lines[i] == "999":
+        i += 2
+    return i + 1 < len(lines) and lines[i] == "0" and lines[i + 1].upper() == "SECTION"
+
+
+DWG_TIMEOUT = float(_env("DWG_TIMEOUT", "90"))
+
+
+def dwg_dxf(data: bytes, out_dir: str) -> bytes:
+    """A DWG converted to DXF by LibreDWG (dwg2dxf), in this limited process (its limits apply to the
+    converter too)."""
+    from . import dxfin
+
+    try:
+        return dxfin.dwg_to_dxf(data, out_dir, DWG_TIMEOUT)
+    except dxfin.NoDwg as e:
+        raise Rejected("Deschiderea DWG nu e disponibilă aici (lipsește LibreDWG). Salvează desenul ca DXF.") from e
+    except ValueError as e:
+        raise Rejected(str(e)) from e
+
+
+def dxf_pdf(data: bytes, out_dir: str) -> tuple[bytes, dict]:
+    """A DXF made into a vector PDF (dxfin); the DXF is kept next to it (original.dxf), for the DXF export
+    of the original drawing."""
+    from . import dxfin
+
+    try:
+        pdf, info = dxfin.dxf_to_pdf(data, max_entities=MAX_DXF_ENTITIES)
+    except dxfin.TooLarge as e:
+        raise Rejected(f"Desen DXF prea mare: peste {MAX_DXF_ENTITIES} entități de desenat, cu blocurile desfăcute") from e
+    except ValueError as e:
+        raise Rejected(str(e)) from e
+    except Exception as e:  # noqa: BLE001
+        raise Rejected(f"DXF imposibil de citit: {e}") from e
+    if len(info["pages"]) > MAX_PAGES:
+        raise Rejected(f"Prea multe pagini (limita e {MAX_PAGES})")
+    with open(os.path.join(out_dir, "original.dxf"), "wb") as f:
+        f.write(info.pop("fixed_dxf", None) or data)
+    # which DXF entity each PDF object comes from: removals made in DrawCAD reach the DXF export
+    with open(os.path.join(out_dir, "original.dxfmap.json"), "w", encoding="utf-8") as f:
+        json.dump(info.pop("handles"), f, separators=(",", ":"))
+    # the layer of each PDF object: layers can be hidden in the editor
+    lm = info.pop("layer_map")
+    with open(os.path.join(out_dir, "original.dxflayers.json"), "w", encoding="utf-8") as f:
+        json.dump({"names": lm["names"], "pages": lm["pages"]}, f, separators=(",", ":"))
+    info["layers"] = lm["layers"]
+    return pdf, info
 
 
 def _limit_self():
@@ -113,7 +178,7 @@ def clean_upload_image(path: str, out_dir: str) -> dict:
     return {"id": iid, "ext": ext, "w": w, "h": h}
 
 
-def process(path: str, out_dir: str, dpi: float | None) -> dict:
+def process(path: str, out_dir: str, dpi: float | None, units: int | None = None) -> dict:
     from PIL import Image
 
     Image.MAX_IMAGE_PIXELS = int(MAX_IMAGE_MPX * 1e6)
@@ -129,7 +194,23 @@ def process(path: str, out_dir: str, dpi: float | None) -> dict:
     state = None
     removed = {}
     head = data[:1024]
-    if b"%PDF-" not in head:
+    dxf = None
+    if is_dwg(head) or is_dxf(data[:4096]):
+        kind = "dxf"
+        if is_dwg(head):
+            data = dwg_dxf(data, out_dir)
+            kind = "dwg"
+        if units:
+            # read again in other units ($INSUNITS), chosen by the user
+            from . import dxfin
+
+            try:
+                data = dxfin.set_insunits(data, units)
+            except Exception as e:  # noqa: BLE001
+                raise Rejected(f"DXF imposibil de citit: {e}") from e
+        data, dxf = dxf_pdf(data, out_dir)
+        data, removed = sanitize_pdf(data)  # our own PDF: nothing to remove, but every PDF goes through it
+    elif b"%PDF-" not in head:
         try:
             im = Image.open(path)
             w, h = im.size
@@ -178,7 +259,7 @@ def process(path: str, out_dir: str, dpi: float | None) -> dict:
             pdfcore.snap_points(data, i)
     with open(os.path.join(out_dir, "original.pdf"), "wb") as f:
         f.write(data)
-    return {"kind": kind, "dpi": used_dpi, "pages": pages, "state": state, "removed": removed}
+    return {"kind": kind, "dpi": used_dpi, "pages": pages, "state": state, "removed": removed, "dxf": dxf}
 
 
 def _emit(out_dir, obj):
@@ -198,8 +279,108 @@ def _emit(out_dir, obj):
             pass
 
 
+def dxf_colors(doc_dir: str) -> dict:
+    """The drawing of a document opened from DXF / DWG plotted again in its own colors
+    (original-color.pdf, next to the monochrome original.pdf). Same objects in the same order, checked
+    page by page, so removals, hidden layers and the entity map keep working."""
+    import pypdfium2 as pdfium
+
+    from . import dxfin
+    from .sanitize import sanitize_pdf
+
+    with open(os.path.join(doc_dir, "original.dxf"), "rb") as f:
+        data = f.read()
+    try:
+        pdf, _info = dxfin.dxf_to_pdf(data, max_entities=MAX_DXF_ENTITIES, colors=True)
+    except Exception as e:  # noqa: BLE001
+        raise Rejected(f"Desenul nu poate fi refăcut color: {e}") from e
+    pdf, _removed = sanitize_pdf(pdf)
+
+    def counts(b):
+        d = pdfium.PdfDocument(b)
+        try:
+            return [pdfium.raw.FPDFPage_CountObjects(d[i].raw) for i in range(len(d))]
+        finally:
+            d.close()
+
+    with open(os.path.join(doc_dir, "original.pdf"), "rb") as f:
+        mono = f.read()
+    if counts(pdf) != counts(mono):
+        raise Rejected("Desenul color nu se potrivește cu cel deschis")
+    tmp = os.path.join(doc_dir, "original-color.pdf.tmp")
+    with open(tmp, "wb") as f:
+        f.write(pdf)
+    os.replace(tmp, os.path.join(doc_dir, "original-color.pdf"))
+    return {}
+
+
+class _NullPen:
+    def __getattr__(self, _name):
+        return lambda *a, **k: None
+
+
+FONT_KINDS = {".ttf": "TrueType", ".otf": "OpenType", ".ttc": "TrueType", ".shx": "SHX"}
+
+
+def check_font(path: str, ext: str) -> dict:
+    """A font added for DXF / DWG texts, read the way the drawings will read it (fontTools for
+    TrueType / OpenType, ezdxf's reader for SHX) and drawn once. → {family, kind}"""
+    ext = ext.lower()
+    if ext not in FONT_KINDS:
+        raise Rejected("Font necunoscut: se acceptă .ttf, .otf, .ttc și .shx")
+    with open(path, "rb") as f:
+        head = f.read(32)
+    if ext == ".shx":
+        if not head.startswith(b"AutoCAD-86 "):
+            raise Rejected("Nu e un font SHX")
+        from ezdxf.fonts import shapefile
+
+        font = shapefile.readfile(path)
+        if not len(font):
+            raise Rejected("Fontul SHX nu are caractere")
+        family = Path(path).stem
+    else:
+        if head[:4] not in (b"\x00\x01\x00\x00", b"true", b"OTTO", b"ttcf"):
+            raise Rejected("Nu e un font TrueType / OpenType")
+        from fontTools.ttLib import TTFont
+
+        tt = TTFont(path, fontNumber=0)
+        family = ""
+        for rec in tt["name"].names:
+            if rec.nameID == 1:
+                family = rec.toUnicode()
+                break
+        glyphs = tt.getGlyphSet()
+        for ch in "AØ09":  # noqa: RUF001 (drawn once, as the drawings will)
+            name = tt.getBestCmap().get(ord(ch))
+            if name:
+                glyphs[name].draw(_NullPen())
+        tt.close()
+    return {"family": family[:100], "kind": FONT_KINDS[ext]}
+
+
 def main(argv):
     _limit_self()
+    if len(argv) > 3 and argv[1] == "--font":
+        try:
+            _emit(argv[3], {"ok": True, **check_font(argv[2], os.path.splitext(argv[2])[1])})
+            return 0
+        except Rejected as e:
+            _emit(argv[3], {"ok": False, "error": str(e)})
+            return 2
+        except Exception:  # noqa: BLE001
+            _emit(argv[3], {"ok": False, "error": "Font respins: nu poate fi citit"})
+            return 4
+    if len(argv) > 2 and argv[1] == "--dxf-colors":
+        try:
+            _emit(argv[2], {"ok": True, **dxf_colors(argv[2])})
+            return 0
+        except Rejected as e:
+            _emit(argv[2], {"ok": False, "error": str(e)})
+            return 2
+        except Exception as e:  # noqa: BLE001
+            _emit(argv[2], {"ok": False, "error": f"Desenul nu poate fi refăcut color: {e}"})
+            return 4
     image = len(argv) > 1 and argv[1] == "--image"
     if image:
         argv = argv[1:]
@@ -210,7 +391,8 @@ def main(argv):
             _emit(out_dir, {"ok": True, **res})
             return 0
         dpi = float(argv[3]) if len(argv) > 3 and argv[3] else None
-        res = process(argv[1], out_dir, dpi)
+        units = int(argv[4]) if len(argv) > 4 and argv[4] else None
+        res = process(argv[1], out_dir, dpi, units)
         _emit(out_dir, {"ok": True, **res})
         return 0
     except Rejected as e:

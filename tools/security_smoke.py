@@ -41,6 +41,18 @@ st, _h, _ = call("POST", "/api/open", b"MZ" + os.urandom(4000), {"X-Filename": "
 assert st == 400, st
 st, _h, _ = call("POST", "/api/open", b"%PDF-1.7\n" + os.urandom(20000), {"X-Filename": "stricat.pdf"})
 assert st == 400, st
+st, _h, _ = call("POST", "/api/open", b"0\nSECTION\n2\nENTITIES\n" + os.urandom(20000), {"X-Filename": "stricat.dxf"})
+assert st == 400, st
+# a DXF block bomb: 8 levels of 10 nested inserts (10^8 lines), refused before drawing
+_dxf = ["0\nSECTION\n2\nBLOCKS"]
+for _i in range(8):
+    _dxf.append(f"0\nBLOCK\n8\n0\n2\nB{_i}\n70\n0\n10\n0\n20\n0\n30\n0\n3\nB{_i}")
+    for _k in range(10):
+        _dxf.append(f"0\nINSERT\n8\n0\n2\nB{_i - 1}\n10\n{_k}\n20\n0\n30\n0" if _i else f"0\nLINE\n8\n0\n10\n{_k}\n20\n0\n30\n0\n11\n{_k}\n21\n1\n31\n0")
+    _dxf.append("0\nENDBLK\n8\n0")
+_dxf += ["0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nINSERT\n8\n0\n2\nB7\n10\n0\n20\n0\n30\n0\n0\nENDSEC\n0\nEOF\n"]
+st, _h, body = call("POST", "/api/open", "\n".join(_dxf).encode(), {"X-Filename": "bomba.dxf"})
+assert st == 400 and b"prea mare" in body, (st, body[:200])
 st, _h, _ = call("POST", "/api/open", malicious_pdf(), {"X-Filename": "a.pdf", "Origin": "http://rau.example"})
 assert st == 403, st
 # images placed on a drawing: SVG (active content), a decompression bomb and a renamed executable are refused
@@ -55,6 +67,16 @@ st, _h, _ = call("POST", f"/api/doc/{meta['id']}/images", b"\x89PNG\r\n\x1a\n", 
 assert st == 403, st
 st, _h, _ = call("GET", f"/api/doc/{meta['id']}/image/../../meta.json")
 assert st == 404, st
+# fonts for DXF / DWG: a cross-site upload is refused; a font that is not one (or a renamed executable)
+# is refused by the limited process; on a shared server nobody adds fonts from the browser
+st, _h, _ = call("POST", "/api/fonts", b"\x00\x01\x00\x00", {"X-Filename": "a.ttf", "Origin": "http://rau.example"})
+assert st == 403, st
+_fonts = json.loads(call("GET", "/api/fonts")[2])
+for name, bad in (("a.ttf", b"\x00\x01\x00\x00" + os.urandom(3000)), ("b.shx", b"MZ" + os.urandom(3000)), ("c.exe", b"MZ")):
+    st, _h, _ = call("POST", "/api/fonts", bad, {"X-Filename": name})
+    assert st == (400 if _fonts["editable"] else 403), f"font accepted: {name} {st}"
+st, _h, _ = call("DELETE", "/api/fonts?name=../meta.json")
+assert st in (403, 404), st
 st, _h, _ = call("GET", "/api/health")
 assert st == 200, "the server must keep working"
 mode = json.loads(call("GET", "/api/health")[2]).get("mode")

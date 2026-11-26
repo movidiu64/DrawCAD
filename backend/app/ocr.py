@@ -434,7 +434,7 @@ def native_text(pdf_bytes: bytes, n: int) -> list[dict]:
     """Real texts of the PDF (not from the image), with their bounding boxes: for search."""
     import ctypes  # noqa: F401
 
-    from .pdfcore import PDFIUM_LOCK, PageGeo, R, _bbox_page_space, _text_of, _walk, pdfium
+    from .pdfcore import PDFIUM_LOCK, PageGeo, R, _bbox_page_space, _is_hidden, _text_of, _walk, pdfium
 
     out = []
     with PDFIUM_LOCK:
@@ -444,8 +444,8 @@ def native_text(pdf_bytes: bytes, n: int) -> list[dict]:
             g = PageGeo.of(page)
             tp = page.get_textpage()
             for _oid, obj, typ, parent_total, _c, _n in _walk(page.raw):
-                if typ != R.FPDF_PAGEOBJ_TEXT:
-                    continue
+                if typ != R.FPDF_PAGEOBJ_TEXT or _is_hidden(obj, typ):
+                    continue  # a text on a hidden layer is not found either
                 txt = _text_of(obj, tp.raw).strip()
                 if not txt:
                     continue

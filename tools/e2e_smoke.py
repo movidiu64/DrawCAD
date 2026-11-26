@@ -756,12 +756,55 @@ def main(url, out):
         assert abs(page.evaluate("window.cotare.compare.split") - 0.25) < 1e-9
         page.click("[data-cmp='close']")
         page.click("#ptabs [data-ptab='props']")
+        # a DXF (V14): opened as a drawing, on an ISO sheet at its scale; the 1:2 layout sets the scale
+        dxf = out / "placa.dxf"
+        _make_dxf(dxf)
+        export_id = prev_id = page.evaluate("window.cotare.doc.id")
+        page.set_input_files("#fileInput", str(dxf))
+        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.kind === 'dxf'")
+        assert "DXF" in page.inner_text("#docMeta"), page.inner_text("#docMeta")
+        assert page.evaluate("window.cotare.settings.scale") == 2, page.evaluate("window.cotare.settings.scale")
+        # snap comes from the DXF geometry: the Ø30 hole at 1:2 is a 7.5 mm radius on the sheet
+        page.wait_for_function("window.cotare.snapper.arcs.some((a) => Math.abs(a[2] - 7.5 * 72 / 25.4) < 0.2)")
+        # the layouts are the page tabs, each with its own scale (the second one is 1:1)
+        tabs = page.inner_text("#pageTabs")
+        assert "Plansa" in tabs and "Detaliu" in tabs, tabs
+        page.click("#pageTabs [data-pg='1']")
+        page.wait_for_function("window.cotare.page === 1 && window.cotare.settings.scale === 1")
+        page.click("#pageTabs [data-pg='0']")
+        page.wait_for_function("window.cotare.page === 0 && window.cotare.settings.scale === 2")
+        page.screenshot(path=str(out / "dxf_open.png"))
+        # the drawing's layers: TEXT hidden, its text is no longer on the page, then shown again
+        page.click("#ptabs [data-ptab='layers']")
+        page.wait_for_selector("[data-act='dxflayer'][data-v='TEXT']")
+        page.screenshot(path=str(out / "dxf_layers.png"))
+        page.click("[data-act='dxflayer'][data-v='TEXT']")
+        page.wait_for_function("(window.cotare.doc.dxf.hidden || []).includes('TEXT')")
+        page.wait_for_selector(".layer.off [data-v='TEXT']")
+        page.click("[data-act='dxfall']")
+        page.wait_for_function("(window.cotare.doc.dxf.hidden || []).length === 0")
+        # the drawing's own colors (plotted again on the server), then black again
+        page.click("[data-act='dxfcolors'][data-v='1']")
+        page.wait_for_function("window.cotare.doc.dxf.colors === true", timeout=60000)
+        page.click("[data-act='dxfcolors'][data-v='0']")
+        page.wait_for_function("window.cotare.doc.dxf.colors === false")
+        page.click("#ptabs [data-ptab='props']")
+        # a DWG, where LibreDWG is installed (Docker image, desktop app): converted, then like a DXF
+        if page.evaluate("fetch('api/health').then((r) => r.json()).then((h) => !!h.dwg)"):
+            prev_id = page.evaluate("window.cotare.doc.id")
+            page.set_input_files("#fileInput", str(Path(__file__).resolve().parents[1] / "backend" / "tests" / "fixtures" / "piesa_r2000.dwg"))
+            page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.kind === 'dwg'")
+            assert "DWG" in page.inner_text("#docMeta"), page.inner_text("#docMeta")
+            page.wait_for_function("window.cotare.snapper.arcs.some((a) => Math.abs(a[2] - 25 * 72 / 25.4) < 0.2)")
+            print("DWG: OK")
+        else:
+            print("DWG: LibreDWG not installed, skipped")
         # closing without changes: straight to the start page
         page.click("#btnClose")
         page.wait_for_function("window.cotare.doc === null && !document.getElementById('emptyState').hidden")
         page.wait_for_function("document.querySelectorAll('#recentList [data-doc]').length >= 1", timeout=5000)
-        # reopen from Recent, one change, then close with the prompt
-        page.click("#recentList [data-doc]")
+        # reopen the export from Recent (the DXF is the newest), one change, then close with the prompt
+        page.click(f'#recentList [data-doc="{export_id}"]')
         page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 42")
         page.wait_for_timeout(300)
         # page operations are history steps: rotate, Ctrl+Z; delete a page, Ctrl+Z, Ctrl+Y, Ctrl+Z
@@ -858,6 +901,27 @@ def main(url, out):
     print("TEXT:", " | ".join(t for t in txt.split() if t))
     assert "Ø30" not in txt.split(), "the Ø30 text should have been removed from the original"
     print("CONSOLE ERRORS:", errors or "none")
+
+
+def _make_dxf(path):
+    """A 120 × 80 plate with a hole and a label (layer TEXT), on an A4 layout at 1:2 and a detail
+    layout at 1:1."""
+    import ezdxf
+
+    doc = ezdxf.new("R2010", setup=True, units=4)
+    doc.styles.add("ISO", font="isocp.shx")
+    msp = doc.modelspace()
+    msp.add_lwpolyline([(0, 0), (120, 0), (120, 80), (0, 80)], close=True)
+    msp.add_circle((60, 40), 15)
+    doc.layers.add("TEXT", color=1)
+    msp.add_text("PLACĂ", height=7, dxfattribs={"style": "ISO", "layer": "TEXT"}).set_placement((5, 85))
+    lay = doc.layouts.new("Plansa")
+    lay.page_setup(size=(297, 210), margins=(0, 0, 0, 0), units="mm")
+    lay.add_viewport(center=(148.5, 105), size=(277, 190), view_center_point=(60, 45), view_height=380)
+    det = doc.layouts.new("Detaliu")  # the hole at 1:1
+    det.page_setup(size=(297, 210), margins=(0, 0, 0, 0), units="mm")
+    det.add_viewport(center=(148.5, 105), size=(100, 100), view_center_point=(60, 40), view_height=100)
+    doc.saveas(path)
 
 
 def _report_failure(exc):

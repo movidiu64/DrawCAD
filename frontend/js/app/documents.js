@@ -6,7 +6,9 @@ import { Snapper } from "../osnap.js";
 import * as dlg from "../dialogs.js";
 import { applyPageOp } from "../pages.js";
 import { tr } from "../i18n.js";
-import { $ } from "./util.js";
+import { $, esc } from "./util.js";
+import { scaleText } from "../tblock.js";
+import { fmtNum } from "../annots.js";
 
 export class Documents {
   // ------------------------------------------------------------ documents
@@ -19,10 +21,39 @@ export class Documents {
       const names = { javascript: "JavaScript", actiuni: "acțiuni automate", atasamente: "fișiere atașate", adnotari: "adnotări multimedia", xfa: "formular XFA" };
       const rmTxt = Object.entries(rm).map(([k, n]) => `${names[k] || k} (${n})`).join(", ");
       if (rmTxt) dlg.toast(`Deschis: ${meta.name}. Am eliminat din PDF conținutul activ, inutil la un desen: ${rmTxt}.`, 9000);
+      else if (meta.dxf) dlg.toast(this.dxfOpenedText(meta), 9000);
       else dlg.toast(meta.fromExport ? "Export anterior: cotele au fost reîncărcate editabile." : `Deschis: ${meta.name}`);
     } catch (e) {
       dlg.toast(`Nu s-a putut deschide: ${e.message}`, 6000);
     }
+  }
+
+  /** What came out of a DXF: the pages (layouts or model space on a sheet) and their scale. */
+  dxfOpenedText(meta) {
+    const pg = meta.dxf.pages || [];
+    const k = pg[0].scale;
+    const sc = k >= 1 ? `1:${fmtNum(k, ",", 3)}` : `${fmtNum(1 / k, ",", 3)}:1`;
+    let what;
+    if (pg.length === 1 && pg[0].space === "model" && pg[0].frame) what = `foaia din desen, ${pg[0].iso}, scara ${sc}`;
+    else if (pg.length === 1 && pg[0].space === "model" && pg[0].iso) what = `spațiul model pe ${pg[0].iso}, scara ${sc}`;
+    else if (pg.length === 1 && pg[0].space === "model") what = `pagina exportată din DrawCAD, scara ${sc}`;
+    else if (pg.length === 1) what = `planșa ${pg[0].name}; scara ${sc}`;
+    else what = `planșe: ${pg.map((p) => p.name).join(", ")}; scara ${sc}`;
+    const n = (meta.dxf.fixes || 0) + (meta.dxf.errors || 0);
+    const fonts = meta.dxf.fonts_missing || [];
+    // each remark translated on its own: together they would not match one English entry
+    const fix = [
+      n ? `Fișierul avea ${n} erori, reparate la citire.` : "",
+      meta.dxf.inventor ? "Desen salvat din Inventor: vederile, chenarul și indicatorul au fost așezate din nou din blocurile lui." : "",
+      fonts.length ? `Fonturi înlocuite cu osifont: ${fonts.join(", ")}; le poți adăuga din Setări → Fonturi DXF / DWG.` : "",
+      meta.dxf.gdt_symbols ? "Simbolurile GD&T (font AIGDT / GDT) au fost convertite." : "",
+      meta.dxf.acis === 1 ? "Desenul are un solid 3D (ACIS), pe care DrawCAD nu îl poate desena: apare doar geometria 2D." : "",
+      meta.dxf.acis > 1 ? `Desenul are ${meta.dxf.acis} solide 3D (ACIS), pe care DrawCAD nu le poate desena: apare doar geometria 2D.` : "",
+      meta.dxf.views_3d === 1 ? "O vedere 3D dintr-o planșă rămâne goală: se desenează doar vederile de sus." : "",
+      meta.dxf.views_3d > 1 ? `${meta.dxf.views_3d} vederi 3D din planșe rămân goale: se desenează doar vederile de sus.` : "",
+      meta.dxf.insunits === 1 ? "Unitățile din fișier sunt inch; dacă desenul e în mm, alege mm în Straturi → Desen DXF / DWG." : "",
+    ].filter(Boolean).map((t) => ` ${tr(t)}`).join("");
+    return `Deschis: ${meta.name} — ${what}. Scara desenului e luată din fișier.${fix}`;
   }
 
   async loadDoc(id, silent) {
@@ -41,6 +72,10 @@ export class Documents {
     localStorage.setItem("cotare.lastDoc", meta.id);
     this.annots = (state && state.annots) || [];
     this.settings = { ...dlg.storedDefaults(), ...((state && state.settings) || {}) };
+    // a DXF: the drawing scale comes from the file (the first page's layout or the fitted sheet)
+    if (!(state && state.settings && state.settings.scale) && meta.dxf && meta.dxf.pages && meta.dxf.pages[0]) {
+      this.settings.scale = meta.dxf.pages[0].scale;
+    }
     this.ocr = new Map(); // page → OCR result (null = not recognized yet)
     this.ocrPages = new Set(meta.ocrPages || []);
     this.hit = null;
@@ -54,7 +89,7 @@ export class Documents {
     this.revPending = true;
     this.setSaveState(state ? "saved" : "");
     $("docName").textContent = meta.name;
-    $("docMeta").textContent = `${meta.kind === "image" ? "imagine" : "PDF"} · ${meta.pages.length} ${meta.pages.length === 1 ? "pagină" : "pagini"}`;
+    $("docMeta").textContent = `${{ image: "imagine", dxf: "DXF", dwg: "DWG" }[meta.kind] || "PDF"} · ${meta.pages.length} ${meta.pages.length === 1 ? "pagină" : "pagini"}`;
     document.title = `${meta.name} — DrawCAD`;
     this.setPage(0);
     this.updateButtons();
@@ -71,6 +106,14 @@ export class Documents {
     this.selectedId = null;
     this.sel = new Set();
     const p = this.doc.pages[n];
+    // a drawing opened from DXF / DWG: each layout has its own scale, the tools follow the page shown
+    if (this.doc.dxf) {
+      const k = this.pageScale(n);
+      if (k !== Number(this.settings.scale)) {
+        this.settings = { ...this.settings, scale: k };
+        this.cache.clear();
+      }
+    }
     this.view.setPage(this.doc.id, n, p.w, p.h);
     this.renderTabs();
     this.panel.render();
@@ -82,6 +125,33 @@ export class Documents {
       if (this.page === n && this.snapCfg.scan) this.loadScanSnap(n);
     }).catch(() => {});
     if (this.showOcr && this.ocrPages.has(n)) this.loadOcr(n).catch(() => {});
+  }
+
+  /** Layers of a drawing opened from DXF / DWG, hidden or shown again: the server leaves them out of
+   *  the page, snap, search and export, so the page is loaded again. */
+  async setDxfHidden(hidden, colors = !!(this.doc && this.doc.dxf && this.doc.dxf.colors)) {
+    if (!this.doc || !this.doc.dxf) return;
+    if (colors && !this.doc.dxf.colors) dlg.toast("Desenul se reface color…", 4000);
+    const res = await api.dxfLayers(this.doc.id, hidden, colors);
+    this.doc.dxf.hidden = res.hidden;
+    this.doc.dxf.colors = res.colors;
+    this.doc.lv = res.lv;
+    this.unexported = true;
+    this.setPage(this.page);
+  }
+
+  /** The drawing read again in other units (an inch template drawn in mm, or the reverse): a new document;
+   *  the old one is removed when it has no annotations, otherwise it stays in the list. */
+  async setDxfUnits(units) {
+    if (!this.doc || !this.doc.dxf) return;
+    const old = this.doc;
+    const keep = this.annots.length > 0;
+    await this.flushSave();
+    dlg.toast(units === "mm" ? "Desenul se citește din nou în mm…" : "Desenul se citește din nou în inch…", 15000);
+    const meta = await api.dxfUnits(old.id, units);
+    this.setDoc(meta, meta.state);
+    if (!keep) api.deleteDoc(old.id).catch(() => {});
+    dlg.toast(`${this.dxfOpenedText(meta)}${keep ? ` ${tr("Documentul de dinainte, cu adnotările lui, rămâne în lista de documente.")}` : ""}`, 9000);
   }
 
   /** A scanned page (no vector lines in the PDF). */
@@ -159,16 +229,52 @@ export class Documents {
   }
 
   renderTabs() {
-    const tabs = this.doc.pages.map((p, i) => `<button class="${i === this.page ? "on" : ""}" data-pg="${i}">Pagina ${i + 1}</button>`).join("");
+    // a drawing opened from DXF / DWG: the layout names (Model, Sheet, Plansa 1…)
+    const label = (p, i) => (p.name ? `<span translate="no">${esc(p.name.length > 24 ? `${p.name.slice(0, 23)}…` : p.name)}</span>` : `Pagina ${i + 1}`);
+    const tabs = this.doc.pages.map((p, i) => `<button class="${i === this.page ? "on" : ""}" data-pg="${i}"${p.name ? ` title="${esc(p.name)} · ${esc(scaleText(this.pageScale(i)))}"` : ""}>${label(p, i)}</button>`).join("");
     const ico = (d) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
     const ops = `<span class="pgops">
       <button class="mini" data-pgop="rl" title="Rotește pagina la stânga (ROTL)" aria-label="Rotește pagina la stânga">${ico("M4 4v6h6M4.6 15a8 8 0 1 0 1.9-8.3L4 10")}</button>
       <button class="mini" data-pgop="rr" title="Rotește pagina la dreapta (ROTR)" aria-label="Rotește pagina la dreapta">${ico("M20 4v6h-6M19.4 15a8 8 0 1 1-1.9-8.3L20 10")}</button>
       <button class="mini" data-pgop="dlg" title="Pagini: rotire, ordine, ștergere (PAGES)" aria-label="Pagini">${ico("M5 3h9l5 5v13H5zM14 3v5h5")}</button></span>`;
-    $("pageTabs").innerHTML = `${tabs}${ops}`;
+    // many pages (a DWG with 20 layouts): the tabs scroll sideways (wheel, arrows) without a scrollbar
+    // over them; the page buttons stay in place
+    const box = $("pageTabs");
+    const left = box.querySelector(".pgscroll")?.scrollLeft || 0;
+    const arr = (d, t) => `<button class="pgarr" data-pgstep="${d}" title="${t}" aria-label="${t}">${ico(d < 0 ? "M15 5l-7 7 7 7" : "M9 5l7 7-7 7")}</button>`;
+    box.innerHTML = `${arr(-1, "Filele din stânga")}<div class="pgscroll">${tabs}</div>${arr(1, "Filele din dreapta")}${ops}`;
     $("legend").hidden = false;
-    $("pageTabs").querySelectorAll("[data-pg]").forEach((b) => b.addEventListener("click", () => this.setPage(Number(b.dataset.pg))));
-    $("pageTabs").querySelectorAll("[data-pgop]").forEach((b) => b.addEventListener("click", () => {
+    const sc = box.querySelector(".pgscroll");
+    sc.scrollLeft = left;
+    const on = sc.querySelector("button.on");
+    if (on && (on.offsetLeft < sc.scrollLeft || on.offsetLeft + on.offsetWidth > sc.scrollLeft + sc.clientWidth)) {
+      sc.scrollLeft = on.offsetLeft - (sc.clientWidth - on.offsetWidth) / 2;
+    }
+    const ends = () => box.querySelectorAll("[data-pgstep]").forEach((b) => {
+      b.disabled = b.dataset.pgstep < 0 ? sc.scrollLeft <= 0 : sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 1;
+    });
+    const fit = () => {
+      box.classList.toggle("ovf", sc.scrollWidth > sc.clientWidth + 1);
+      ends();
+    };
+    fit();
+    this._tabsFit = fit;
+    sc.addEventListener("scroll", ends, { passive: true });
+    if (!this._tabsRO && window.ResizeObserver) {
+      // the bar may still be hidden at the first render (no width yet), or the window resized
+      this._tabsRO = new ResizeObserver(() => this._tabsFit?.());
+      this._tabsRO.observe(box);
+    }
+    sc.addEventListener("wheel", (e) => {
+      if (sc.scrollWidth <= sc.clientWidth) return;
+      e.preventDefault();
+      sc.scrollLeft += Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    }, { passive: false });
+    box.querySelectorAll("[data-pgstep]").forEach((b) => b.addEventListener("click", () => {
+      sc.scrollBy({ left: Number(b.dataset.pgstep) * sc.clientWidth * 0.8, behavior: "smooth" });
+    }));
+    box.querySelectorAll("[data-pg]").forEach((b) => b.addEventListener("click", () => this.setPage(Number(b.dataset.pg))));
+    box.querySelectorAll("[data-pgop]").forEach((b) => b.addEventListener("click", () => {
       const k = b.dataset.pgop;
       if (k === "dlg") dlg.pagesDialog(this);
       else this.pageOp({ op: "rotate", pages: [this.page], delta: k === "rr" ? 90 : -90 }).catch((e) => dlg.toast(e.message));
@@ -227,7 +333,7 @@ export class Documents {
       this.sel = new Set();
       this.unexported = true;
       this.setSaveState("saved");
-      $("docMeta").textContent = `${this.doc.kind === "image" ? "imagine" : "PDF"} · ${res.pages.length} ${res.pages.length === 1 ? "pagină" : "pagini"}`;
+      $("docMeta").textContent = `${{ image: "imagine", dxf: "DXF", dwg: "DWG" }[this.doc.kind] || "PDF"} · ${res.pages.length} ${res.pages.length === 1 ? "pagină" : "pagini"}`;
       this.setPage(Math.min(Math.max(0, pg), res.pages.length - 1));
       this.panel.render();
       this.updateButtons();

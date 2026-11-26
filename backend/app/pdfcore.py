@@ -857,6 +857,8 @@ def snap_points(pdf_bytes: bytes, page_index: int, limit: int = 60000) -> dict:
                 pts.append([round(vx, 3), round(vy, 3), kind])
 
             for _oid, obj, typ, parent_total, _c, _n in _walk(page.raw):
+                if _is_hidden(obj, typ):
+                    continue
                 if typ == R.FPDF_PAGEOBJ_TEXT:
                     # insertion point of a text run: its baseline origin
                     t = mat_mul(_obj_matrix(obj), parent_total)
@@ -1033,6 +1035,8 @@ def objects_in_rect(pdf_bytes: bytes, page_index: int, rect_vis) -> list[dict]:
             for oid, obj, typ, parent_total, _c, _n in _walk(page.raw):
                 if typ == R.FPDF_PAGEOBJ_FORM:
                     continue  # list the children
+                if _is_hidden(obj, typ):
+                    continue
                 bb = _bbox_page_space(obj, parent_total)
                 if bb is None:
                     continue
@@ -1341,6 +1345,9 @@ def _apply_removals_page(page: pdfium.PdfPage, ops: list[dict]) -> dict:
                 report["removed"] += 1
     if targets or recolored:
         R.FPDFPage_GenerateContent(page.raw)
+    # for the DXF export of a drawing opened from DXF: which original objects went (whole or cut)
+    report["_gone"] = sorted(o for o in targets if o not in cuts)
+    report["_cut"] = sorted(cuts)
     return report
 
 
@@ -1364,6 +1371,70 @@ def _blacken_obj(obj, typ) -> bool:
         if not is_white(R.FPDFPageObj_GetFillColor):
             R.FPDFPageObj_SetFillColor(obj, 0, 0, 0, a.value or 255)
         return True
+    return False
+
+
+def hide_objects(pdf_bytes: bytes, hidden: dict[int, list[int]]) -> bytes:
+    """Objects made invisible without removing them (the layers hidden in a drawing opened from DXF):
+    paths and texts become fully see-through (texts also invisible). Every object keeps its
+    place, so object ids (removals, the DXF entity map) stay valid; snap and object picking skip them."""
+    with PDFIUM_LOCK:
+        doc = pdfium.PdfDocument(pdf_bytes)
+        try:
+            for idx, ids in hidden.items():
+                if not ids or not (0 <= idx < len(doc)):
+                    continue
+                page = doc[idx]
+                n = R.FPDFPage_CountObjects(page.raw)
+                changed = False
+                for i in ids:
+                    if not (0 <= i < n):
+                        continue
+                    obj = R.FPDFPage_GetObject(page.raw, i)
+                    typ = R.FPDFPageObj_GetType(obj)
+                    if typ == R.FPDF_PAGEOBJ_PATH:
+                        # see-through, not "no paint": PDFium leaves paths that paint nothing out of the
+                        # regenerated content, and the objects after them would change ids
+                        for get, put in ((R.FPDFPageObj_GetStrokeColor, R.FPDFPageObj_SetStrokeColor),
+                                         (R.FPDFPageObj_GetFillColor, R.FPDFPageObj_SetFillColor)):
+                            cr, cg, cb, ca = (ctypes.c_uint() for _ in range(4))
+                            get(obj, ctypes.byref(cr), ctypes.byref(cg), ctypes.byref(cb), ctypes.byref(ca))
+                            put(obj, cr.value, cg.value, cb.value, 0)
+                        changed = True
+                    elif typ == R.FPDF_PAGEOBJ_TEXT:
+                        R.FPDFTextObj_SetTextRenderMode(obj, R.FPDF_TEXTRENDERMODE_INVISIBLE)
+                        R.FPDFPageObj_SetFillColor(obj, 0, 0, 0, 0)
+                        changed = True
+                    elif typ == R.FPDF_PAGEOBJ_IMAGE:
+                        R.FPDFPageObj_Transform(obj, 0, 0, 0, 0, 0, 0)  # no area: nothing drawn
+                        changed = True
+                if changed:
+                    R.FPDFPage_GenerateContent(page.raw)
+                page.close()
+            out = io.BytesIO()
+            doc.save(out)
+            return out.getvalue()
+        finally:
+            doc.close()
+
+
+def _is_hidden(obj, typ) -> bool:
+    """An object hidden by hide_objects (or any path that draws nothing, such as a clipping path)."""
+    if typ == R.FPDF_PAGEOBJ_PATH:
+        fill, stroke = ctypes.c_int(), ctypes.c_int()
+        if not R.FPDFPath_GetDrawMode(obj, ctypes.byref(fill), ctypes.byref(stroke)):
+            return False
+        if not fill.value and not stroke.value:
+            return True
+
+        def clear(get):
+            r, g, b, a = (ctypes.c_uint() for _ in range(4))
+            return bool(get(obj, ctypes.byref(r), ctypes.byref(g), ctypes.byref(b), ctypes.byref(a))) and a.value == 0
+
+        return (not stroke.value or clear(R.FPDFPageObj_GetStrokeColor)) and (not fill.value or clear(R.FPDFPageObj_GetFillColor))
+    if typ == R.FPDF_PAGEOBJ_TEXT and R.FPDFTextObj_GetTextRenderMode(obj) == R.FPDF_TEXTRENDERMODE_INVISIBLE:
+        r, g, b, a = (ctypes.c_uint() for _ in range(4))
+        return bool(R.FPDFPageObj_GetFillColor(obj, ctypes.byref(r), ctypes.byref(g), ctypes.byref(b), ctypes.byref(a))) and a.value == 0
     return False
 
 

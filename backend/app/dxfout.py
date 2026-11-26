@@ -30,6 +30,7 @@ from .pdfcore import (
     R,
     _bez_as_arc,
     _bez_at,
+    _is_hidden,
     _obj_matrix,
     _path_points,
     _text_of,
@@ -174,6 +175,8 @@ def page_content(pdf_bytes: bytes, page_index: int) -> dict:
             tp = page.get_textpage()
             paths, texts, images = [], [], []
             for _oid, obj, typ, parent_total, _c, _n in _walk(page.raw):
+                if _is_hidden(obj, typ):
+                    continue  # a layer hidden in the editor (drawing opened from DXF)
                 if typ == R.FPDF_PAGEOBJ_PATH:
                     total = mat_mul(_obj_matrix(obj), parent_total)
                     fill = ctypes.c_int()
@@ -264,6 +267,10 @@ class DxfPage:
         self.doc.header["$LUNITS"] = 2
         self.doc.header["$LTSCALE"] = 1.0
         self.doc.header["$LWDISPLAY"] = 1
+        # the page, for reopening in DrawCAD (dxfin): paper size in mm and drawing scale; the page spans
+        # (0, 0)…(W, H) × scale in model space
+        for name, val in (("DRAWCAD_SHEET_W", W * PT_MM), ("DRAWCAD_SHEET_H", H * PT_MM), ("DRAWCAD_SCALE", self.k / PT_MM)):
+            self.doc.header.custom_vars.append(name, f"{val:.6g}")
         self.doc.styles.add("ISO", font="isocpeur.ttf")
         for name, col in LAYERS.items():
             self.doc.layers.add(name, color=col)
@@ -285,7 +292,10 @@ class DxfPage:
         key = tuple(vals)
         if key in self._lt:
             return self._lt[key]
-        name = f"DRAWCAD_{len(self._lt) + 1}"
+        n = len(self._lt) + 1
+        while f"DRAWCAD_{n}" in self.doc.linetypes:
+            n += 1
+        name = f"DRAWCAD_{n}"
         pattern = [round(sum(vals), 4)]
         for i, v in enumerate(vals):
             pattern.append(v if i % 2 == 0 else -v)
@@ -475,12 +485,14 @@ class DxfPage:
                 if e is not None and "transparency" in at:
                     e.dxf.transparency = at["transparency"]
 
-    def add_annot_image(self, filename, px_size, rect, rot=0, op=1.0):
-        """An image placed in DrawCAD: IMAGE entity that references the file saved next to the DXF."""
+    def add_annot_image(self, filename, px_size, rect, rot=0, op=1.0, keep_size_of=None):
+        """An image placed in DrawCAD: IMAGE entity that references the file saved next to the DXF.
+        `keep_size_of`: the image's turn on screen, when `rot` (its turn on the drawing) differs."""
         x0, y0, x1, y1 = rect
         w, h = abs(x1 - x0) * self.k, abs(y1 - y0) * self.k
         rot = int(rot or 0) % 360
-        iw, ih = (h, w) if rot in (90, 270) else (w, h)
+        own = rot if keep_size_of is None else int(keep_size_of or 0) % 360
+        iw, ih = (h, w) if own in (90, 270) else (w, h)
         cx, cy = self.xy(((x0 + x1) / 2, (y0 + y1) / 2))
         # quarter turns clockwise on the sheet; the insert point is the image's own lower left corner
         a = math.radians(-rot)
@@ -573,3 +585,55 @@ class Rotation:
 
 
 __all__ = ["DxfPage", "page_content", "is_scan", "Rotation", "_wrap_pi"]
+
+
+class DxfOnto(DxfPage):
+    """DrawCAD annotations written into an existing drawing: a DXF or DWG opened in DrawCAD gets them
+    on DrawCAD's layers, in the space its page shows (model space, or the paper-space layout), at the
+    drawing's own units. `tf`: drawing → PDF points of the page ([a, b, c, d, e, f], uniform scale, as
+    dxfin placed it); `W`, `H`: page size in points as made from the DXF; `kp`: the page's resize in the
+    editor; `rot`: its quarter turns clockwise in the editor (annotations are drawn on the turned page)."""
+
+    def __init__(self, doc, space, tf, H: float, kp: float = 1.0, W: float | None = None, rot: int = 0):
+        from .pdfcore import PageGeo
+
+        a, _b, _c, d, e, f = tf
+        self.doc, self.msp = doc, space
+        self.W, self.H = W, H
+        self._a, self._d, self._e, self._f, self._kp = a, d, e, f, kp or 1.0
+        self._rot = int(rot or 0) % 360
+        self._geo = PageGeo(0.0, 0.0, float(W or 0), float(H), self._rot) if self._rot else None
+        self.k = 1 / (a * self._kp)
+        if "ISO" not in doc.styles:
+            doc.styles.add("ISO", font="isocpeur.ttf")
+        for name, col in LAYERS.items():
+            if name not in doc.layers:
+                doc.layers.add(name, color=col)
+        self._lt = {}
+        self.counts = {}
+
+    def xy(self, p):
+        vx, vy = p[0] / self._kp, p[1] / self._kp
+        if self._geo is not None:
+            x, y = self._geo.from_vis(vx, vy)
+        else:
+            x, y = vx, self.H - vy
+        return (round((x - self._e) / self._a, 6), round((y - self._f) / self._d, 6))
+
+    def add_text(self, txt, p, h_mm, ang, layer, rgb=None):
+        if self._rot:
+            # the angle as drawn on the turned page, back on the drawing
+            a = math.radians(ang)
+            x0, y0 = self.xy(p)
+            x1, y1 = self.xy((p[0] + 10 * math.cos(a), p[1] - 10 * math.sin(a)))
+            ang = math.degrees(math.atan2(y1 - y0, x1 - x0))
+        return super().add_text(txt, p, h_mm, ang, layer, rgb)
+
+    def add_annot_image(self, filename, px_size, rect, rot=0, op=1.0):
+        # turned with the page: the image turns the other way on the drawing
+        if self._rot:
+            return super().add_annot_image(filename, px_size, rect, (int(rot or 0) - self._rot) % 360, op, keep_size_of=rot)
+        return super().add_annot_image(filename, px_size, rect, rot, op)
+
+    def frame(self):
+        pass

@@ -152,8 +152,8 @@ export async function openDialog(app) {
     <h2>Deschide desen</h2>
     <div class="cols">
       <div class="drop" id="dDrop" style="width:auto">
-        <strong>Trage aici un PDF sau o imagine</strong>
-        <span class="muted">PDF · PNG · JPG · TIFF</span>
+        <strong>Trage aici un PDF, un DXF / DWG sau o imagine</strong>
+        <span class="muted">PDF · DXF · DWG · PNG · JPG · TIFF</span>
         <button class="ghost" id="dPick">Alege fișier</button>
         <div class="row" style="margin-top:8px"><label class="lbl" for="dDpi" style="white-space:nowrap">DPI imagine</label>
         <input type="text" id="dDpi" class="mono" placeholder="din fișier / 300" style="width:140px"></div>
@@ -189,6 +189,8 @@ export function exportDialog(app, opts = {}) {
   const nPages = app.doc.pages.length;
   const nOcr = app.ocrPages ? app.ocrPages.size : 0;
   const realScale = Number(app.settings.scale) || 1;
+  // a drawing opened from DXF / DWG: its DXF export can be the original drawing plus the annotations
+  const fromCad = app.doc.dxf ? (app.doc.kind === "dwg" ? "DWG" : "DXF") : "";
   const dlg = showModal(`
     <h2>Exportă</h2>
     <div class="seg" id="eFmt" style="margin-bottom:12px">
@@ -205,6 +207,11 @@ export function exportDialog(app, opts = {}) {
       <div class="cards">
         <div class="lbl">Opțiuni</div>
         <div id="eDxfOpts" class="dxfopts" hidden>
+          ${fromCad ? `<div class="seg" id="eSrc">
+            <button data-src="1" class="on">Desenul ${fromCad} original</button>
+            <button data-src="0">Reconstruit din pagină</button></div>
+          <div class="note" id="eSrcNote">Entitățile originale rămân neschimbate (straturi, blocuri, cote); cotele și adnotările DrawCAD se adaugă pe straturile DRAWCAD-…, în spațiul desenului (model sau planșă). Ce ai șters în DrawCAD se șterge și din DXF.</div>` : ""}
+          <div id="eRebuild" ${fromCad ? "hidden" : ""}>
           <div class="seg" id="eScale">
             <button data-sc="paper" class="${realScale === 1 ? "on" : ""}">Mărimea hârtiei (1:1)</button>
             <button data-sc="real" class="${realScale !== 1 ? "on" : ""}" ${realScale === 1 ? "disabled title=\"Calibrează întâi scara (K)\"" : ""}>Mărime reală${realScale !== 1 ? ` (×${fmtNum(realScale, ",", 4)})` : ""}</button></div>
@@ -215,6 +222,7 @@ export function exportDialog(app, opts = {}) {
           <label class="chk"><input type="checkbox" id="xVec" checked> Scanuri: vectorizează imaginea <span class="muted">(experimental)</span></label>
           <label class="chk"><input type="checkbox" id="xImg"> Scanuri: imaginea ca fundal (arhivă ZIP cu DXF + PNG)</label>
           <div class="note">Straturi separate: PDF-GEOMETRIE, PDF-TEXT, SCAN-VECTORI, OCR-TEXT, DRAWCAD-COTE… Arcele rămân arce, cercurile cercuri. Imaginile puse în DrawCAD ies lângă DXF, în arhiva ZIP. Pe un scan, textul se recunoaște automat (OCR) dacă nu a fost deja; vectorizarea dă o bază de lucru, nu un desen curat — verifică cotele importante.</div>
+          </div>
         </div>
         <div id="ePdfOpts" class="dxfopts">
         <label class="chk" style="font-size:13px"><input type="checkbox" id="eEmbed" checked> Atașează stratul editabil (la redeschidere cotele rămân editabile)</label>
@@ -237,6 +245,13 @@ export function exportDialog(app, opts = {}) {
   let pgMode = "all";
   let fmt = "pdf";
   let scaleMode = realScale !== 1 ? "real" : "paper";
+  let fromSource = !!fromCad;
+  dlg.querySelectorAll("[data-src]").forEach((b) => b.addEventListener("click", () => {
+    fromSource = b.dataset.src === "1";
+    dlg.querySelectorAll("[data-src]").forEach((x) => x.classList.toggle("on", x === b));
+    dlg.querySelector("#eRebuild").hidden = fromSource;
+    dlg.querySelector("#eSrcNote").hidden = !fromSource;
+  }));
   dlg.querySelectorAll("[data-fmt]").forEach((b) => b.addEventListener("click", () => {
     fmt = b.dataset.fmt;
     dlg.querySelectorAll("[data-fmt]").forEach((x) => x.classList.toggle("on", x === b));
@@ -294,9 +309,9 @@ export function exportDialog(app, opts = {}) {
       const sel = nPages > 1 ? (pgMode === "cur" ? [app.page] : pgMode === "pick" ? parsePages(dlg.querySelector("#ePick").value) : null) : null;
       const split = fmt === "pdf" && nPages > 1 && chk("#eSplit");
       const extra = fmt === "dxf"
-        ? { format: "dxf", dxf: { scale: scaleMode === "real" ? realScale : 1, geom: chk("#xGeom"), text: chk("#xText"), annots: chk("#xAnn"), ocr: chk("#xOcr"), vectorize: chk("#xVec"), image: chk("#xImg") } }
+        ? { format: "dxf", dxf: { source: fromSource, scale: scaleMode === "real" ? realScale : 1, geom: chk("#xGeom"), text: chk("#xText"), annots: fromSource || chk("#xAnn"), ocr: chk("#xOcr"), vectorize: chk("#xVec"), image: chk("#xImg") } }
         : { ocrLayer: chk("#eOcr"), notes: chk("#eNotes") };
-      const { blob, report, kind, stats } = await app.exportPdf(name, color, chk("#eEmbed"), sel, split, extra);
+      let { blob, report, kind, stats } = await app.exportPdf(name, color, chk("#eEmbed"), sel, split, extra);
       const stem = name.replace(/\.(pdf|dxf|zip)$/i, "");
       const fileName = `${stem}.${kind === "zip" ? "zip" : kind === "dxf" ? "dxf" : "pdf"}`;
       const saved = await saveBlob(blob, fileName);
@@ -307,6 +322,7 @@ export function exportDialog(app, opts = {}) {
       }
       const a = { download: saved };
       closeModal();
+      if (stats && stats.source) report = {};  // the removals are told in DXF terms (entities) below
       const removed = Object.values(report).reduce((s, r) => s + (r.removed || 0), 0);
       const blackened = Object.values(report).reduce((s, r) => s + (r.black || 0), 0);
       const sum = (k) => Object.values(report).reduce((s, r) => s + (r[k] || 0), 0);
@@ -314,7 +330,12 @@ export function exportDialog(app, opts = {}) {
       const left = sum("partial") + sum("locked");
       app.markExported();
       let dx = "";
-      if (stats) {
+      if (stats && stats.source) {
+        const st = stats.source;
+        const gone = st.deleted || 0;
+        const part = st.deleted_partly || 0;
+        dx = ` · desenul ${st.from === "dwg" ? "DWG" : "DXF"} original + adnotările${gone ? ` · ${gone} entități șterse` : ""}${part ? ` · ${part} doar acoperite` : ""}`;
+      } else if (stats) {
         const tot = (k) => Object.values(stats).reduce((acc, r) => acc + (r[k] || 0), 0);
         const ents = tot("linii") + tot("polilinii") + tot("arce") + tot("cercuri") + tot("curbe");
         const skew = Object.values(stats).map((r) => r.skew).find((v) => v);
@@ -684,6 +705,7 @@ export function settingsDialog(app, startPane = null) {
     { id: "sheet", doc: true, label: "Foaie și revizii" },
     { id: "ui", doc: false, label: "Interfață" },
     { id: "cmds", doc: false, label: "Comenzi și meniu" },
+    { id: "fonts", doc: false, label: "Fonturi DXF / DWG", scope: "Server · pentru desenele DXF / DWG deschise de acum înainte" },
     ...(ws ? [{ id: "ws", doc: false, label: "Spațiu de lucru" }] : []),
   ];
   let cur = "style";
@@ -694,7 +716,7 @@ export function settingsDialog(app, startPane = null) {
   const navItem = (p) => `<button role="tab" id="stab-${p.id}" data-stab="${p.id}" aria-controls="spane-${p.id}">${p.label}</button>`;
   const pane = (id, body) => {
     const p = PANES.find((x) => x.id === id);
-    const scope = p.doc ? "Documentul curent · se aplică la „Aplică”" : "Toate documentele · se salvează imediat, în acest browser";
+    const scope = p.scope || (p.doc ? "Documentul curent · se aplică la „Aplică”" : "Toate documentele · se salvează imediat, în acest browser");
     return `<section class="spane" role="tabpanel" id="spane-${id}" aria-labelledby="stab-${id}" hidden>
       <div class="scope"><h3>${p.label}</h3><span class="${p.doc ? "doc" : ""}">${scope}</span></div>${body}</section>`;
   };
@@ -779,6 +801,14 @@ export function settingsDialog(app, startPane = null) {
             <div class="sub">Alegi trăgând spre comandă și eliberând butonul; pe ecran tactil, apăsare lungă.</div>
             <div class="mmgrid" id="sMm">${mmGridHtml(markingConfig())}</div>
             <div class="row"><button class="ghost" id="sMmReset">Revino la implicit</button></div>
+          </div>`)}
+        ${pane("fonts", `
+          <div class="sec">
+            <div class="h">Fonturi pentru textele din DXF / DWG</div>
+            <div class="sub">Un text cu un font care nu e aici se scrie cu osifont (ISO 3098). Simbolurile GD&T din fonturile AIGDT, AMGDT și GDT se convertesc (n → Ø, j → ⌖…). Pentru aspectul exact adaugă fonturile din instalarea ta AutoCAD / Inventor (ex.: isocpeur.ttf, aigdt.ttf, isocp.shx): DrawCAD nu le include.</div>
+            <div class="fontlist" id="sFonts"><span class="sub">…</span></div>
+            <div class="row" id="sFontAdd" hidden><button class="ghost" id="sFontPick">Adaugă fonturi…</button><input type="file" id="sFontFile" accept=".ttf,.otf,.ttc,.shx" multiple hidden><span class="sub">.ttf · .otf · .ttc · .shx</span></div>
+            <div class="sub" id="sFontNote"></div>
           </div>`)}
         ${ws ? pane("ws", `
           <div class="sec">
@@ -880,6 +910,45 @@ export function settingsDialog(app, startPane = null) {
       }
     });
   }
+  // fonts for DXF / DWG texts: kept by the server
+  const fontRows = (list, editable) => (list.length
+    ? list.map((f) => `<div class="fontrow"><span translate="no">${esc(f.name)}</span><span class="sub">${fmtNum(f.size / 1024, ",", 0)} kB</span>${editable ? `<button class="ghost" data-delfont="${esc(f.name)}" title="Șterge fontul" aria-label="Șterge fontul ${esc(f.name)}">×</button>` : ""}</div>`).join("")
+    : `<span class="sub">Niciun font adăugat.</span>`);
+  const showFonts = (r) => {
+    if (!$d("#sFonts")) return; // the dialog was closed before the list came
+    $d("#sFonts").innerHTML = fontRows(r.fonts || [], r.editable);
+    $d("#sFontAdd").hidden = !r.editable;
+    const where = r.dir ? `<span>Fonturile adăugate stau în <span translate="no">${esc(r.dir)}</span>.</span> ` : "";
+    const auto = (r.auto || []).length ? `<span>Se folosesc și fonturile programelor Autodesk de pe acest calculator: <span translate="no">${r.auto.map(esc).join(", ")}</span>.</span> ` : "";
+    $d("#sFontNote").innerHTML = r.editable
+      ? `${where}${auto}<span>Desenele deja deschise rămân cum sunt: deschide fișierul din nou.</span>`
+      : "Pe acest server fonturile le adaugă administratorul: fișierele se pun în folderul fonts din volumul de date (/data/fonts).";
+    dlg.querySelectorAll("[data-delfont]").forEach((b) => b.addEventListener("click", async () => {
+      try {
+        showFonts({ ...r, ...(await api.deleteFont(b.dataset.delfont)) });
+      } catch (e) {
+        toast(e.message);
+      }
+    }));
+  };
+  api.fonts().then(showFonts).catch(() => {
+    if ($d("#sFonts")) $d("#sFonts").innerHTML = `<span class="sub">Lista fonturilor nu e disponibilă.</span>`;
+  });
+  $d("#sFontPick").addEventListener("click", () => $d("#sFontFile").click());
+  $d("#sFontFile").addEventListener("change", async () => {
+    const files = [...$d("#sFontFile").files];
+    $d("#sFontFile").value = "";
+    let last = null;
+    for (const f of files) {
+      try {
+        last = await api.addFont(f);
+        toast(`Font adăugat: ${last.added.name}${last.added.family ? ` (${last.added.family})` : ""}`);
+      } catch (e) {
+        toast(`${f.name}: ${e.message}`, 6000);
+      }
+    }
+    if (last) showFonts({ ...(await api.fonts()) });
+  });
   $d("#sKeys").addEventListener("click", () => keysDialog(app));
   dlg.querySelectorAll("[data-theme-set]").forEach((b) => b.addEventListener("click", () => {
     app.applyTheme(b.dataset.themeSet);
@@ -1243,6 +1312,7 @@ const SETTINGS_PAGES = [
   ["sheet", "Foaie și revizii", "scară revizie nume toleranțe generale ISO 2768 limba desenului"],
   ["ui", "Interfață", "limbă bara de unelte etichete temă"],
   ["cmds", "Comenzi și meniu", "taste directe comenzi AutoCAD meniu radial"],
+  ["fonts", "Fonturi DXF / DWG", "font lipsă ISOCPEUR AIGDT GDT SHX TrueType simboluri"],
 ];
 
 /** Ctrl+K: finds a tool, an action or a settings page by name (Romanian or English), alias or what it

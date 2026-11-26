@@ -206,10 +206,62 @@ def _layout(doc_id: str):
     return _LAYOUTS[doc_id]
 
 
+def _dxf_page_info(meta: dict) -> None:
+    """For a drawing opened from DXF / DWG, each page says where it comes from: `src` (page of the
+    uploaded file), `name` (the layout, or Model) and `dscale` (the drawing scale of that layout, after
+    the sheet resizes made in the editor)."""
+    dxf = meta.get("dxf")
+    if not isinstance(dxf, dict) or not dxf.get("pages"):
+        return
+    pages = meta.get("pages") or []
+    lay = meta.get("layout") if isinstance(meta.get("layout"), list) and meta.get("layout") else [{"src": i} for i in range(len(pages))]
+    for i, p in enumerate(pages):
+        it = lay[i] if i < len(lay) else {"src": i}
+        src = int(it.get("src", i))
+        k = float(it.get("scale", 1) or 1)
+        dp = dxf["pages"][src] if 0 <= src < len(dxf["pages"]) else None
+        p["src"] = src
+        if dp:
+            p["name"] = str(dp.get("name", ""))[:80]
+            p["dscale"] = round(float(dp.get("scale", 1)) / k, 9)
+
+
+_HIDDEN: dict = {}
+
+
+def _hidden_layers(doc_id: str) -> list[str]:
+    """Layers of a drawing opened from DXF / DWG hidden in the editor."""
+    if doc_id not in _HIDDEN:
+        dxf = (_read_json(_doc_dir(doc_id) / "meta.json", {}) or {}).get("dxf") or {}
+        h = dxf.get("hidden")
+        _HIDDEN[doc_id] = [x for x in h if isinstance(x, str)] if isinstance(h, list) else []
+    return _HIDDEN[doc_id]
+
+
+def _hidden_ids(doc_id: str, hidden: list[str]) -> dict[int, list[int]]:
+    """Per page of the uploaded file: the PDF objects drawn on the hidden layers."""
+    lm = _read_json(_doc_dir(doc_id) / "original.dxflayers.json", {}) or {}
+    names = lm.get("names") or []
+    want = {i for i, n in enumerate(names) if n in set(hidden)}
+    out = {}
+    for p, row in enumerate(lm.get("pages") or []):
+        if row:
+            out[p] = [i for i, li in enumerate(row) if li in want]
+    return out
+
+
 def _original(doc_id: str) -> bytes:
-    """The working PDF: the uploaded file, with pages rotated / reordered / deleted in the editor.
-    Everything else (render, snap, removals, OCR, export) works on it, so rotation is kept on export too."""
-    raw = lambda: (_doc_dir(doc_id) / "original.pdf").read_bytes()  # noqa: E731
+    """The working PDF: the uploaded file, with pages rotated / reordered / deleted in the editor (and,
+    for a DXF / DWG, the hidden layers made invisible). Everything else (render, snap, removals, OCR,
+    export) works on it, so rotation is kept on export too."""
+    def raw():
+        d = _doc_dir(doc_id)
+        color = d / "original-color.pdf"
+        dxf = (_read_json(d / "meta.json", {}) or {}).get("dxf") or {}
+        data = (color if dxf.get("colors") and color.is_file() else d / "original.pdf").read_bytes()
+        hidden = _hidden_layers(doc_id)
+        return pdfcore.hide_objects(data, _hidden_ids(doc_id, hidden)) if hidden else data
+
     lay = _layout(doc_id)
     if not lay:
         return _bytes_cache.get_or(doc_id, raw)
@@ -221,6 +273,7 @@ def _purge(doc_id: str):
     _bytes_cache.pop(doc_id, None)
     _bytes_cache.pop((doc_id, "L"), None)
     _LAYOUTS.pop(doc_id, None)
+    _HIDDEN.pop(doc_id, None)
     for c in (_render_cache, _ink_cache, _snap_cache, _text_cache):
         for k in [k for k in c if isinstance(k, tuple) and (k[0] == doc_id or (len(k) > 1 and k[1] == doc_id))]:
             c.pop(k, None)
@@ -382,7 +435,6 @@ async def api_open(request: Request):
     INCOMING.mkdir(parents=True, exist_ok=True)
     tmp_id = uuid.uuid4().hex
     upload = INCOMING / f"{tmp_id}.bin"
-    out_dir = INCOMING / tmp_id
     try:
         try:
             size = await _read_limited(request, MAX_UPLOAD, upload)
@@ -390,10 +442,20 @@ async def api_open(request: Request):
             return _err(f"Fișier prea mare (limita e {MAX_UPLOAD // (1024 * 1024)} MB)", 413)
         if not size:
             return _err("Fișier gol")
+        return await _ingest(request, upload, name, dpi_v)
+    finally:
+        upload.unlink(missing_ok=True)
+
+
+async def _ingest(request: Request, upload: Path, name: str, dpi_v=None, units: int | None = None, kind: str | None = None):
+    """A file read in the limited process and kept as a new document. `units`: a DXF / DWG read again in
+    these drawing units ($INSUNITS code); `kind`: the kind shown (a DWG read again from its DXF)."""
+    out_dir = INCOMING / uuid.uuid4().hex
+    try:
         out_dir.mkdir()
         # an unknown file is first read in a separate process, limited in memory and time
         proc = await asyncio.create_subprocess_exec(
-            *_child_cmd("app.ingest", upload, out_dir, dpi_v or ""),
+            *_child_cmd("app.ingest", upload, out_dir, dpi_v or "", units or ""),
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
             cwd=str(Path(__file__).resolve().parents[1]), **_child_kw(),
         )
@@ -419,6 +481,9 @@ async def api_open(request: Request):
         d = DOCS / doc_id
         d.mkdir(parents=True)
         (out_dir / "original.pdf").replace(d / "original.pdf")
+        for f in ("original.dxf", "original.dxfmap.json", "original.dxflayers.json"):
+            if (out_dir / f).is_file():
+                (out_dir / f).replace(d / f)
         if (out_dir / "images").is_dir():
             (d / "images").mkdir(exist_ok=True)
             for f in (out_dir / "images").iterdir():
@@ -428,7 +493,7 @@ async def api_open(request: Request):
         meta = {
             "id": doc_id,
             "name": name,
-            "kind": res["kind"],
+            "kind": kind or res["kind"],
             "dpi": res.get("dpi"),
             "created": time.time(),
             "updated": time.time(),
@@ -437,13 +502,44 @@ async def api_open(request: Request):
             "fromExport": state is not None,
             "removed": res.get("removed") or {},
         }
+        if res.get("dxf"):
+            meta["dxf"] = res["dxf"]
+            _dxf_page_info(meta)
         _write_json(d / "meta.json", meta)
         if state is not None:
             _write_json(d / "state.json", state)
         return JSONResponse({**{k: v for k, v in meta.items() if k != "owner"}, "expires": _expires(meta), "state": state})
     finally:
-        upload.unlink(missing_ok=True)
         shutil.rmtree(out_dir, ignore_errors=True)
+
+
+async def api_dxf_units(request: Request):
+    """A drawing opened from DXF / DWG read again in other units (mm or inch): a new document, the
+    same drawing with its $INSUNITS changed (for a drawing made from an inch template but drawn in mm)."""
+    doc_id = request.path_params["doc_id"]
+    try:
+        d = _doc_dir(doc_id)
+    except (ValueError, FileNotFoundError):
+        return _err("Document inexistent", 404)
+    meta = _read_json(d / "meta.json", {}) or {}
+    if not meta.get("dxf") or not (d / "original.dxf").is_file():
+        return _err("Documentul nu e un desen DXF / DWG")
+    try:
+        body = await _json_body(request, 1024)
+    except (OverflowError, ValueError):
+        return _err("Cerere invalidă")
+    code = {"mm": 4, "in": 1}.get(str((body or {}).get("units", "")))
+    if code is None:
+        return _err("Unități necunoscute")
+    INCOMING.mkdir(parents=True, exist_ok=True)
+    upload = INCOMING / f"{uuid.uuid4().hex}.bin"
+    try:
+        shutil.copyfile(d / "original.dxf", upload)
+        return await _ingest(request, upload, meta.get("name", "desen.dxf"), units=code, kind=meta.get("kind"))
+    finally:
+        upload.unlink(missing_ok=True)
+
+
 
 
 async def api_docs(request: Request):
@@ -508,6 +604,7 @@ async def api_doc(request: Request):
         _purge(doc_id)
         return JSONResponse({"ok": True})
     meta["accessed"] = time.time()
+    _dxf_page_info(meta)
     _write_json(d / "meta.json", meta)
     pub = {k: v for k, v in meta.items() if k != "owner"}
     ocr_pages = _ocr_pages(doc_id, meta)
@@ -898,12 +995,68 @@ async def api_pages(request: Request):
     except Exception as e:  # noqa: BLE001
         return _err(f"Operația pe pagini a eșuat: {e}", 500)
     meta["pages"] = info["pages"]
+    _dxf_page_info(meta)
     meta["updated"] = time.time()
     _write_json(d / "meta.json", meta)
     state = body.get("state")
     if isinstance(state, dict) and isinstance(state.get("annots"), list):
         _write_json(d / "state.json", state)
     return JSONResponse({"pages": meta["pages"], "lv": meta["lv"], "ocrPages": _ocr_pages(doc_id, meta), "layout": lay, "prev": prev})
+
+
+async def _dxf_colors(d: Path) -> str | None:
+    """The drawing plotted again in its own colors, in the limited child process (original-color.pdf).
+    → an error message, or None."""
+    proc = await asyncio.create_subprocess_exec(
+        *_child_cmd("app.ingest", "--dxf-colors", d),
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        cwd=str(Path(__file__).resolve().parents[1]), **_child_kw(),
+    )
+    try:
+        out, _ = await asyncio.wait_for(proc.communicate(), INGEST_TIMEOUT)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        return "Desenul color a durat prea mult"
+    finally:
+        (d / "result.json").unlink(missing_ok=True)
+    try:
+        res = json.loads(out.decode("utf-8") or "{}")
+    except Exception:  # noqa: BLE001
+        res = {}
+    return None if res.get("ok") else (res.get("error") or "Desenul nu poate fi refăcut color")
+
+
+async def api_dxf_layers(request: Request):
+    """Layers of a drawing opened from DXF / DWG shown or hidden: {"hidden": [names], "colors": bool}.
+    Hidden layers are left out of the page, snap, search and every export (in the DXF of the original
+    drawing they are turned off). `colors`: the drawing in its own colors instead of black."""
+    doc_id = request.path_params["doc_id"]
+    try:
+        d = _doc_dir(doc_id)
+        body = await _json_body(request)
+    except (ValueError, FileNotFoundError):
+        return _err("Document inexistent", 404)
+    except OverflowError:
+        return _err("Cerere prea mare", 413)
+    meta = _read_json(d / "meta.json", {})
+    dxf = meta.get("dxf")
+    if not isinstance(dxf, dict) or not isinstance(body, dict) or not isinstance(body.get("hidden"), list):
+        return _err("Cerere invalidă")
+    known = {la["name"] for la in dxf.get("layers") or []}
+    hidden = sorted({h for h in body["hidden"] if isinstance(h, str) and h in known})
+    dxf["hidden"] = hidden
+    if isinstance(body.get("colors"), bool):
+        if body["colors"] and not (d / "original-color.pdf").is_file():
+            err = await _dxf_colors(d)
+            if err:
+                return _err(err)
+        dxf["colors"] = body["colors"]
+    meta["lv"] = int(meta.get("lv", 0)) + 1
+    meta["updated"] = time.time()
+    _write_json(d / "meta.json", meta)
+    _purge(doc_id)
+    return JSONResponse({"hidden": hidden, "colors": bool(dxf.get("colors")), "lv": meta["lv"]})
 
 
 async def api_snap(request: Request):
@@ -1118,6 +1271,81 @@ def _overlaps(box, boxes):
     return False
 
 
+def _source_dxf_ok(doc_id, meta, idxs) -> bool:
+    """A drawing opened from DXF / DWG whose chosen pages can take DrawCAD's work in the original DXF
+    (pages made by this version, which records each page's drawing → page transform)."""
+    d = _doc_dir(doc_id)
+    dxf = meta.get("dxf") or {}
+    if not (d / "original.dxf").is_file() or not dxf.get("pages"):
+        return False
+    lay = _layout(doc_id) or [{"src": i} for i in range(len(meta.get("pages", [])))]
+    for i in idxs:
+        it = lay[i] if i < len(lay) else {}
+        src = int(it.get("src", i))
+        if src >= len(dxf["pages"]) or "tf" not in dxf["pages"][src]:
+            return False
+    return True
+
+
+async def _export_dxf_source(doc_id, meta, original, prims, rem, idxs, opts, color, base_name):
+    """DXF export of a drawing opened from DXF / DWG: the original DXF with DrawCAD's annotations on
+    their layers, in the space each page shows, and the removals made in DrawCAD (dxfin.export_source)."""
+    from . import dxfin
+
+    d = _doc_dir(doc_id)
+    lay = _layout(doc_id) or [{"src": i} for i in range(len(meta.get("pages", [])))]
+    rem_sel = {k: v for k, v in rem.items() if k in idxs}
+    reports = {}
+    if any(rem_sel.values()):
+        _base, reports = await run_in_threadpool(pdfcore.apply_removals, original, rem_sel)
+    maps = _read_json(d / "original.dxfmap.json", [])
+    want_annots = bool(opts.get("annots", True))
+    pages = []
+    files = []
+    stem = base_name or "desen"
+    for i in idxs:
+        it = lay[i]
+        src = int(it.get("src", i))
+        info = meta["dxf"]["pages"][src]
+        page_prims = [p for p in prims.get(i, []) if p.get("t") != "I"] if want_annots else []
+        # images placed in DrawCAD: saved next to the DXF (a ZIP), which references them
+        images = []
+        for p in (q for q in prims.get(i, []) if want_annots and q.get("t") == "I" and q.get("src")):
+            srcf = Path(p["src"])
+            try:
+                from PIL import Image
+
+                with Image.open(srcf) as im:
+                    px = im.size
+            except Exception:  # noqa: BLE001
+                continue
+            name = f"{stem}_p{i + 1}_img{len(images) + 1}{srcf.suffix}"
+            images.append((name, px, p))
+            files.append((name, srcf.read_bytes()))
+        rep = reports.get(i, {})
+        pages.append({
+            "page": info, "W": info["sheet"][0] * 72 / 25.4, "H": info["sheet"][1] * 72 / 25.4,
+            "kp": float(it.get("scale", 1) or 1), "rot": int(it.get("rot", 0)) % 360, "images": images,
+            "prims": page_prims, "handles": maps[src] if isinstance(maps, list) and src < len(maps) else None,
+            "gone": rep.get("_gone", []), "cut": rep.get("_cut", []),
+            "zones": [op["rect"] for op in rem.get(i, []) if op.get("mode") == "zone"],
+        })
+    hidden = (meta.get("dxf") or {}).get("hidden") or []
+    data, counts = await run_in_threadpool(dxfin.export_source, (d / "original.dxf").read_bytes(), pages, color, hidden)
+    stats = {"source": {**counts, "source": True, "from": meta.get("kind", "dxf")}}
+    if not files:
+        return data, reports, "dxf", stats
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(f"{stem}.dxf", data)
+        for name, b in files:
+            z.writestr(name, b)
+    return buf.getvalue(), reports, "zip", stats
+
+
 async def _export_dxf(doc_id, prims, rem, sel, opts, color, base_name):
     """DXF for the chosen pages: one file, or a ZIP when there are several pages or background images."""
     import io
@@ -1131,6 +1359,8 @@ async def _export_dxf(doc_id, prims, rem, sel, opts, color, base_name):
     idxs = sorted({i for i in (sel or range(n_pages)) if 0 <= i < n_pages})
     if not idxs:
         raise ValueError("nicio pagină aleasă")
+    if opts.get("source", True) and _source_dxf_ok(doc_id, meta, idxs):
+        return await _export_dxf_source(doc_id, meta, original, prims, rem, idxs, opts, color, base_name)
     scale = opts.get("scale", 1)
     scale = float(scale) if _finite(scale) and 1e-4 < scale < 1e4 else 1.0
     want = {k: bool(opts.get(k, d)) for k, d in (("geom", True), ("text", True), ("annots", True), ("ocr", True), ("vectorize", True), ("image", False))}
@@ -1295,6 +1525,19 @@ async def api_export(request: Request):
                 prims.setdefault(i, []).append({"t": "O", "p": ln["box"], "txt": ln["text"], "rot": ln.get("rot", 0),
                                                 **{k: ln[k] for k in ("cap", "base", "org", "ang", "len") if k in ln}})
 
+    # a drawing opened from DXF / DWG: what is on hidden layers is left out of the PDF (not only made
+    # invisible, so it cannot be found or copied there either)
+    hidden = _hidden_layers(doc_id)
+    hidden_n = {}
+    if fmt == "pdf" and hidden:
+        hid = _hidden_ids(doc_id, hidden)
+        lay = _layout(doc_id) or [{"src": i} for i in range(len(_read_json(d / "meta.json", {}).get("pages", [])))]
+        for i, it in enumerate(lay):
+            ids = hid.get(int(it.get("src", i)))
+            if ids:
+                rem[i] = [*rem.get(i, []), {"mode": "objects", "ids": [str(x) for x in ids]}]
+                hidden_n[i] = len(ids)
+
     def work():
         return pdfcore.export_pages(_original(doc_id), prims, rem, color, state if embed else None, embed, ink, sel, split, base, rev,
                                     {k: str(v) for k, v in images.items()}, notes)
@@ -1309,6 +1552,9 @@ async def api_export(request: Request):
         return _err(str(e))
     except Exception as e:  # noqa: BLE001
         return _err(f"Export eșuat: {e}", 500)
+    for i, k in hidden_n.items():
+        if isinstance(reports.get(i), dict):
+            reports[i]["removed"] = max(0, reports[i].get("removed", 0) - k)  # hidden layers: not "removed"
     if kind == "zip":
         filename = f"{base}.zip"
     elif kind == "dxf":
@@ -1317,7 +1563,7 @@ async def api_export(request: Request):
     ascii_name = re.sub(r"[^A-Za-z0-9._ ()+-]", "_", filename)
     headers = {
         "Content-Disposition": f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename)}",
-        "X-Removal-Report": json.dumps(reports),
+        "X-Removal-Report": json.dumps({k: {n: v for n, v in r.items() if not n.startswith("_")} for k, r in reports.items()}),
         "X-Export-Kind": kind,
     }
     if stats is not None:
@@ -1343,14 +1589,108 @@ async def _ocr_lang(wait: float | None = None):
         return None
 
 
+def _dwg_available() -> bool:
+    """LibreDWG's dwg2dxf is here (Docker image, desktop app): DWG files can be opened."""
+    p = os.environ.get("DRAWCAD_DWG2DXF")
+    return bool((p and os.path.isfile(p)) or shutil.which("dwg2dxf"))
+
+
 async def api_health(request: Request):
     from . import ocr as ocrmod
 
     # the interface waits for this answer at startup: no more than one second for OCR
     lang = await _ocr_lang(wait=1.0)
     return JSONResponse({"ok": True, "retentionDays": RETENTION_DAYS, "mode": MODE, "ocr": lang,
-                         "ocrPending": lang is None and not ocrmod.langs_known(), "dxf": True, "desktop": DESKTOP,
+                         "ocrPending": lang is None and not ocrmod.langs_known(), "dxf": True, "dwg": _dwg_available(), "desktop": DESKTOP,
                          "version": VERSION})
+
+
+# fonts for DXF / DWG texts (ISOCPEUR, AIGDT, SHX files…), shared by every drawing opened on this server:
+# added from the interface only where one person uses the server (personal mode, the desktop app),
+# otherwise by whoever runs it, in <data>/fonts
+FONTS_DIR = DATA_DIR / "fonts"
+MAX_FONT = 30 * 1024 * 1024
+MAX_FONTS = 300
+_FONT_NAME = re.compile(r"^[\w][\w .()+&-]{0,95}\.(ttf|otf|ttc|shx)$", re.IGNORECASE)
+
+
+def _fonts_editable() -> bool:
+    return MODE == "personal" or DESKTOP
+
+
+def _font_list() -> list[dict]:
+    out = []
+    if FONTS_DIR.is_dir():
+        for f in sorted(FONTS_DIR.iterdir(), key=lambda x: x.name.lower()):
+            if f.is_file() and _FONT_NAME.match(f.name):
+                out.append({"name": f.name, "size": f.stat().st_size})
+    return out
+
+
+async def api_fonts(request: Request):
+    """GET: the fonts added; POST (a file, its name in X-Filename): checked in the limited process,
+    then kept; DELETE ?name=…: removed."""
+    if request.method == "GET":
+        from . import dxfin
+
+        auto = [str(d) for d in dxfin.font_dirs() if d.resolve() != FONTS_DIR.resolve()] if DESKTOP else []
+        return JSONResponse({"fonts": _font_list(), "editable": _fonts_editable(),
+                             "dir": str(FONTS_DIR) if DESKTOP else None, "auto": auto})
+    if not _fonts_editable():
+        return _err("Pe acest server fonturile se adaugă în folderul fonts al datelor", 403)
+    if request.method == "DELETE":
+        name = os.path.basename(request.query_params.get("name", ""))
+        f = FONTS_DIR / name
+        if not _FONT_NAME.match(name) or not f.is_file():
+            return _err("Font inexistent", 404)
+        f.unlink()
+        return JSONResponse({"fonts": _font_list()})
+    name = request.headers.get("x-filename", "")
+    with contextlib.suppress(UnicodeError):
+        name = bytes(name, "latin-1").decode("utf-8")
+    name = os.path.basename(name).strip()
+    if not _FONT_NAME.match(name):
+        return _err("Se acceptă fonturi .ttf, .otf, .ttc și .shx (nume fără caractere speciale)")
+    if len(_font_list()) >= MAX_FONTS:
+        return _err(f"Prea multe fonturi (limita e {MAX_FONTS})")
+    INCOMING.mkdir(parents=True, exist_ok=True)
+    tmp_id = uuid.uuid4().hex
+    upload = INCOMING / f"{tmp_id}{os.path.splitext(name)[1].lower()}"
+    out_dir = INCOMING / tmp_id
+    try:
+        try:
+            size = await _read_limited(request, MAX_FONT, upload)
+        except OverflowError:
+            return _err(f"Font prea mare (limita e {MAX_FONT // (1024 * 1024)} MB)", 413)
+        if not size:
+            return _err("Fișier gol")
+        out_dir.mkdir()
+        proc = await asyncio.create_subprocess_exec(
+            *_child_cmd("app.ingest", "--font", upload, out_dir),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+            cwd=str(Path(__file__).resolve().parents[1]), **_child_kw(),
+        )
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), INGEST_TIMEOUT)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            return _err("Font respins: citirea a durat prea mult")
+        try:
+            res = json.loads(out.decode("utf-8") or "{}")
+        except Exception:  # noqa: BLE001
+            res = {}
+        if not res:
+            res = _read_json(out_dir / "result.json", {}) or {}
+        if not res.get("ok"):
+            return _err(res.get("error") or "Font respins")
+        FONTS_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(upload), FONTS_DIR / name)
+        return JSONResponse({"fonts": _font_list(), "added": {"name": name, "family": res.get("family", ""), "kind": res.get("kind", "")}})
+    finally:
+        with contextlib.suppress(OSError):
+            upload.unlink()
+        shutil.rmtree(out_dir, ignore_errors=True)
 
 
 async def api_workspace(request: Request):
@@ -1379,6 +1719,7 @@ def _set_ws_cookie(resp, request, token):
 
 routes = [
     Route("/api/health", api_health),
+    Route("/api/fonts", api_fonts, methods=["GET", "POST", "DELETE"]),
     Route("/api/open", api_open, methods=["POST"]),
     Route("/api/docs", api_docs),
     Route("/api/workspace", api_workspace, methods=["GET", "POST"]),
@@ -1392,6 +1733,8 @@ routes = [
     Route("/api/doc/{doc_id}/page/{n:int}/ocr", api_ocr, methods=["GET", "POST"]),
     Route("/api/doc/{doc_id}/page/{n:int}/text", api_text),
     Route("/api/doc/{doc_id}/pages", api_pages, methods=["POST"]),
+    Route("/api/doc/{doc_id}/dxf-layers", api_dxf_layers, methods=["POST"]),
+    Route("/api/doc/{doc_id}/dxf-units", api_dxf_units, methods=["POST"]),
     Route("/api/doc/{doc_id}/export", api_export, methods=["POST"]),
     Route("/api/doc/{doc_id}/images", api_image_add, methods=["POST"]),
     Route("/api/doc/{doc_id}/compare", api_compare, methods=["POST"]),
