@@ -4,7 +4,7 @@ An audit of DrawCAD's interface and working experience on branch `v1.1`, compare
 apps, and the decisions that would follow from it. It extends the UI v2 package in this folder
 (`README.md`, decisions UI-D1 … D8): those stay as they are, the new ones are UI-D9 … D16.
 
-Nothing here is built yet. Status values as in `README.md`: *decided*, *planned*, *check*.
+Written before the redesign; every decision below has since been built (status in the table). Status values as in `README.md`: *decided*, *planned*, *check*.
 
 ## Headline (estimate)
 
@@ -202,7 +202,7 @@ UI-D1 … D8 are in `README.md` and unchanged. New:
 - `prefers-reduced-motion`: no transitions on menus, flyouts and panels.
 - Contrast stays as measured (`--muted` 7.0 : 1 on `--panel`); new tokens are checked the same way.
 - `aria-live="polite"` on the command prompt, so a screen reader hears what the command asks.
-- Light theme: *planned*. The sheet is white already; the interface would need a second token set.
+- Light theme: built in v1.3 (a second token set).
   Not before the rest.
 
 ### UI-D16 — Phone and tablet

@@ -392,7 +392,7 @@ Ovidiu's confirmation (behaviour in his AutoCAD, or a product choice) before it 
 - At a point prompt, `END`, `MID`, `CEN`, `QUA`, `INT`, `APP`, `EXT`, `PER`, `TAN`, `NEA`, `PAR`, `NOD`,
   `GCE`, `INS` and `NON` limit the next pick to that mode (or to none), then the running modes return.
   Long names (`ENDPOINT` …) and the `_` prefix are accepted.
-- `FROM` (base point, then an `@` offset) and `M2P` / `MTP` (midpoint of two picks): *planned*, same
+- `FROM` (base point, then an `@` offset) and `M2P` / `MTP` (midpoint of two picks): done on `v1.1` (CMD-D6), same
   phase if time allows.
 - **Node tests:** `parseOverride("mid")` → `m`; `Snapper.snap` with the override's single mode returns
   only that kind on a fixture with an end and a middle under the cursor; `NON` returns the raw point;
@@ -416,9 +416,9 @@ Ovidiu's confirmation (behaviour in his AutoCAD, or a product choice) before it 
 
 - **Node (decided):** the annotation points (`a`) become a mode `node` ("Nod") in `MODES`, on by
   default, switchable in the snap menu.
-- **Geometric center (planned):** the backend adds the centroid of closed paths (rectangles,
+- **Geometric center (done on `v1.1`):** the backend adds the centroid of closed paths (rectangles,
   outlines) as kind `g`.
-- **Insertion (planned):** the backend adds PDF text-run origins as kind `i` (useful to place a
+- **Insertion (done on `v1.1`):** the backend adds PDF text-run origins as kind `i` (useful to place a
   struck value on the old one).
 - **Scans (check):** use the vectorizer's lines and arcs as snap geometry for image pages, computed
   once per page in the background, with its accuracy limits shown in the snap menu.
@@ -463,7 +463,7 @@ Ovidiu's confirmation (behaviour in his AutoCAD, or a product choice) before it 
   shows a list instead (SELECTIONCYCLING); Tab was chosen because it already cycles snaps here.
   e2e step 28.
 
-### CMD-D13 — MOVE / COPY with a base point (planned)
+### CMD-D13 — MOVE / COPY with a base point (done on `v1.1`)
 
 - `M` / `MOVE` and `CO` / `COPY` on the selection: base point, then second point or a CMD-D1
   displacement; COPY repeats until Enter. Uses `moveAnnot` (`annots.js`) as today.
@@ -501,7 +501,7 @@ Ovidiu's confirmation (behaviour in his AutoCAD, or a product choice) before it 
   `tools/e2e_smoke.py` step 26 (Space → Move with `@0,-10`; Enter twice → Rotate 90) and step 27
   (two lines selected, Shift+click on a grip of each, `@5,0` stretches both).
 
-### CMD-D15 — F2 history window (planned)
+### CMD-D15 — F2 history window (done on `v1.1`)
 
 - F2 opens a panel with the commands, prompts, options chosen and messages of the session (the toasts
   that belong to commands), newest at the bottom.
