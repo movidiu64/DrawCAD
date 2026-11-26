@@ -194,9 +194,33 @@ class SheetFrameTest(unittest.TestCase):
         p, w, h = self.page(self.frame_doc(420, 297, 3.5, lines=False))
         self.assertEqual((p["iso"], p["scale"], w, h), ("A3", 1.0, 420, 297))
 
+    def test_frame_inside_margins(self):
+        """Only the border inside the sheet's margins (ISO 5457: 20 mm left, 10 mm elsewhere): the A3
+        sheet around it, the border where it belongs."""
+        doc = self.frame_doc(390, 277, 3.5, stray=False)
+        p, w, h = self.page(doc)
+        self.assertEqual((p["iso"], p["scale"], p["frame"], w, h), ("A3", 1.0, True, 420, 297))
+        a, _b, _c, d, e, f = p["tf"]
+        self.assertAlmostEqual(e / a, 20 * MM / a, 3)  # the border's left edge 20 mm from the sheet's
+        self.assertAlmostEqual(f / d, 10 * MM / d, 3)
+
+    def test_sheet_corners(self):
+        """The drawing's extents are an A4 sheet (its corners drawn), the border inside: A4, edge to edge."""
+        doc = self.frame_doc(190, 277, 1.8, stray=False)
+        msp = doc.modelspace()
+        for e in msp:
+            e.translate(10, 10, 0)
+        msp.add_point((0, 0))
+        msp.add_point((210, 297))
+        p, w, h = self.page(doc)
+        self.assertEqual((p["iso"], p["scale"], w, h), ("A4", 1.0, 210, 297))
+
     def test_no_frame(self):
-        """A frame that is not an ISO sheet (only the inner border): fitted as before, with a margin."""
-        p, w, h = self.page(self.frame_doc(277, 190, 3.5, stray=False))
+        """No frame: fitted as before, with a margin."""
+        doc = ezdxf.new("R2010", units=4)
+        doc.modelspace().add_circle((0, 0), 50)
+        doc.modelspace().add_text("Ø100", height=3.5).set_placement((0, 60))
+        p, w, h = self.page(doc)
         self.assertNotIn("frame", p)
         self.assertEqual((p["iso"], w, h), ("A4", 297, 210))
 
@@ -320,6 +344,38 @@ class DxfToPdfTest(unittest.TestCase):
         self.assertAlmostEqual(w, 420, 0)
         self.assertAlmostEqual(h, 297, 0)
         self.assertIsNone(dxfin.drawcad_page(ezdxf.new()))
+
+    def test_viewports_written_off(self):
+        """Viewports as LibreDWG writes them (id 0, status 0) still show the view."""
+        doc = make_doc(layout=True)
+        for v in doc.layouts.get("Plansa 1").query("VIEWPORT"):
+            v.dxf.id = 0
+            v.dxf.status = 0
+        pdf, info = dxfin.dxf_to_pdf(to_bytes(doc))
+        self.assertEqual(info["pages"][0]["space"], "paper")
+        self.assertGreater(ink(pdf), 0.005)
+
+    def test_null_dictionary_entry(self):
+        """A root dictionary entry pointing to handle 0 (LibreDWG, R2000 / R2004) is left out; a text
+        whose value is "3" followed by a height of 350 is kept as it is."""
+        doc = make_doc()
+        doc.modelspace().add_text("3", height=350).set_placement((0, -500))
+        data = to_bytes(doc).replace(b"  3\nACAD_COLOR\n", b"  3\n\n350\n0\n  3\nACAD_COLOR\n", 1)
+        data = data.replace(b"\n", b"\r\n")  # as dwg2dxf writes it
+        pdf, info = dxfin.dxf_to_pdf(data)
+        self.assertGreater(ink(pdf), 0.005)
+        clean = to_bytes(doc)
+        self.assertEqual(dxfin._drop_null_entries(clean), clean)
+
+    def test_degenerate_lines(self):
+        """Zero-length lines and points (dots on paper): the handle map still matches the PDF objects."""
+        doc = make_doc()
+        msp = doc.modelspace()
+        msp.add_line((50, 50), (50, 50))
+        msp.add_point((70, 70))
+        msp.add_lwpolyline([(10, 10), (10, 10)])
+        _, info = dxfin.dxf_to_pdf(to_bytes(doc))
+        self.assertIsNotNone(info["handles"][0])
 
     def test_empty(self):
         with self.assertRaises(ValueError):

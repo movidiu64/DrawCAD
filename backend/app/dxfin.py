@@ -456,11 +456,34 @@ def fit_sheet(width: float, height: float) -> tuple[str, float, float, float]:
 ISO_FRAMES = [("A6", 148, 105), ("A5", 210, 148), *SHEETS]
 
 
+def _rect_of(pts: list) -> BoundingBox2d | None:
+    """The rectangle a polyline draws along (closed or not, corners repeated or not): all its vertices on
+    the edges of its bounding box, every corner reached."""
+    if len(pts) < 4:
+        return None
+    b = BoundingBox2d(pts)
+    if b.size.x <= 0 or b.size.y <= 0:
+        return None
+    eps = 1e-6 * max(b.size.x, b.size.y)
+    on_edge = all(min(abs(q.x - b.extmin.x), abs(q.x - b.extmax.x)) <= eps or min(abs(q.y - b.extmin.y), abs(q.y - b.extmax.y)) <= eps for q in pts)
+    corners = [Vec2(b.extmin.x, b.extmin.y), Vec2(b.extmax.x, b.extmin.y), Vec2(b.extmax.x, b.extmax.y), Vec2(b.extmin.x, b.extmax.y)]
+    hit = all(any(q.isclose(c, abs_tol=eps * 10) for q in pts) for c in corners)
+    # an open path with 4 corners has at least 5 vertices (back to the start) or misses one side: the
+    # 3 sides drawn and the title block line make a frame too, so 4 corners reached are enough
+    return b if on_edge and hit else None
+
+
 def sheet_frame(msp, full: BoundingBox2d, unit: float, max_entities: int = 50000):
-    """The sheet edge drawn in model space by CAD programs that export their drawing sheet there (a
-    rectangle of an ISO size, A6 … A0, at a standard scale, around nearly everything): that sheet is
-    the page, with no margin of its own. Rectangles are closed 4-corner polylines or four lines.
-    → (box, sheet name, sheet w, sheet h, scale paper/drawing) or None."""
+    """The sheet of a drawing whose frame is drawn in model space (SolidWorks, Solid Edge, AutoCAD
+    templates…): → (page box in drawing units, sheet name, sheet w, sheet h mm, scale paper/drawing) or
+    None. Found, in this order:
+    - a rectangle of an ISO size (A6 … A0) at a standard scale: the sheet edge, edge to edge;
+    - the extents of the drawing themselves of an ISO size (the corners of the sheet are drawn);
+    - a rectangle that is an ISO sheet less its margins (ISO 5457: 20 mm to the left for filing, 10 mm
+      elsewhere, or alike): the sheet around it.
+    Rectangles are polylines along a rectangle, or four lines. Between equivalent sizes (ISO sizes are
+    all alike: an A6 frame at 1:1 is also an A4 frame at 2:1, as SolidWorks exports a sheet scaled to the
+    drawing) the text heights decide: the scale nearest 1:1 at which they come out 1.4 … 7 mm high."""
     tol = 0.01
     horiz, vert, rects = [], [], []
     for i, e in enumerate(msp):
@@ -473,17 +496,17 @@ def sheet_frame(msp, full: BoundingBox2d, unit: float, max_entities: int = 50000
                 horiz.append((min(a.x, b.x), max(a.x, b.x), a.y))
             elif abs(a.x - b.x) <= 1e-6 * max(1, abs(a.y - b.y)) and abs(a.y - b.y) > 0:
                 vert.append((min(a.y, b.y), max(a.y, b.y), a.x))
-        elif t == "LWPOLYLINE" and (e.closed or len(e) == 5):
-            pts = [Vec2(q) for q in e.get_points("xy")]
-            if len(pts) == 5 and pts[0].isclose(pts[4]):
-                pts = pts[:4]
-            if len(pts) == 4:
-                xs, ys = sorted({round(q.x, 6) for q in pts}), sorted({round(q.y, 6) for q in pts})
-                if len(xs) == 2 and len(ys) == 2:
-                    rects.append(BoundingBox2d([Vec2(xs[0], ys[0]), Vec2(xs[1], ys[1])]))
-    # four lines: the two longest horizontal ones with the same span, closed by vertical ones at their ends
+        elif t == "LWPOLYLINE" and len(e) >= 4:
+            r = _rect_of([Vec2(q) for q in e.get_points("xy")])
+            if r is not None:
+                rects.append(r)
+        elif t == "POLYLINE" and e.is_2d_polyline and len(e) >= 4:
+            r = _rect_of([Vec2(v.dxf.location) for v in e.vertices])
+            if r is not None:
+                rects.append(r)
+    # four lines: two horizontal ones with the same span, closed by vertical ones at their ends
     span = max(full.size.x, full.size.y)
-    hs = sorted((h for h in horiz if h[1] - h[0] > 0.3 * span), key=lambda h: h[0] - h[1])[:12]
+    hs = sorted((h for h in horiz if h[1] - h[0] > 0.3 * span), key=lambda h: h[0] - h[1])[:16]
     for i, (x0, x1, y0) in enumerate(hs):
         for xa, xb, y1 in hs[i + 1:]:
             if abs(xa - x0) > tol * span or abs(xb - x1) > tol * span or abs(y1 - y0) < 0.1 * span:
@@ -492,28 +515,62 @@ def sheet_frame(msp, full: BoundingBox2d, unit: float, max_entities: int = 50000
             sides = [v for v in vert if abs(v[0] - lo) <= tol * span and abs(v[1] - hi) <= tol * span]
             if any(abs(v[2] - x0) <= tol * span for v in sides) and any(abs(v[2] - x1) <= tol * span for v in sides):
                 rects.append(BoundingBox2d([Vec2(x0, lo), Vec2(x1, hi)]))
-    # around nearly everything (the full extents may stick out only a little: a stray text): the largest
-    rects = [r for r in rects if r.size.x >= 0.9 * full.size.x and r.size.y >= 0.9 * full.size.y]
-    if not rects:
+    # around nearly everything (the extents may stick out a little: a stray text): the largest
+    rects = [r for r in rects if r.size.x >= 0.85 * full.size.x and r.size.y >= 0.85 * full.size.y]
+    rect = max(rects, key=lambda q: q.size.x * q.size.y) if rects else None
+    scales = (1, 2, 5, 10, *[s for s in SCALES if s < 1])
+
+    def iso_fits(w, h):
+        out = []
+        for name, sw, sh in ISO_FRAMES:
+            for pw, ph in ((sw, sh), (sh, sw)):
+                for sc in scales:
+                    if abs(w * sc - pw) <= max(1.5, 0.006 * pw) and abs(h * sc - ph) <= max(1.5, 0.006 * ph):
+                        out.append((name, pw, ph, sc))
+        return out
+
+    hs_ = sorted(e.dxf.char_height if e.dxftype() == "MTEXT" else e.dxf.height
+                 for e in msp.query("TEXT MTEXT") if (e.dxf.get("char_height") if e.dxftype() == "MTEXT" else e.dxf.get("height")))
+    med = hs_[len(hs_) // 2] * unit if hs_ else None
+
+    def readable(sc):  # the texts come out 1.4 … 7 mm high on paper
+        return med is None or 1.4 <= med * sc <= 7
+
+    def pick(fits):
+        ok = [f for f in fits if readable(f[-1])] or fits
+        return min(ok, key=lambda f: abs(math.log(f[-1])))  # the scale nearest 1:1
+
+    # 1. the sheet edge
+    if rect is not None:
+        fits = iso_fits(rect.size.x * unit, rect.size.y * unit)
+        if fits:
+            name, pw, ph, sc = pick(fits)
+            return rect, name, rect.size.x * unit * sc, rect.size.y * unit * sc, sc
+    # 2. the extents: the sheet corners are drawn
+    fits = iso_fits(full.size.x * unit, full.size.y * unit)
+    if fits and rect is not None:
+        name, pw, ph, sc = pick(fits)
+        return full, name, full.size.x * unit * sc, full.size.y * unit * sc, sc
+    # 3. a frame inside the sheet's margins (a drawing with texts: a bare rectangle may be the part)
+    if rect is None or med is None:
         return None
-    r = max(rects, key=lambda q: q.size.x * q.size.y)
-    w, h = r.size.x * unit, r.size.y * unit
+    w, h = rect.size.x * unit, rect.size.y * unit
     fits = []
     for name, sw, sh in ISO_FRAMES:
         for pw, ph in ((sw, sh), (sh, sw)):
-            for sc in (1, 2, 5, 10, *[s for s in SCALES if s < 1]):
-                if abs(w * sc - pw) <= max(1.5, 0.006 * pw) and abs(h * sc - ph) <= max(1.5, 0.006 * ph):
-                    fits.append((r, name, pw, ph, sc))
+            for sc in scales:
+                mx, my = pw - w * sc, ph - h * sc  # margins on paper, both sides together
+                if 8 <= mx <= 45 and 8 <= my <= 45 and abs(mx - my) <= 25 and readable(sc):
+                    fits.append((name, pw, ph, mx + my, sc))
     if not fits:
         return None
-    # ISO sizes are all alike (√2), so an A6 frame at 1:1 is also an A4 frame at 2:1 (SolidWorks exports
-    # the sheet scaled to the drawing like that): the texts decide, written 2.5 … 5 mm high on paper
-    hs = sorted(e.dxf.char_height if e.dxftype() == "MTEXT" else e.dxf.height
-                for e in msp.query("TEXT MTEXT") if (e.dxf.get("char_height") if e.dxftype() == "MTEXT" else e.dxf.get("height")))
-    if not hs:
-        return min(fits, key=lambda f: abs(math.log(f[4])))
-    med = hs[len(hs) // 2] * unit
-    return min(fits, key=lambda f: (abs(math.log(med * f[4] / 3.0)), abs(math.log(f[4]))))
+    name, pw, ph, _m, sc = min(fits, key=lambda f: (abs(math.log(f[4])), f[3]))
+    mx, my = pw - w * sc, ph - h * sc
+    side = my / 2  # top, bottom and right; the rest of the width is the filing margin, on the left
+    left = mx - side if mx >= my else mx / 2
+    k = 1 / (sc * unit)
+    o = Vec2(rect.extmin.x - left * k, rect.extmin.y - side * k)
+    return BoundingBox2d([o, o + Vec2(pw * k, ph * k)]), name, pw, ph, sc
 
 
 def core_extents(msp, full: BoundingBox2d, max_entities: int = 50000):
@@ -618,6 +675,25 @@ def _paper_box(lay, content: BoundingBox2d, wmm: float, hmm: float) -> BoundingB
     return BoundingBox2d([c - Vec2(w / 2, h / 2), c + Vec2(w / 2, h / 2)])
 
 
+def fix_viewports(doc) -> int:
+    """Viewports as LibreDWG writes them: every one with id 0 and status 0 ("off"), which AutoCAD works
+    out on loading and DXF readers take as given, so the views of every layout stayed empty. In a layout
+    whose viewports all have id 0 and status 0, the first one (the paper itself, as AutoCAD stores it)
+    gets id 1 and the others are switched on. → number of viewports switched on."""
+    on = 0
+    for lay in doc.layouts:
+        if lay.is_modelspace:
+            continue
+        vps = list(lay.query("VIEWPORT"))
+        if len(vps) < 2 or any(v.dxf.get("status", 0) != 0 or v.dxf.get("id", 0) != 0 for v in vps):
+            continue
+        for n, v in enumerate(vps):
+            v.dxf.id = n + 1
+            v.dxf.status = n + 1
+            on += n > 0
+    return on
+
+
 def rebuild_inventor(doc) -> int:
     """Drawings saved as DWG by Inventor keep every view, the border and the title block in anonymous
     blocks (*I1, *I2…) placed by Inventor's own block references (ACIDBLOCKREFERENCE), which only
@@ -695,6 +771,7 @@ def _dxf_to_pdf(data: bytes, max_entities: int) -> tuple[bytes, dict]:
     from reportlab.pdfgen import canvas as rl
 
     doc, auditor = load(data)
+    fix_viewports(doc)
     rebuilt = rebuild_inventor(doc)
     if max_entities:
         n = expanded_count(doc, max_entities)
@@ -744,8 +821,8 @@ def _dxf_to_pdf(data: bytes, max_entities: int) -> tuple[bytes, dict]:
         if frame is not None:
             # the drawing brings its own sheet: that is the page, edge to edge
             # (its own size: a frame drawn 148.5 tall for A6 is not cut by a 148 mm page)
-            box, name, _sw, _sh, sc = frame
-            sw, sh = round(box.size.x * unit * sc, 3), round(box.size.y * unit * sc, 3)
+            box, name, sw, sh, sc = frame
+            sw, sh = round(sw, 3), round(sh, 3)
         else:
             core = core_extents(doc.modelspace(), b)
             if core is not None:
@@ -867,7 +944,30 @@ def load(data: bytes):
         return doc, doc.audit()
     from ezdxf import recover
 
-    return recover.read(io.BytesIO(data))
+    try:
+        return recover.read(io.BytesIO(data))
+    except ValueError as e:
+        if "Invalid handle" not in str(e):
+            raise
+        return recover.read(io.BytesIO(_drop_null_entries(data)))
+
+
+def _drop_null_entries(data: bytes) -> bytes:
+    """Dictionary entries that point to handle 0 (LibreDWG writes nameless ones for objects it could not
+    read: the root dictionary of many R2000 / R2004 DWGs), which stop ezdxf: left out."""
+    lines = data.split(b"\n")
+    out = []
+    i = 0
+    n = len(lines)
+    while i + 1 < n:  # walk group code / value pairs, so a value is never read as a code
+        if (i + 3 < n and lines[i].strip() == b"3" and lines[i + 2].strip() in (b"350", b"360")
+                and lines[i + 3].strip() == b"0"):
+            i += 4
+            continue
+        out += lines[i:i + 2]
+        i += 2
+    out += lines[i:]
+    return b"\n".join(out)
 
 
 def export_source(data: bytes, pages: list[dict], color: str = "black", hidden: list[str] | None = None) -> tuple[bytes, dict]:
