@@ -125,6 +125,73 @@ class SecurityTest(unittest.TestCase):
         self.assertNotIn(b"/JavaScript", pdf)
         self.assertNotIn(b"cmd.exe", pdf)
 
+    def test_warm_reader_one_file_per_process(self):
+        """The reader started ahead takes one file and ends; the next file gets another process."""
+        def waiting_pid():
+            for _ in range(200):
+                p = appmain._warm.proc
+                if p is not None:
+                    return p.pid
+                time.sleep(0.05)
+            self.fail("no reader waiting")
+
+        pid1 = waiting_pid()
+        st, meta = self.upload(self.sample.read_bytes(), "a.pdf")
+        self.assertEqual(st, 200, meta)
+        pid2 = waiting_pid()
+        self.assertNotEqual(pid1, pid2)
+        for _ in range(100):  # the used one has ended
+            try:
+                os.kill(pid1, 0)
+            except OSError:
+                break
+            time.sleep(0.05)
+        else:
+            self.fail("the reader that took the file is still running")
+        st, meta = self.upload(self.sample.read_bytes(), "b.pdf")
+        self.assertEqual(st, 200, meta)
+        self.assertNotEqual(waiting_pid(), pid2)
+
+    def test_warm_reader_without_job_falls_back(self):
+        """A reader that cannot read its job (no stdin in some builds): the file is read cold, and the
+        server stops starting readers ahead."""
+        import sys
+
+        real = appmain._child_cmd
+
+        def fake(module, *args):
+            if args[:1] == ("--serve",):
+                return [sys.executable, "-c", f"import sys, time; time.sleep(2); sys.exit({appmain.NO_JOB})"]  # alive, never reads
+            return real(module, *args)
+
+        appmain._child_cmd = fake
+        try:
+            st, meta = self.upload(self.sample.read_bytes(), "c.pdf")  # takes a real reader; a fake one starts
+            self.assertEqual(st, 200, meta)
+            st, meta = self.upload(self.sample.read_bytes(), "d.pdf")  # the fake one: read again, cold
+            self.assertEqual(st, 200, meta)
+            self.assertTrue(appmain._warm.broken)
+        finally:
+            appmain._child_cmd = real
+            appmain._warm.broken = False
+
+    def test_serve_job_checked(self):
+        """--serve runs exactly one job of the usual arguments; anything else is refused."""
+        import subprocess
+        import sys
+
+        run = lambda job: subprocess.run([sys.executable, "-m", "app.ingest", "--serve"], input=job, capture_output=True,  # noqa: E731
+                                         text=True, cwd=str(Path(appmain.__file__).resolve().parents[1]), timeout=120)
+        self.assertEqual(run("").returncode, appmain.NO_JOB)
+        self.assertEqual(run('["--serve"]\n').returncode, appmain.NO_JOB)
+        self.assertEqual(run('{"a": 1}\n').returncode, appmain.NO_JOB)
+        out = self.tmp / "serve_out"
+        out.mkdir(exist_ok=True)
+        r = run(json.dumps([str(self.sample), str(out)]) + "\n")
+        self.assertEqual(r.returncode, 0)
+        self.assertTrue(json.loads(r.stdout)["ok"])
+        self.assertTrue((out / "original.pdf").is_file())
+
     def test_clean_pdf_untouched(self):
         src = self.sample.read_bytes()
         out, rep = sanitize_pdf(src)
@@ -138,7 +205,10 @@ class SecurityTest(unittest.TestCase):
         st, res = self.upload(b"%PDF-1.7\n" + os.urandom(5000), "stricat.pdf")
         self.assertEqual(st, 400)
         # image over the megapixel limit (decompression bomb): rejected without decoding
+        # (a reader started now sees the lowered limit; the one waiting was started with the old one)
         os.environ["DRAWCAD_MAX_IMAGE_MPX"] = "1"
+        warm = appmain.WARM_WORKER
+        appmain.WARM_WORKER = False
         try:
             b = io.BytesIO()
             Image.new("1", (3000, 2000)).save(b, format="PNG")
@@ -147,6 +217,7 @@ class SecurityTest(unittest.TestCase):
             self.assertIn("prea mare", res["error"])
         finally:
             del os.environ["DRAWCAD_MAX_IMAGE_MPX"]
+            appmain.WARM_WORKER = warm
 
     def test_dxf_inputs(self):
         """DXF uploads: a broken one is refused, a block bomb (nested inserts standing for 10^8 lines) and a

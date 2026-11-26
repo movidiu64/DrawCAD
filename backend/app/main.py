@@ -6,6 +6,7 @@ import contextlib
 import json
 import logging
 import os
+import signal
 import re
 import shutil
 import subprocess
@@ -115,6 +116,119 @@ def _child_kw() -> dict:
 
         kw["creationflags"] = _sp.CREATE_NO_WINDOW  # no console window flashing
     return kw
+
+
+NO_JOB = 64  # exit code of `app.ingest --serve` that got no usable job (see ingest.serve)
+WARM_WORKER = _env("WARM_WORKER", "1").lower() not in ("0", "false", "no", "off")
+_CHILD_CWD = str(Path(__file__).resolve().parents[1])
+
+
+class _WarmWorker:
+    """One file-reading child (app.ingest --serve) started ahead of time, its imports and fonts ready,
+    waiting for a single job; when it is taken the next one starts. Every file still gets a fresh,
+    limited process: only the start-up time (seconds in the Windows app) moves out of the request."""
+
+    def __init__(self):
+        self.proc = None
+        self.starting = None
+        self.loop = None
+        self.broken = False  # a reader that could not read its job: from then on, cold starts only
+        self.used = 0
+
+    async def _spawn(self):
+        try:
+            self.loop = asyncio.get_running_loop()
+            self.proc = await asyncio.create_subprocess_exec(
+                *_child_cmd("app.ingest", "--serve"),
+                stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+                cwd=_CHILD_CWD, **_child_kw(),
+            )
+        except Exception:  # noqa: BLE001
+            self.proc = None
+
+    def _other_loop(self) -> bool:
+        """A process from another event loop (test clients run one per request) cannot be used here."""
+        if self.loop is asyncio.get_running_loop():
+            return False
+        p, self.proc, self.starting = self.proc, None, None
+        if p is not None:
+            with contextlib.suppress(Exception):
+                os.kill(p.pid, signal.SIGTERM)
+        return True
+
+    def refill(self):
+        self._other_loop()
+        if not WARM_WORKER or self.broken or self.proc is not None or (self.starting and not self.starting.done()):
+            return
+        self.starting = asyncio.get_running_loop().create_task(self._spawn())
+
+    async def take(self):
+        """The waiting process (a new one starts behind it), or None."""
+        if self._other_loop():
+            self.refill()
+            return None
+        if self.starting and not self.starting.done():
+            with contextlib.suppress(Exception):
+                await asyncio.wait_for(asyncio.shield(self.starting), 10)
+        p, self.proc = self.proc, None
+        self.refill()
+        return p if p is not None and p.returncode is None else None
+
+    async def drop(self, refill=True):
+        """The waiting process is ended (its fonts changed, or the server stops)."""
+        if self._other_loop():
+            if refill:
+                self.refill()
+            return
+        if self.starting and not self.starting.done():
+            with contextlib.suppress(Exception):
+                await asyncio.wait_for(asyncio.shield(self.starting), 10)
+        p, self.proc = self.proc, None
+        if p is not None and p.returncode is None:
+            with contextlib.suppress(Exception):
+                p.kill()
+                await p.wait()
+        if refill:
+            self.refill()
+
+
+_warm = _WarmWorker()
+
+
+async def _run_ingest(*args, timeout: float) -> bytes:
+    """app.ingest with these arguments in a limited child process (the warm one when it is ready): its
+    standard output. asyncio.TimeoutError when it runs too long (the process is killed)."""
+    args = [str(a) for a in args]
+    proc = await _warm.take() if WARM_WORKER and not _warm.broken else None
+    if proc is not None:
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate((json.dumps(args) + "\n").encode("utf-8")), timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise
+        except (BrokenPipeError, ConnectionResetError):
+            out = b""
+            await proc.wait()
+        if proc.returncode != NO_JOB:
+            # its answer, whatever it is: a file that made the reader fail is not read a second time
+            _warm.used += 1
+            return out
+        # the reader never got the job (no standard input in this build): from now on, cold starts
+        _warm.broken = True
+        logging.getLogger("drawcad").warning("warm reader could not read its job; files are read in freshly started processes")
+    proc = await asyncio.create_subprocess_exec(
+        *_child_cmd("app.ingest", *args),
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        cwd=_CHILD_CWD, **_child_kw(),
+    )
+    try:
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        raise
+    return out
 _ID_RE = re.compile(r"^[a-f0-9]{32}$")
 _OID_RE = re.compile(r"^\d{1,6}(\.\d{1,6}){0,8}$")  # id of an object on the page: "12" or "3.4.1"
 
@@ -454,16 +568,9 @@ async def _ingest(request: Request, upload: Path, name: str, dpi_v=None, units: 
     try:
         out_dir.mkdir()
         # an unknown file is first read in a separate process, limited in memory and time
-        proc = await asyncio.create_subprocess_exec(
-            *_child_cmd("app.ingest", upload, out_dir, dpi_v or "", units or ""),
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
-            cwd=str(Path(__file__).resolve().parents[1]), **_child_kw(),
-        )
         try:
-            out, _ = await asyncio.wait_for(proc.communicate(), INGEST_TIMEOUT)
+            out = await _run_ingest(upload, out_dir, dpi_v or "", units or "", timeout=INGEST_TIMEOUT)
         except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
             return _err(f"Fișier respins: citirea a durat peste {INGEST_TIMEOUT:g} s")
         try:
             res = json.loads(out.decode("utf-8") or "{}")
@@ -474,7 +581,7 @@ async def _ingest(request: Request, upload: Path, name: str, dpi_v=None, units: 
             # lose its standard output)
             res = _read_json(out_dir / "result.json", {}) or {}
         if not res.get("ok"):
-            if not res and proc.returncode:
+            if not res:
                 return _err("Fișier respins: biblioteca de citire s-a oprit (fișier corupt sau construit special)")
             return _err(res.get("error") or "Fișier respins")
         doc_id = uuid.uuid4().hex
@@ -667,16 +774,9 @@ async def api_image_add(request: Request):
         if not size:
             return _err("Fișier gol")
         out_dir.mkdir()
-        proc = await asyncio.create_subprocess_exec(
-            *_child_cmd("app.ingest", "--image", upload, out_dir),
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
-            cwd=str(Path(__file__).resolve().parents[1]), **_child_kw(),
-        )
         try:
-            out, _ = await asyncio.wait_for(proc.communicate(), INGEST_TIMEOUT)
+            out = await _run_ingest("--image", upload, out_dir, timeout=INGEST_TIMEOUT)
         except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
             return _err("Imagine respinsă: citirea a durat prea mult")
         try:
             res = json.loads(out.decode("utf-8") or "{}")
@@ -1092,16 +1192,9 @@ async def api_pages(request: Request):
 async def _dxf_colors(d: Path) -> str | None:
     """The drawing plotted again in its own colors, in the limited child process (original-color.pdf).
     → an error message, or None."""
-    proc = await asyncio.create_subprocess_exec(
-        *_child_cmd("app.ingest", "--dxf-colors", d),
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
-        cwd=str(Path(__file__).resolve().parents[1]), **_child_kw(),
-    )
     try:
-        out, _ = await asyncio.wait_for(proc.communicate(), INGEST_TIMEOUT)
+        out = await _run_ingest("--dxf-colors", d, timeout=INGEST_TIMEOUT)
     except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
         return "Desenul color a durat prea mult"
     finally:
         (d / "result.json").unlink(missing_ok=True)
@@ -1729,6 +1822,7 @@ async def api_fonts(request: Request):
         if not _FONT_NAME.match(name) or not f.is_file():
             return _err("Font inexistent", 404)
         f.unlink()
+        await _warm.drop()
         return JSONResponse({"fonts": _font_list()})
     name = request.headers.get("x-filename", "")
     with contextlib.suppress(UnicodeError):
@@ -1750,16 +1844,9 @@ async def api_fonts(request: Request):
         if not size:
             return _err("Fișier gol")
         out_dir.mkdir()
-        proc = await asyncio.create_subprocess_exec(
-            *_child_cmd("app.ingest", "--font", upload, out_dir),
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
-            cwd=str(Path(__file__).resolve().parents[1]), **_child_kw(),
-        )
         try:
-            out, _ = await asyncio.wait_for(proc.communicate(), INGEST_TIMEOUT)
+            out = await _run_ingest("--font", upload, out_dir, timeout=INGEST_TIMEOUT)
         except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
             return _err("Font respins: citirea a durat prea mult")
         try:
             res = json.loads(out.decode("utf-8") or "{}")
@@ -1771,6 +1858,7 @@ async def api_fonts(request: Request):
             return _err(res.get("error") or "Font respins")
         FONTS_DIR.mkdir(parents=True, exist_ok=True)
         shutil.move(str(upload), FONTS_DIR / name)
+        await _warm.drop()  # the waiting reader set up the fonts without this one
         return JSONResponse({"fonts": _font_list(), "added": {"name": name, "family": res.get("family", ""), "kind": res.get("kind", "")}})
     finally:
         with contextlib.suppress(OSError):
@@ -1849,10 +1937,12 @@ async def lifespan(_app):
             await asyncio.sleep(6 * 3600)
 
     task = asyncio.create_task(periodic())
+    _warm.refill()  # the first file opens without waiting for a reader to start
     try:
         yield
     finally:
         task.cancel()
+        await _warm.drop(refill=False)
 
 
 # ------------------------------------------------------------------ HTTP security

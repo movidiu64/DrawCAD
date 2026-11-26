@@ -323,7 +323,16 @@ def selftest(report: str | None) -> int:
         img = pdfium.PdfDocument(pdf)[0].render(scale=200 / 72).to_pil().convert("L")
         b = io.BytesIO()
         img.save(b, format="PNG", dpi=(200, 200))
+        t0 = time.time()
         smeta = call("POST", "/api/open", b.getvalue(), {"X-Filename": "scan.png"})
+        try:
+            from app import main as appmain
+
+            # the reader started ahead (informative: without it files still open, only slower)
+            st["warm_reader"] = {"on": appmain.WARM_WORKER and not appmain._warm.broken, "used": appmain._warm.used,
+                                 "open_s": round(time.time() - t0, 2)}
+        except Exception as e:  # noqa: BLE001
+            st["warm_reader"] = f"unknown: {e}"
         data, h = call("POST", f"/api/doc/{smeta['id']}/export", {"format": "dxf", "filename": "s"}, raw=True)
         stats = json.loads(h.get("X-Dxf-Stats") or "{}").get("0", {})
         st["scan_dxf"] = {"ok": bool(stats.get("scan")) and stats.get("cercuri", 0) >= 1, "stats": stats}

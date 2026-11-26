@@ -8,6 +8,7 @@ and the server answers "file rejected". The result (the cleaned PDF) is written 
 Usage: python -m app.ingest <input> <output_folder> [dpi] [dxf units ($INSUNITS code)]
        python -m app.ingest --image <input> <output_folder>   (an image to place on a drawing)
        python -m app.ingest --font <input> <output_folder>    (a font for DXF / DWG texts)
+       python -m app.ingest --serve                           (started ahead: one job from stdin, see serve)
 Output on stdout: a single JSON object.
 """
 from __future__ import annotations
@@ -359,7 +360,59 @@ def check_font(path: str, ext: str) -> dict:
     return {"family": family[:100], "kind": FONT_KINDS[ext]}
 
 
+def serve(argv) -> int:
+    """`--serve`: a process the server starts ahead of time and keeps waiting. The limits, the heavy
+    imports and the font set-up are done here, then it reads its one job from stdin (a JSON list of the
+    usual arguments) and runs it as a freshly started process would. Still one file per process: only
+    the start-up (seconds for the Windows app) is spent before the file arrives."""
+    _limit_self()
+    import contextlib
+
+    with contextlib.suppress(Exception):
+        import pikepdf  # noqa: F401
+        import pypdfium2  # noqa: F401
+        from PIL import Image  # noqa: F401
+
+        from . import dxfin, images, pdfcore, sanitize  # noqa: F401
+
+        dxfin._use_fonts()
+    try:
+        args = json.loads(_read_job())
+        if not isinstance(args, list) or not args or not all(isinstance(a, str) for a in args) or args[0] == "--serve":
+            raise ValueError
+    except ValueError:
+        return NO_JOB
+    return main([argv[0], *args])
+
+
+NO_JOB = 64  # --serve without a usable job: the server then reads the file in a freshly started process
+
+
+def _read_job() -> str:
+    """One line from standard input. A Windows app without a console may have no sys.stdin even when the
+    server passed a pipe: the handle is then opened directly."""
+    if sys.stdin is not None:
+        try:
+            return sys.stdin.readline()
+        except (OSError, ValueError):
+            pass
+    if os.name == "nt":
+        try:
+            import ctypes
+            import msvcrt
+
+            h = ctypes.windll.kernel32.GetStdHandle(-10)  # STD_INPUT_HANDLE
+            if h and h != -1:
+                with os.fdopen(msvcrt.open_osfhandle(h, os.O_RDONLY), "r", encoding="utf-8") as f:
+                    return f.readline()
+        except Exception:  # noqa: BLE001
+            pass
+    return ""
+
+
 def main(argv):
+    if len(argv) > 1 and argv[1] == "--serve":
+        return serve(argv)
     _limit_self()
     if len(argv) > 3 and argv[1] == "--font":
         try:

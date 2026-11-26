@@ -145,6 +145,7 @@ The app was originally called "Cotare": the old `COTARE_*` variables are still a
 | `DRAWCAD_OCR_LANG` | `ron+eng` | OCR languages (Tesseract codes; the image includes Romanian and English) |
 | `DRAWCAD_OCR_TIMEOUT` | `150` | maximum seconds for OCR of one page |
 | `DRAWCAD_VECTOR_TIMEOUT` | `240` | maximum seconds for vectorizing one scanned page |
+| `DRAWCAD_WARM_WORKER` | `1` | keep one file-reading process started ahead (about 70–100 MB idle), so opening does not wait for it to start; `0` = start it per file |
 
 ## Usage
 
@@ -552,7 +553,7 @@ In `private` and `session`, a document of another browser does not appear in Rec
 ## Security
 
 Uploaded files are treated as untrusted:
-- **Isolated reading.** The first read of a file (image decoding, PDF parsing, rendering each page, geometry extraction) happens in a separate process, limited to 3 GB of memory and 120 s. A file built to hang, fill the memory or crash the reading library is rejected, and the server carries on.
+- **Isolated reading.** The first read of a file (image decoding, PDF parsing, rendering each page, geometry extraction) happens in a separate process, limited to 3 GB of memory and 120 s. A file built to hang, fill the memory or crash the reading library is rejected, and the server carries on. One such process is started ahead of time, with its libraries and fonts loaded, and waits for the next file; it reads exactly one file and ends, and the next one starts behind it (`DRAWCAD_WARM_WORKER=0` turns this off).
 - **Active content removed.** JavaScript, automatic actions (on open, on page, on fields), links that start programs or open other files, form submission, attached files, multimedia annotations and XFA forms are stripped from the PDF. Ordinary web links stay. The drawing does not change and exports come out clean. On opening, a message lists what was removed.
 - **Limits:** file size (`DRAWCAD_MAX_UPLOAD_MB`, read as a stream, never held fully in memory), number of pages (`DRAWCAD_MAX_PAGES`), megapixels per image (`DRAWCAD_MAX_IMAGE_MPX`, protects against "decompression bombs"), page size and the size of the data received on export.
 - **Browser.** A strict Content-Security-Policy (only the app's scripts, no `eval`), `nosniff`, no referrer and no framing by other sites. Data-changing requests coming from another site are refused, so a foreign page open in the browser cannot upload or delete documents.
