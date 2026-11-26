@@ -352,6 +352,42 @@ def main(url, out):
         assert "@0,30" in hist and "[C]" in hist and "Diametrul" in hist, hist
         page.screenshot(path=str(out / "istoric_f2.png"))
         page.keyboard.press("F2")
+        # 18b. TRIM, EXTEND (and Shift in TRIM), OFFSET with a typed distance, on drawn lines (CMD-D17)
+        H = page.evaluate("window.cotare.doc.pages[0].h") / MM
+
+        def cl_up(x, y, shift=False):  # mm from the bottom-left corner, as typed points
+            if shift:
+                page.keyboard.down("Shift")
+            click(x, H - y)
+            if shift:
+                page.keyboard.up("Shift")
+
+        def last_lines(n):
+            return page.evaluate(f"""window.cotare.annots.filter(a => a.type === 'shape' && a.kind === 'line').slice(-{n})
+                .map(a => a.pts.map(p => [Math.round(p[0] / (72/25.4) * 10) / 10, Math.round(((window.cotare.doc.pages[0].h - p[1]) / (72/25.4)) * 10) / 10]))""")
+
+        for pts in (("100,80", "@40,0"), ("130,70", "@0,20"), ("110,85", "@10,0")):
+            page.keyboard.press("i")
+            typed(*pts)
+            page.keyboard.press("Escape")
+            page.keyboard.press("Escape")
+        page.evaluate(f"() => {{ const h = window.cotare.doc.pages[0].h; window.cotare.view.zoomToBox([90*{MM}, h - 100*{MM}, 145*{MM}, h - 60*{MM}]); }}")
+        page.wait_for_timeout(300)
+        page.click("#cmdIn")
+        typed("TR")
+        cl_up(135, 80)
+        assert last_lines(3)[0] == [[100, 80], [130, 80]], last_lines(3)
+        cl_up(119, 85, shift=True)  # Shift: extend instead
+        assert last_lines(3)[2] == [[110, 85], [130, 85]], last_lines(3)
+        page.keyboard.press("Enter")
+        assert page.evaluate("window.cotare.tool") == "select"
+        page.click("#cmdIn")
+        typed("O", "5")
+        cl_up(110, 80)
+        cl_up(110, 70)
+        page.keyboard.press("Enter")
+        assert last_lines(4)[1] == [[100, 75], [130, 75]], last_lines(4)  # the copy goes right after its source
+        page.screenshot(path=str(out / "taie_prelungeste.png"))
         # 19. typed snap override: CEN, then a click on the edge of the Ø10 hole takes its center
         page.evaluate("() => { const v = window.cotare.view; v.zoom = 2.2; v.panX = -125*72/25.4*2.2; v.panY = -80*72/25.4*2.2; v.afterZoom(); }")
         page.wait_for_timeout(300)
@@ -621,7 +657,7 @@ def main(url, out):
         page.screenshot(path=str(out / "editor.png"))
 
         kinds = page.evaluate("window.cotare.annots.map(a => a.type)")
-        assert len(kinds) == 36, kinds
+        assert len(kinds) == 40, kinds
 
         # an image (a logo): the tool asks for the file, a drag places it with its proportions
         from PIL import Image as _Image
@@ -636,7 +672,7 @@ def main(url, out):
         page.mouse.down()
         page.mouse.move(x1, y1, steps=4)
         page.mouse.up()
-        page.wait_for_function("window.cotare.annots.length === 37 && window.cotare.selected().type === 'image'")
+        page.wait_for_function("window.cotare.annots.length === 41 && window.cotare.selected().type === 'image'")
         r = page.evaluate("window.cotare.selected().r")
         assert abs((r[2] - r[0]) / (r[3] - r[1]) - 3) < 0.05, r  # 300 × 100 px → 3:1
 
@@ -649,7 +685,7 @@ def main(url, out):
         page.wait_for_selector("[data-tbput='0']")
         page.click("[data-tbput='0']")
         click(270, 200)
-        page.wait_for_function("window.cotare.annots.length === 38 && window.cotare.selected() && window.cotare.selected().type === 'tblock'")
+        page.wait_for_function("window.cotare.annots.length === 42 && window.cotare.selected() && window.cotare.selected().type === 'tblock'")
         page.fill("#tbf_titlu", "Arbore")
         page.press("#tbf_titlu", "Escape")
         txt = page.evaluate("window.cotare.builtOf(window.cotare.annots.find(a => a.type === 'tblock')).prims.filter(p => p.t === 'T').map(p => p.txt)")
@@ -663,13 +699,13 @@ def main(url, out):
         page.mouse.down()
         page.mouse.move(x1, y1, steps=4)
         page.mouse.up()
-        page.wait_for_function("window.cotare.annots.length === 39 && window.cotare.selected().type === 'cloud'")
+        page.wait_for_function("window.cotare.annots.length === 43 && window.cotare.selected().type === 'cloud'")
         page.evaluate("window.cotare.setTool('comment')")
         click(150, 40)
         page.wait_for_selector("#cTxt")
         page.fill("#cTxt", "De verificat cu clientul")
         page.press("#cTxt", "Escape")
-        page.wait_for_function("window.cotare.annots.length === 40")
+        page.wait_for_function("window.cotare.annots.length === 44")
         page.evaluate("window.cotare.setTool('select')")
 
         # a stamp from the list and a QR code with the drawing number from the title block
@@ -677,10 +713,10 @@ def main(url, out):
         page.wait_for_selector("[data-st]")
         page.click("[data-st='VERIFICAT']")
         click(150, 60)
-        page.wait_for_function("window.cotare.annots.length === 41 && window.cotare.tool === 'select'")
+        page.wait_for_function("window.cotare.annots.length === 45 && window.cotare.tool === 'select'")
         page.evaluate("window.cotare.setTool('qr')")
         click(240, 150)
-        page.wait_for_function("window.cotare.annots.length === 42 && window.cotare.selected().type === 'qr'")
+        page.wait_for_function("window.cotare.annots.length === 46 && window.cotare.selected().type === 'qr'")
         page.fill("#qNr", "ARB-01")
         page.press("#qNr", "Enter")
         assert "ARB-01" in page.inner_text(".qrtext"), page.inner_text(".qrtext")
@@ -734,8 +770,8 @@ def main(url, out):
         # reopen: dimensions come back editable
         prev_id = page.evaluate("window.cotare.doc.id")
         page.set_input_files("#fileInput", str(path))
-        # wait for the new document (loading takes time), not the old one which already had 36 annotations
-        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 42")
+        # wait for the new document (loading takes time), not the old one which already had 40 annotations
+        page.wait_for_function(f"window.cotare.doc && window.cotare.doc.id !== '{prev_id}' && window.cotare.doc.fromExport && window.cotare.annots.length === 46")
         # the export knows its revision; opening it does not change the number yet
         rev0 = page.evaluate("[window.cotare.settings.revNo, window.cotare.settings.exportedRev]")
         assert rev0[0] == rev0[1], rev0
@@ -833,7 +869,7 @@ def main(url, out):
         page.wait_for_function("document.querySelectorAll('#recentList [data-doc]').length >= 1", timeout=5000)
         # reopen the export from Recent (the DXF is the newest), one change, then close with the prompt
         page.click(f'#recentList [data-doc="{export_id}"]')
-        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 42")
+        page.wait_for_function("window.cotare.doc !== null && window.cotare.annots.length === 46")
         page.wait_for_timeout(300)
         # page operations are history steps: rotate, Ctrl+Z; delete a page, Ctrl+Z, Ctrl+Y, Ctrl+Z
         snap_a = page.evaluate("JSON.stringify(window.cotare.annots)")
@@ -860,7 +896,7 @@ def main(url, out):
         page_step("Control+y")
         assert page.evaluate("window.cotare.doc.pages.length") == 1
         page_step("Control+z")
-        assert page.evaluate("window.cotare.doc.pages.length") == 2 and page.evaluate("window.cotare.annots.length") == 42
+        assert page.evaluate("window.cotare.doc.pages.length") == 2 and page.evaluate("window.cotare.annots.length") == 46
         # Ctrl+K: command search by name (Romanian, without diacritics), Enter runs it; ? opens the sheet
         page.keyboard.press("Control+k")
         page.wait_for_selector("#pkQ")

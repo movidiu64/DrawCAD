@@ -113,9 +113,16 @@ export class RadialMenu {
   }
 
   /** One click of the active tool (dimension points, polyline vertices…). */
-  toolClick(pt) {
+  toolClick(pt, raw = null, shift = false) {
     const t = TOOL_BY_ID[this.tool];
     if (this.pointMod && this.consumePointMod(pt)) return;
+    if (t.kind === "pick") {
+      // OFFSET, TRIM, EXTEND: an object under the cursor (a typed point picks there too)
+      this.lastPick = pt;
+      this.snapOverride = null;
+      this.modifyClick(t, raw || pt, pt, shift);
+      return;
+    }
     this.lastPick = pt; // AutoCAD's LASTPOINT: what @ refers to
     this.snapOverride = null; // a typed override (END, MID…) is for one pick
     this.snapPick = null;

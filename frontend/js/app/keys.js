@@ -171,6 +171,7 @@ export class Keyboard {
           if (this.hotGrip) this.cycleHotGrip();
           else if (this.pointMod && this.pointMod.kind === "tk") this.escape(true);
           else if (this.cmdActive() && (this.clicks.length || this.rectStart)) this.escape(true);
+          else if (this.cmdActive() && TOOL_BY_ID[this.tool].kind === "pick") this.setTool("select");
           else this.repeatCmd();
           return;
         }
@@ -540,6 +541,12 @@ export class Keyboard {
       if ((e.key === "Enter" || (e.key === " " && autocad)) && this.selPrompt && !this.mmenu) {
         e.preventDefault();
         this.finishSelPrompt();
+        return;
+      }
+      if ((e.key === "Enter" || (e.key === " " && autocad)) && !this.clicks.length && !this.mmenu && this.cmdActive() && TOOL_BY_ID[this.tool].kind === "pick") {
+        // OFFSET / TRIM / EXTEND go on until Enter, as in AutoCAD
+        e.preventDefault();
+        this.setTool("select");
         return;
       }
       if (e.key === "Enter" && !this.clicks.length && !this.mmenu) {

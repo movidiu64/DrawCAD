@@ -327,6 +327,13 @@ export const TOOLS = [
   { id: "redact", label: "Șterge", key: "X", group: "Revizie", icon: "M7 20h12M5 15.5l9-9 5 5-6.5 6.5H9z", kind: "rect",
     hint: "Trage un dreptunghi → alegi ce obiecte din original se elimină",
     make: (r) => ({ type: "redact", r, ids: [], objs: [] }) },
+  // OFFSET, TRIM, EXTEND on drawn shapes (CMD-D17): kind "pick" = objects are clicked, see js/app/modify.js
+  { id: "offset", label: "Decalare", key: "", group: "Modificare", icon: "M4 18L18 4M8 20L20 8M3 12l3 3",
+    kind: "pick", hint: "Distanța (sau T = prin punct) → click pe linie, polilinie, dreptunghi, cerc sau arc → click pe partea copiei · repetă până la Enter / Esc" },
+  { id: "trim", label: "Taie", key: "", group: "Modificare", icon: "M4 12h16M12 4v16M15 9l5-5M17 4h3v3",
+    kind: "pick", hint: "Click pe bucata de tăiat: dispare până la cele mai apropiate intersecții (cu desenul sau cu alte linii desenate) · fără intersecții se șterge tot obiectul · Shift + click prelungește · Enter / Esc termină" },
+  { id: "extend", label: "Prelungește", key: "", group: "Modificare", icon: "M20 4v16M4 12h11M12 9l3 3-3 3",
+    kind: "pick", hint: "Click lângă capătul de prelungit: merge până la cea mai apropiată margine (desenul sau alte linii desenate) · Shift + click taie · Enter / Esc termină" },
   { id: "calib", label: "Calibrare", key: "K", group: "Revizie", icon: "M3 17h18M5 17v-4M9 17v-2M13 17v-4M17 17v-2M21 17v-4M3 7h18M3 7l3-2M3 7l3 2M21 7l-3-2M21 7l-3 2", kind: "clicks", n: 2,
     hint: "Click pe capetele unei cote cunoscute → introduci valoarea reală",
     preview(pts, cur) { return { line: [pts[0], cur] }; } },
@@ -356,6 +363,9 @@ const PROMPTS = {
   poly: ["Primul vârf", "Vârful următor (Enter = gata)"],
   rect: ["Primul colț", "Colțul opus"],
   circle: ["Centrul", "Raza sau un punct pe cerc"],
+  offset: ["Obiectul de decalat", "Un punct pe partea copiei"],
+  trim: ["Obiectul de tăiat (Shift = prelungește)"],
+  extend: ["Obiectul de prelungit (Shift = taie)"],
 };
 const PLACE_PROMPTS = {
   dimOrd: "Poziția rândului de cote",
@@ -413,6 +423,13 @@ const OPTIONS = {
       return true;
     }),
   }],
+  offset: [
+    { key: "D", label: "Distanță", en: ["DISTANCE"], when: (app) => !app.clicks.length, run: (app) => app.askOffsetDist() },
+    { key: "T", label: "Prin punct", en: ["THROUGH"], when: (app) => !app.clicks.length, run: (app) => { app.offsetDist = null; } },
+    { key: "U", label: "Anulează", en: ["UNDO"], when: (app) => !!(app.cmdState && app.cmdState.done), run: (app) => app.modUndo() },
+  ],
+  trim: [{ key: "U", label: "Anulează", en: ["UNDO"], when: (app) => !!(app.cmdState && app.cmdState.done), run: (app) => app.modUndo() }],
+  extend: [{ key: "U", label: "Anulează", en: ["UNDO"], when: (app) => !!(app.cmdState && app.cmdState.done), run: (app) => app.modUndo() }],
   ucs: [{ key: "W", label: "Colțul paginii", en: ["WORLD"], run: (app) => app.ucsWorld() }],
   text: [
     { key: "H", label: "Înălțime", en: ["HEIGHT"], run: (app) => app.askValue("Înălțimea textului (mm pe hârtie)", (v) => {
@@ -448,6 +465,7 @@ export function promptFor(t, app) {
   if (app.cmdState && app.cmdState.orient) text += app.cmdState.orient === "h" ? " (orizontal)" : " (vertical)";
   else if (app.cmdState && app.cmdState.rotA != null && t.id === "dimLin") text += ` (rotit ${String(app.cmdState.rotA).replace(".", ",")}°)`;
   if (app.cmdState && app.cmdState.axis) text += ` (pe ${app.cmdState.axis.toUpperCase()})`;
+  if (t.id === "offset" && !n) text += app.offsetDist > 0 ? ` (${String(app.offsetDist).replace(".", ",")} mm)` : " (prin punct)";
   const opts = (OPTIONS[t.id] || []).filter((o) => !o.when || o.when(app));
   return { text, opts };
 }
@@ -506,7 +524,7 @@ export const FAMILIES = [
   { id: "dims", label: "Cote", sep: true, tools: ["dimLin", "dimAli", "dimDia", "dimDiaC", "dimRad", "dimAng", "chamfer", "dimOrd", "dimCont", "dimBase", "holes"] },
   { id: "tol", label: "Toleranțe", tools: ["rough", "gdt", "datum"] },
   { id: "notes", label: "Adnotări", tools: ["text", "lead", "note", "revtab", "bom", "balloon", "tblock", "stamp", "qr", "image"] },
-  { id: "draw", label: "Desen", sep: true, tools: ["line", "poly", "rect", "circle", "arc", "cross", "hatch", "break"] },
+  { id: "draw", label: "Desen", sep: true, tools: ["line", "poly", "rect", "circle", "arc", "cross", "hatch", "break", "offset", "trim", "extend"] },
   { id: "views", label: "Vederi", tools: ["section", "detail", "viewlabel"] },
   { id: "rev", label: "Revizie", sep: true, tools: ["strike", "cloud", "cloudp", "mark", "comment", "compare", "white", "ink", "redact"] },
 ];

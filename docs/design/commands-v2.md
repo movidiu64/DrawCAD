@@ -519,6 +519,27 @@ Ovidiu's confirmation (behaviour in his AutoCAD, or a product choice) before it 
 - **Tests:** `tests/osnap.test.js` (tracking along 45° only with the option), `tests/pointin.test.js`
   (`TK`, `'TRACKING`), e2e step 29 (`TK 50,100 @20,0 @3,15 Enter @10,0` draws 70,115 → 80,115).
 
+### CMD-D17 — OFFSET, TRIM, EXTEND (done on `v1.5`)
+
+- **`O` / OFFSET:** asks the distance first (real mm, as typed lengths; `T` = Through; an empty Enter
+  keeps the last one, remembered for the session), then repeats: pick a line, polyline, rectangle,
+  circle or arc, then a point on the side of the copy. Polylines and rectangles keep sharp corners
+  (AutoCAD's default gap type). A distance too large for the outline (a segment would turn around, a
+  radius ≤ 0) is refused. The copy takes the source's style and goes right after it in the list.
+- **`TR` / TRIM** and **`EX` / EXTEND** work as AutoCAD's Quick mode: no cutting-edge selection,
+  every other drawn shape on the page and the drawing's own vector geometry (PDF lines, arcs and
+  circles, or the vectorized scan) are edges. TRIM removes the picked part up to the nearest cuts; a
+  shape that nothing crosses is erased whole; a circle becomes an arc, a rectangle or closed polyline an
+  open polyline. EXTEND moves the end nearer to the pick (along the path) to the nearest boundary:
+  lines, the end segments of open polylines, arcs along their circle. **Shift + click** swaps the two.
+- Objects are picked at the cursor without snap; OFFSET's side point snaps. The part that would go
+  (TRIM, red dashed) or be added (EXTEND) is previewed under the cursor. `U` undoes the last change
+  inside the command; Enter, right click or Esc ends.
+- Not yet: fence / crossing in TRIM, the Edge (extend to the apparent intersection) option, OFFSET
+  Erase / Layer options, trimming hatches, dimensions or the PDF itself.
+- **Code:** geometry in `js/modify.js` (pure, `tests/modify.test.js`), the commands in
+  `js/app/modify.js` (tool kind `"pick"`); e2e step 18b.
+
 ## Phases
 
 1. **Points:** CMD-D1, D2, D3, D4, D8. Point input from the command line, origin and units, Shift.
@@ -555,6 +576,7 @@ After phases 1–5 the same weights give about **≈ 65 %** (estimate).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-26 | minor | OFFSET, TRIM, EXTEND on drawn shapes (CMD-D17) on `v1.5` |
 | 2026-11-24 | minor | Grip menu (modes, add / remove vertex) on `v1.1`; grips 85 %; ≈ 81 % (estimate) |
 | 2026-11-24 | minor | Dynamic input on hot grips on `v1.1`; dynamic input 72 %, grips 78 %; ≈ 80 % (estimate) |
 | 2026-11-24 | minor | `TK` and tracking along polar angles on `v1.1`; point entry 82 %, tracking 86 %; ≈ 79 % (estimate) |

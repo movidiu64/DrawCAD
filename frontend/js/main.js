@@ -19,6 +19,7 @@ import { ContextBar } from "./app/contextbar.js";
 import { Keyboard } from "./app/keys.js";
 import { MeasureArea } from "./app/measure.js";
 import { DocTabs } from "./app/tabs.js";
+import { Modify } from "./app/modify.js";
 
 class App {
   constructor() {
@@ -201,7 +202,7 @@ class App {
 }
 
 // the methods of each area, in the order they used to stand in the class
-for (const part of [RadialMenu, Review, SheetItems, PointInput, Grips, Interface, Documents, StateHistory, Editing, Mouse, ContextBar, Keyboard, MeasureArea, DocTabs]) {
+for (const part of [RadialMenu, Review, SheetItems, PointInput, Grips, Interface, Documents, StateHistory, Editing, Mouse, ContextBar, Keyboard, MeasureArea, DocTabs, Modify]) {
   for (const [name, d] of Object.entries(Object.getOwnPropertyDescriptors(part.prototype))) {
     if (name !== "constructor") Object.defineProperty(App.prototype, name, d);
   }

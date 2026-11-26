@@ -382,7 +382,7 @@ export class Mouse {
         this.drag = { kind: "tap" };
         return;
       }
-      this.toolClick(this.dynPoint(this.snapPoint(raw, e, anchor).pt, anchor));
+      this.toolClick(this.dynPoint(this.snapPoint(raw, e, anchor).pt, anchor), raw, e.shiftKey);
     });
 
     cv.addEventListener("pointermove", (e) => {
@@ -562,6 +562,16 @@ export class Mouse {
         if (this.hover) this.setHover(null, raw);
         cv.style.cursor = "crosshair";
       }
+      if (t.kind === "pick" && !d) {
+        // OFFSET / TRIM / EXTEND: objects are picked at the cursor, without snap; OFFSET's side point snaps
+        let pt = raw;
+        let sn = null;
+        if (t.id === "offset" && this.clicks.length) ({ pt, sn } = this.snapPoint(raw, e, null));
+        this._dynPt = pt;
+        this.showCoords(pt);
+        this.modPreview(t, raw, pt, e.shiftKey, sn);
+        return;
+      }
       if (d && d.kind === "free") {
         const last = d.pts[d.pts.length - 1];
         if (Math.hypot(raw[0] - last[0], raw[1] - last[1]) * this.view.zoom >= 2) d.pts.push(raw);
@@ -614,7 +624,7 @@ export class Mouse {
         const [ux, uy] = pos(e);
         const raw = this.view.toPage(ux, uy);
         const an = this.pickAnchor();
-        this.toolClick(this.dynPoint(this.snapPoint(raw, e, an).pt, an));
+        this.toolClick(this.dynPoint(this.snapPoint(raw, e, an).pt, an), raw, e.shiftKey);
         return;
       }
       if (d.kind === "mmenu") {

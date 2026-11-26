@@ -486,5 +486,6 @@ export class Interface {
     else if (id !== "image") this.pendingImage = null;
     if (id === "tblock" && this.doc && !this.tblockTpl) this.openTblockLibrary(true);
     if (id === "stamp" && this.doc) dlg.stampDialog(this);
+    if (id === "offset" && this.doc) this.askOffsetDist();
   }
 }
