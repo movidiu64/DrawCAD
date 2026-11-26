@@ -219,6 +219,36 @@ class DxfToPdfTest(unittest.TestCase):
             snap = pdfcore.snap_points(pdf, 0)
             self.assertLessEqual(len(snap["arcs"]), 4)  # the circle and the arc, not letters
 
+    def test_truetype_text(self):
+        """A text in a TrueType font found on this machine is PDF text in that font (embedded), not outlines."""
+        from ezdxf.fonts import fonts
+
+        if not fonts.font_manager.has_font("DejaVuSans.ttf"):
+            self.skipTest("DejaVu Sans not installed")
+        doc = ezdxf.new("R2010", units=4)
+        doc.styles.add("DV", font="DejaVuSans.ttf")
+        doc.modelspace().add_text("Indicator ȘĂ Ø20", height=5, dxfattribs={"style": "DV"}).set_placement((0, 0))
+        doc.modelspace().add_line((0, -5), (100, -5))
+        pdf, _ = dxfin.dxf_to_pdf(to_bytes(doc))
+        d = pdfium.PdfDocument(pdf)
+        self.assertIn("Indicator ȘĂ Ø20", d[0].get_textpage().get_text_range())
+        d.close()
+        self.assertIn(b"DejaVuSans", pdf)
+
+    def test_colors(self):
+        """Colors: black by default (monochrome plot), the drawing's own on request, same objects."""
+        data = to_bytes(make_doc())
+        mono, _ = dxfin.dxf_to_pdf(data)
+        color, _ = dxfin.dxf_to_pdf(data, colors=True)
+        self.assertEqual(red(mono), 0)
+        self.assertGreater(red(color), 50)
+        counts = []
+        for b in (mono, color):
+            d = pdfium.PdfDocument(b)
+            counts.append(pdfium.raw.FPDFPage_CountObjects(d[0].raw))
+            d.close()
+        self.assertEqual(counts[0], counts[1])
+
     def test_binary_dxf(self):
         import tempfile
 

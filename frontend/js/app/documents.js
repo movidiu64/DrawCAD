@@ -117,10 +117,12 @@ export class Documents {
 
   /** Layers of a drawing opened from DXF / DWG, hidden or shown again: the server leaves them out of
    *  the page, snap, search and export, so the page is loaded again. */
-  async setDxfHidden(hidden) {
+  async setDxfHidden(hidden, colors = !!(this.doc && this.doc.dxf && this.doc.dxf.colors)) {
     if (!this.doc || !this.doc.dxf) return;
-    const res = await api.dxfLayers(this.doc.id, hidden);
+    if (colors && !this.doc.dxf.colors) dlg.toast("Desenul se reface color…", 4000);
+    const res = await api.dxfLayers(this.doc.id, hidden, colors);
     this.doc.dxf.hidden = res.hidden;
+    this.doc.dxf.colors = res.colors;
     this.doc.lv = res.lv;
     this.unexported = true;
     this.setPage(this.page);

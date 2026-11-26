@@ -85,3 +85,7 @@ huge entity counts, a DWG that is not one).
   the working PDF (ids stay the same, so removals and the entity map still match), skipped by snap,
   object picking and search, removed from the PDF export, turned off in the original-DXF export.
 - One drawing scale per layout (pages carry `src`, `name`, `dscale`); the page tabs show the layout names.
+- Colors: monochrome by default; the drawing's own colors on request, plotted again in the limited child
+  process (`original-color.pdf`, checked to have the same objects page by page).
+- Texts in a TrueType font found on the machine are PDF text in that font (embedded subset).
+- The original-DXF export also takes pages turned in the editor and images placed in DrawCAD (ZIP).

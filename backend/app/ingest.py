@@ -269,8 +269,53 @@ def _emit(out_dir, obj):
             pass
 
 
+def dxf_colors(doc_dir: str) -> dict:
+    """The drawing of a document opened from DXF / DWG plotted again in its own colors
+    (original-color.pdf, next to the monochrome original.pdf). Same objects in the same order, checked
+    page by page, so removals, hidden layers and the entity map keep working."""
+    import pypdfium2 as pdfium
+
+    from . import dxfin
+    from .sanitize import sanitize_pdf
+
+    with open(os.path.join(doc_dir, "original.dxf"), "rb") as f:
+        data = f.read()
+    try:
+        pdf, _info = dxfin.dxf_to_pdf(data, max_entities=MAX_DXF_ENTITIES, colors=True)
+    except Exception as e:  # noqa: BLE001
+        raise Rejected(f"Desenul nu poate fi refăcut color: {e}") from e
+    pdf, _removed = sanitize_pdf(pdf)
+
+    def counts(b):
+        d = pdfium.PdfDocument(b)
+        try:
+            return [pdfium.raw.FPDFPage_CountObjects(d[i].raw) for i in range(len(d))]
+        finally:
+            d.close()
+
+    with open(os.path.join(doc_dir, "original.pdf"), "rb") as f:
+        mono = f.read()
+    if counts(pdf) != counts(mono):
+        raise Rejected("Desenul color nu se potrivește cu cel deschis")
+    tmp = os.path.join(doc_dir, "original-color.pdf.tmp")
+    with open(tmp, "wb") as f:
+        f.write(pdf)
+    os.replace(tmp, os.path.join(doc_dir, "original-color.pdf"))
+    return {}
+
+
 def main(argv):
     _limit_self()
+    if len(argv) > 2 and argv[1] == "--dxf-colors":
+        try:
+            _emit(argv[2], {"ok": True, **dxf_colors(argv[2])})
+            return 0
+        except Rejected as e:
+            _emit(argv[2], {"ok": False, "error": str(e)})
+            return 2
+        except Exception as e:  # noqa: BLE001
+            _emit(argv[2], {"ok": False, "error": f"Desenul nu poate fi refăcut color: {e}"})
+            return 4
     image = len(argv) > 1 and argv[1] == "--image"
     if image:
         argv = argv[1:]

@@ -305,7 +305,11 @@ export class Panel {
     if (!layers.length) return "";
     const hidden = new Set(d.dxf.hidden || []);
     const eye = (off) => `<svg viewBox="0 0 24 24">${off ? '<path d="M3 3l18 18M10.6 6.1A9.7 9.7 0 0 1 12 6c5 0 9 6 9 6a16 16 0 0 1-2.6 3.2M6.6 6.6C4.3 8.1 3 12 3 12s4 6 9 6a8.8 8.8 0 0 0 4.4-1.2"/>' : '<path d="M3 12s4-6 9-6 9 6 9 6-4 6-9 6-9-6-9-6z"/><circle cx="12" cy="12" r="2.5"/>'}</svg>`;
+    const col = !!d.dxf.colors;
     return `<div class="sec"><div class="h">Straturi din ${d.kind === "dwg" ? "DWG" : "DXF"}</div>
+      <div class="field"><span class="lbl">Culori</span><div class="seg">
+        <button data-act="dxfcolors" data-v="0" class="${col ? "" : "on"}" title="Ca la un plot monocrom: totul negru, se citește bine pe hârtie">Negru</button>
+        <button data-act="dxfcolors" data-v="1" class="${col ? "on" : ""}">Culorile desenului</button></div></div>
       <div class="dxflayers">${layers.map((la) => {
         const off = hidden.has(la.name);
         return `<div class="layer ${off ? "off" : ""}"><i style="background:${la.color ? esc(la.color) : "var(--text)"}"></i><span class="nm" translate="no" title="${esc(la.name)}">${esc(la.name)}</span><span class="mono sub">${la.n}</span>
@@ -1209,6 +1213,9 @@ export class Panel {
       case "layervis":
         app.toggleLayer(v);
         this.render();
+        break;
+      case "dxfcolors":
+        if ((v === "1") !== !!(app.doc.dxf && app.doc.dxf.colors)) app.setDxfHidden((app.doc.dxf && app.doc.dxf.hidden) || [], v === "1").catch((e) => toast(e.message));
         break;
       case "dxflayer":
       case "dxfall": {

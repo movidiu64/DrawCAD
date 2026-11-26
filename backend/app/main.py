@@ -255,7 +255,10 @@ def _original(doc_id: str) -> bytes:
     for a DXF / DWG, the hidden layers made invisible). Everything else (render, snap, removals, OCR,
     export) works on it, so rotation is kept on export too."""
     def raw():
-        data = (_doc_dir(doc_id) / "original.pdf").read_bytes()
+        d = _doc_dir(doc_id)
+        color = d / "original-color.pdf"
+        dxf = (_read_json(d / "meta.json", {}) or {}).get("dxf") or {}
+        data = (color if dxf.get("colors") and color.is_file() else d / "original.pdf").read_bytes()
         hidden = _hidden_layers(doc_id)
         return pdfcore.hide_objects(data, _hidden_ids(doc_id, hidden)) if hidden else data
 
@@ -964,10 +967,33 @@ async def api_pages(request: Request):
     return JSONResponse({"pages": meta["pages"], "lv": meta["lv"], "ocrPages": _ocr_pages(doc_id, meta), "layout": lay, "prev": prev})
 
 
+async def _dxf_colors(d: Path) -> str | None:
+    """The drawing plotted again in its own colors, in the limited child process (original-color.pdf).
+    → an error message, or None."""
+    proc = await asyncio.create_subprocess_exec(
+        *_child_cmd("app.ingest", "--dxf-colors", d),
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        cwd=str(Path(__file__).resolve().parents[1]), **_child_kw(),
+    )
+    try:
+        out, _ = await asyncio.wait_for(proc.communicate(), INGEST_TIMEOUT)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        return "Desenul color a durat prea mult"
+    finally:
+        (d / "result.json").unlink(missing_ok=True)
+    try:
+        res = json.loads(out.decode("utf-8") or "{}")
+    except Exception:  # noqa: BLE001
+        res = {}
+    return None if res.get("ok") else (res.get("error") or "Desenul nu poate fi refăcut color")
+
+
 async def api_dxf_layers(request: Request):
-    """Layers of a drawing opened from DXF / DWG shown or hidden: {"hidden": [names]}. Hidden layers
-    are left out of the page, snap, search and every export (in the DXF of the original drawing they
-    are turned off)."""
+    """Layers of a drawing opened from DXF / DWG shown or hidden: {"hidden": [names], "colors": bool}.
+    Hidden layers are left out of the page, snap, search and every export (in the DXF of the original
+    drawing they are turned off). `colors`: the drawing in its own colors instead of black."""
     doc_id = request.path_params["doc_id"]
     try:
         d = _doc_dir(doc_id)
@@ -983,11 +1009,17 @@ async def api_dxf_layers(request: Request):
     known = {la["name"] for la in dxf.get("layers") or []}
     hidden = sorted({h for h in body["hidden"] if isinstance(h, str) and h in known})
     dxf["hidden"] = hidden
+    if isinstance(body.get("colors"), bool):
+        if body["colors"] and not (d / "original-color.pdf").is_file():
+            err = await _dxf_colors(d)
+            if err:
+                return _err(err)
+        dxf["colors"] = body["colors"]
     meta["lv"] = int(meta.get("lv", 0)) + 1
     meta["updated"] = time.time()
     _write_json(d / "meta.json", meta)
     _purge(doc_id)
-    return JSONResponse({"hidden": hidden, "lv": meta["lv"]})
+    return JSONResponse({"hidden": hidden, "colors": bool(dxf.get("colors")), "lv": meta["lv"]})
 
 
 async def api_snap(request: Request):
@@ -1203,8 +1235,8 @@ def _overlaps(box, boxes):
 
 
 def _source_dxf_ok(doc_id, meta, idxs) -> bool:
-    """A drawing opened from DXF / DWG, whose chosen pages can take DrawCAD's work in the original DXF:
-    pages not turned in the editor (a quarter turn has no place in the drawing's own space)."""
+    """A drawing opened from DXF / DWG whose chosen pages can take DrawCAD's work in the original DXF
+    (pages made by this version, which records each page's drawing → page transform)."""
     d = _doc_dir(doc_id)
     dxf = meta.get("dxf") or {}
     if not (d / "original.dxf").is_file() or not dxf.get("pages"):
@@ -1213,7 +1245,7 @@ def _source_dxf_ok(doc_id, meta, idxs) -> bool:
     for i in idxs:
         it = lay[i] if i < len(lay) else {}
         src = int(it.get("src", i))
-        if int(it.get("rot", 0)) % 360 or src >= len(dxf["pages"]) or "tf" not in dxf["pages"][src]:
+        if src >= len(dxf["pages"]) or "tf" not in dxf["pages"][src]:
             return False
     return True
 
@@ -1232,25 +1264,49 @@ async def _export_dxf_source(doc_id, meta, original, prims, rem, idxs, opts, col
     maps = _read_json(d / "original.dxfmap.json", [])
     want_annots = bool(opts.get("annots", True))
     pages = []
-    skipped_images = 0
+    files = []
+    stem = base_name or "desen"
     for i in idxs:
         it = lay[i]
         src = int(it.get("src", i))
         info = meta["dxf"]["pages"][src]
         page_prims = [p for p in prims.get(i, []) if p.get("t") != "I"] if want_annots else []
-        skipped_images += sum(1 for p in prims.get(i, []) if p.get("t") == "I") if want_annots else 0
+        # images placed in DrawCAD: saved next to the DXF (a ZIP), which references them
+        images = []
+        for p in (q for q in prims.get(i, []) if want_annots and q.get("t") == "I" and q.get("src")):
+            srcf = Path(p["src"])
+            try:
+                from PIL import Image
+
+                with Image.open(srcf) as im:
+                    px = im.size
+            except Exception:  # noqa: BLE001
+                continue
+            name = f"{stem}_p{i + 1}_img{len(images) + 1}{srcf.suffix}"
+            images.append((name, px, p))
+            files.append((name, srcf.read_bytes()))
         rep = reports.get(i, {})
         pages.append({
-            "page": info, "H": info["sheet"][1] * 72 / 25.4, "kp": float(it.get("scale", 1) or 1),
+            "page": info, "W": info["sheet"][0] * 72 / 25.4, "H": info["sheet"][1] * 72 / 25.4,
+            "kp": float(it.get("scale", 1) or 1), "rot": int(it.get("rot", 0)) % 360, "images": images,
             "prims": page_prims, "handles": maps[src] if isinstance(maps, list) and src < len(maps) else None,
             "gone": rep.get("_gone", []), "cut": rep.get("_cut", []),
             "zones": [op["rect"] for op in rem.get(i, []) if op.get("mode") == "zone"],
         })
     hidden = (meta.get("dxf") or {}).get("hidden") or []
     data, counts = await run_in_threadpool(dxfin.export_source, (d / "original.dxf").read_bytes(), pages, color, hidden)
-    if skipped_images:
-        counts["images_left_out"] = skipped_images
-    return data, reports, "dxf", {"source": {**counts, "source": True, "from": meta.get("kind", "dxf")}}
+    stats = {"source": {**counts, "source": True, "from": meta.get("kind", "dxf")}}
+    if not files:
+        return data, reports, "dxf", stats
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(f"{stem}.dxf", data)
+        for name, b in files:
+            z.writestr(name, b)
+    return buf.getvalue(), reports, "zip", stats
 
 
 async def _export_dxf(doc_id, prims, rem, sel, opts, color, base_name):

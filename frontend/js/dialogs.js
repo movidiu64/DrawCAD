@@ -334,8 +334,7 @@ export function exportDialog(app, opts = {}) {
         const st = stats.source;
         const gone = st.deleted || 0;
         const part = st.deleted_partly || 0;
-        const img = st.images_left_out || 0;
-        dx = ` · desenul ${st.from === "dwg" ? "DWG" : "DXF"} original + adnotările${gone ? ` · ${gone} entități șterse` : ""}${part ? ` · ${part} doar acoperite` : ""}${img ? ` · ${img} imagini lăsate deoparte` : ""}`;
+        dx = ` · desenul ${st.from === "dwg" ? "DWG" : "DXF"} original + adnotările${gone ? ` · ${gone} entități șterse` : ""}${part ? ` · ${part} doar acoperite` : ""}`;
       } else if (stats) {
         const tot = (k) => Object.values(stats).reduce((acc, r) => acc + (r[k] || 0), 0);
         const ents = tot("linii") + tot("polilinii") + tot("arce") + tot("cercuri") + tot("curbe");

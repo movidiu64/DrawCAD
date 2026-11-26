@@ -783,6 +783,11 @@ def main(url, out):
         page.wait_for_selector(".layer.off [data-v='TEXT']")
         page.click("[data-act='dxfall']")
         page.wait_for_function("(window.cotare.doc.dxf.hidden || []).length === 0")
+        # the drawing's own colors (plotted again on the server), then black again
+        page.click("[data-act='dxfcolors'][data-v='1']")
+        page.wait_for_function("window.cotare.doc.dxf.colors === true", timeout=60000)
+        page.click("[data-act='dxfcolors'][data-v='0']")
+        page.wait_for_function("window.cotare.doc.dxf.colors === false")
         page.click("#ptabs [data-ptab='props']")
         # a DWG, where LibreDWG is installed (Docker image, desktop app): converted, then like a DXF
         if page.evaluate("fetch('api/health').then((r) => r.json()).then((h) => !!h.dwg)"):

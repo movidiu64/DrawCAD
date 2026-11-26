@@ -111,12 +111,13 @@ export async function runOcr(id, n, force = false) {
 
 export const pageText = (id, n, v = 0) => fetch(`api/doc/${id}/page/${n}/text?v=${v}`).then(jsonOrThrow);
 
-/** Layers of a drawing opened from DXF / DWG hidden on the server (page, snap, search, export). */
-export async function dxfLayers(id, hidden) {
+/** Layers of a drawing opened from DXF / DWG hidden on the server (page, snap, search, export), and
+ *  its colors: black as a monochrome plot, or the drawing's own. */
+export async function dxfLayers(id, hidden, colors) {
   const r = await fetch(`api/doc/${id}/dxf-layers`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ hidden }),
+    body: JSON.stringify({ hidden, colors }),
   });
   return jsonOrThrow(r);
 }

@@ -37,11 +37,22 @@ DRAWCAD_VARS = ("DRAWCAD_SHEET_W", "DRAWCAD_SHEET_H", "DRAWCAD_SCALE")
 UNIT_MM = {0: 1.0, 1: 25.4, 2: 304.8, 4: 1.0, 5: 10.0, 6: 1000.0, 14: 100.0}  # $INSUNITS → mm
 
 
-def _ink(color: str) -> float:
+_COLORS = False  # set by dxf_to_pdf: the drawing's own colors instead of a monochrome plot
+
+
+def _ink(color: str) -> tuple[float, float, float]:
     """Plotted as with monochrome.ctb: every color black (yellow or cyan lines are unreadable on paper),
-    except the white of wipeouts and background fills, which hides what is under it. → gray level."""
+    except the white of wipeouts and background fills, which hides what is under it. With the drawing's
+    own colors (an option when opening), only the white of ACI 7 lines becomes black. → RGB."""
     r, g, b = RGB.from_hex(color[:7]).to_floats()
-    return 1.0 if min(r, g, b) > 0.98 else 0.0
+    white = min(r, g, b) > 0.98
+    if _COLORS:
+        return (r, g, b)
+    return (1.0, 1.0, 1.0) if white else (0.0, 0.0, 0.0)
+
+
+def _set_fill(c, color: str) -> None:
+    c.setFillColorRGB(*_ink(color))
 
 
 class NoDwg(Exception):
@@ -99,11 +110,11 @@ class _Canvas(BackendInterface):
 
     # --- state
     def _stroke(self, props):
-        self.c.setStrokeGray(_ink(props.color))
+        self.c.setStrokeColorRGB(*_ink(props.color))
         self.c.setLineWidth(max(self._min_lw, props.lineweight) * MM)
 
     def _fill(self, props):
-        self.c.setFillGray(_ink(props.color))
+        self.c.setFillColorRGB(*_ink(props.color))
 
     @staticmethod
     def _add(p, path, close):
@@ -263,37 +274,39 @@ def _config() -> config.Configuration:
 
 
 class _Texts:
-    """Texts drawn in osifont, kept as text (searchable, snapped at their insertion point, not glyph by
-    glyph) instead of the outlines ezdxf makes: (string, matrix to drawing units of the em-size-1 text,
-    color, corners)."""
+    """Texts kept as PDF text (searchable, snapped at their insertion point, not glyph by glyph) instead
+    of the outlines ezdxf makes, in the font ezdxf measured them with: osifont for SHX fonts and fonts
+    missing here, the drawing's own TrueType font when it is on this machine. Items: (string, matrix
+    to drawing units of the em-size-1 text, color, corners, entity handle, layer, PDF font name)."""
 
     def __init__(self, pipe):
         from ezdxf.addons.drawing.pipeline import prepare_string_for_rendering
-        from ezdxf.fonts import fonts
 
         self.items = []
         self._pipe = pipe
         self._orig = pipe.draw_text
         self._prep = prepare_string_for_rendering
-        self._fm = fonts.font_manager
         pipe.draw_text = self.draw_text
 
-    def _is_osifont(self, face) -> bool:
-        fm = self._fm
-        name = face.filename
-        if not name:
-            return False
+    def _pdf_font(self, face):
+        """(ReportLab font name, em size per cap height) of the font ezdxf draws `face` with, or None
+        (a font ReportLab cannot embed: the text stays outlines)."""
         try:
-            fb = fm.fallback_font_name()
-            entry = fm._font_cache.get(name if fm.has_font(name) else fb, fb)
-            return entry.file_path.name.lower() == "osifont.ttf"
-        except Exception:  # noqa: BLE001
-            return False
+            font = self._pipe.text_engine.get_font(face)
+            glyphs = font.glyph_cache
+            tt = glyphs.font
+            path = tt.reader.file.name
+            per_cap = tt["head"].unitsPerEm / glyphs.font_measurements.cap_height
+        except Exception:  # noqa: BLE001 (a shape font, a font without its file)
+            return None
+        name = _rl_font(path)
+        return (name, per_cap) if name and per_cap > 0 else None
 
     def draw_text(self, text, transform, properties, cap_height, dxftype="TEXT"):
         pipe = self._pipe
         face = properties.font or pipe.default_font_face
-        if not text.strip() or face is None or not self._is_osifont(face):
+        pf = self._pdf_font(face) if text.strip() and face is not None else None
+        if pf is None:
             return self._orig(text, transform, properties, cap_height, dxftype)
         text = self._prep(text, dxftype)
         eng = pipe.text_engine
@@ -302,7 +315,7 @@ class _Texts:
             width = eng.get_text_line_width(text, face, cap_height)
         except Exception:  # noqa: BLE001
             return self._orig(text, transform, properties, cap_height, dxftype)
-        m = Matrix44.scale(cap_height / _OSI_CAP) @ transform
+        m = Matrix44.scale(cap_height * pf[1]) @ transform
         # through the viewport(s) the text is seen in: the model → paper transforms; a text cut by a
         # viewport's edge stays outlines (they are clipped, a PDF text would not be)
         portal = pipe.clipping_portal
@@ -322,10 +335,37 @@ class _Texts:
 
             portal.foreach_stage(through)
             pts = seen
-        self.items.append((text, m, properties.color, pts, pipe._current_entity_handle, properties.layer))
+        self.items.append((text, m, properties.color, pts, pipe._current_entity_handle, properties.layer, pf[0]))
 
 
-_OSI_CAP = 1515 / 2048  # osifont: cap height / em (the size given to the PDF font)
+_RL_FONTS: dict[str, str | None] = {}
+
+
+def _rl_font(path: str) -> str | None:
+    """The TrueType file registered with ReportLab (embedded as a subset in the PDF): osifont under
+    DrawCAD's own name; None for what ReportLab cannot embed (CFF / OpenType outlines, collections)."""
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    from . import pdfcore
+
+    key = os.path.normcase(os.path.abspath(path))
+    if key in _RL_FONTS:
+        return _RL_FONTS[key]
+    name = None
+    try:
+        if os.path.normcase(os.path.abspath(pdfcore.FONT_PATH)) == key:
+            pdfcore._register_font()
+            name = pdfcore.FONT_NAME
+        elif key.endswith(".ttf"):
+            name = "DXF-" + re.sub(r"[^A-Za-z0-9]+", "", Path(path).stem)[:40] + f"-{len(_RL_FONTS)}"
+            pdfmetrics.registerFont(TTFont(name, path))
+        else:
+            name = None
+    except Exception:  # noqa: BLE001
+        name = None
+    _RL_FONTS[key] = name
+    return name
 
 
 class _Drawing:
@@ -371,13 +411,12 @@ def _place(drw: _Drawing, c, page_mm: tuple[float, float], box: BoundingBox2d) -
     player.replay(be)
     handles, layers = be.handles, be.layers
     if drw.texts:
-        pdfcore._register_font()
-        for text, tm, color, _pts, handle, lay in drw.texts:
+        for text, tm, color, _pts, handle, lay, font in drw.texts:
             t = tm @ m
             c.saveState()
-            c.setFillGray(_ink(color))
+            _set_fill(c, color)
             c.transform(t[0, 0], t[0, 1], t[1, 0], t[1, 1], t[3, 0], t[3, 1])
-            c.setFont(pdfcore.FONT_NAME, 1)
+            c.setFont(font, 1)
             c.drawString(0, 0, text)
             c.restoreState()
             handles.append(handle)
@@ -576,9 +615,19 @@ def rebuild_inventor(doc) -> int:
     return placed
 
 
-def dxf_to_pdf(data: bytes, max_entities: int = 0) -> tuple[bytes, dict]:
+def dxf_to_pdf(data: bytes, max_entities: int = 0, colors: bool = False) -> tuple[bytes, dict]:
     """DXF (ASCII or binary) → (PDF, info). info: pages [{name, space, sheet, scale}] where scale is the
-    drawing scale for DrawCAD (real mm per paper mm), and the audit counts."""
+    drawing scale for DrawCAD (real mm per paper mm), and the audit counts. `colors`: the drawing's own
+    colors instead of a monochrome plot (the same objects in the same order, so object ids match)."""
+    global _COLORS
+    _COLORS = bool(colors)
+    try:
+        return _dxf_to_pdf(data, max_entities)
+    finally:
+        _COLORS = False
+
+
+def _dxf_to_pdf(data: bytes, max_entities: int) -> tuple[bytes, dict]:
     from reportlab.pdfgen import canvas as rl
 
     doc, auditor = load(data)
@@ -752,7 +801,7 @@ def export_source(data: bytes, pages: list[dict], color: str = "black", hidden: 
     """The DXF export of a drawing opened from DXF / DWG: the original drawing, entities and all, with
     what was done in DrawCAD. pages: [{"page": its dxfin info, "H": height pt, "kp": resize, "prims":
     annotations, "handles": the entity of each PDF object or None, "gone": / "cut": PDF objects removed
-    whole / cut, "zones": zone removal rectangles}]. Entities removed whole are deleted; partly removed
+    whole / cut, "zones": zone removal rectangles, "images": [(file name, pixel size, prim)]}]. Entities removed whole are deleted; partly removed
     ones (a block, a line cut by a zone) stay, and the zones are covered by a wipeout. Layers hidden in
     DrawCAD are turned off."""
     from collections import Counter
@@ -776,7 +825,7 @@ def export_source(data: bytes, pages: list[dict], color: str = "black", hidden: 
         space = doc.modelspace() if info["space"] == "model" else doc.layouts.get(info["name"])
         if space is None:
             continue
-        out = dxfout.DxfOnto(doc, space, info["tf"], pg["H"], pg.get("kp", 1))
+        out = dxfout.DxfOnto(doc, space, info["tf"], pg["H"], pg.get("kp", 1), pg.get("W"), pg.get("rot", 0))
         hs = pg.get("handles")
         gone_ids, cut_ids = pg.get("gone") or [], pg.get("cut") or []
         partial = len(cut_ids)
@@ -801,6 +850,8 @@ def export_source(data: bytes, pages: list[dict], color: str = "black", hidden: 
                                   dxfattribs={"layer": "DRAWCAD-ACOPERIRI"})
                 out._count("acoperiri")
             add("deleted_partly", partial)
+        for name, px, p in pg.get("images") or []:
+            out.add_annot_image(name, px, p["p"], p.get("rot", 0), float(p.get("op", 1) or 1))
         if pg.get("prims"):
             out.add_prims(pg["prims"], color)
         for k, v in out.counts.items():

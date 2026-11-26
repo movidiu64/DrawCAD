@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 sys.path.insert(0, str(ROOT / "tools"))
 
 import uvicorn  # noqa: E402
+from PIL import Image  # noqa: E402
 
 import make_sample  # noqa: E402
 from app import pdfcore  # noqa: E402
@@ -571,6 +572,53 @@ class ApiTest(unittest.TestCase):
             doc = ezdxf.read(io.StringIO(out.decode("utf-8")))
             self.assertTrue(doc.modelspace().query("LWPOLYLINE[layer=='PAGINA']"))
 
+    def test_dxf_source_turned_page_and_image(self):
+        """The original-DXF export of a page turned in the editor: a line drawn along the turned page lands
+        where it was drawn on the drawing; an image placed in DrawCAD comes in a ZIP next to the DXF."""
+        import zipfile
+
+        import ezdxf
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        import test_dxfin
+
+        meta = self.req("POST", "/api/open", test_dxfin.to_bytes(test_dxfin.make_doc()), {"X-Filename": "rot.dxf"})
+        doc_id = meta["id"]
+        r = self.req("POST", f"/api/doc/{doc_id}/pages", {"op": "rotate", "pages": [0], "delta": 90})
+        W, H = 297 * MM, 210 * MM  # the sheet before the turn; shown 210 wide, 297 tall
+        self.assertAlmostEqual(r["pages"][0]["w"], H, 0)
+        a, _b, _c, d, e, f = meta["dxf"]["pages"][0]["tf"]
+        # a vertical line on the turned page (10 → 50 mm down, 20 mm from the left) ...
+        line = {"t": "L", "p": [20 * MM, 10 * MM, 20 * MM, 50 * MM], "w": 0.5, "c": "add"}
+        buf = io.BytesIO()
+        Image.new("RGB", (40, 20), (0, 0, 200)).save(buf, "PNG")
+        img = self.req("POST", f"/api/doc/{doc_id}/images", buf.getvalue())
+        pic = {"t": "I", "p": [60 * MM, 60 * MM, 100 * MM, 80 * MM], "img": img["img"], "rot": 0, "op": 1, "c": "add"}
+        body = {"format": "dxf", "filename": "rot.dxf", "pages": {"0": [line, pic]}, "removals": {}}
+        out, h = self.req("POST", f"/api/doc/{doc_id}/export", body, raw=True)
+        self.assertEqual(h["X-Export-Kind"], "zip")
+        z = zipfile.ZipFile(io.BytesIO(out))
+        dxf_name = [n for n in z.namelist() if n.endswith(".dxf")][0]
+        self.assertEqual(len(z.namelist()), 2)
+        dx = ezdxf.read(io.StringIO(z.read(dxf_name).decode("utf-8")))
+        ln = dx.modelspace().query("LINE[layer=='DRAWCAD-COTE']")[0]
+        # ... is horizontal on the drawing: turned 90° clockwise, the page's top edge is its left edge
+        # (PDF /Rotate 90: visual (vx, vy) = (H - v, u) with u, v from the unturned top left corner)
+        def drawing(vx, vy):
+            u, v = vy, H - vx
+            return ((u - e) / a, ((H - v) - f) / d)
+
+        sx, sy = drawing(20 * MM, 10 * MM)
+        ex, ey = drawing(20 * MM, 50 * MM)
+        self.assertAlmostEqual(ln.dxf.start.x, sx, 3)
+        self.assertAlmostEqual(ln.dxf.start.y, sy, 3)
+        self.assertAlmostEqual(ln.dxf.end.x, ex, 3)
+        self.assertAlmostEqual(ln.dxf.start.y, ln.dxf.end.y, 3)
+        import math
+
+        u = dx.modelspace().query("IMAGE")[0].dxf.u_pixel
+        self.assertAlmostEqual(math.degrees(math.atan2(u.y, u.x)) % 360, 90, 3)  # upright on the turned page
+
     def test_dxf_layers_hidden(self):
         """Layers of an opened DXF: listed with their color; a hidden layer is gone from the page, the
         text search and the PDF export, turned off in the DXF of the original drawing, and back when shown."""
@@ -617,6 +665,19 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(len(dx.modelspace().query("TEXT")), 3)  # still there, on a layer turned off
         self.req("POST", f"/api/doc/{doc_id}/dxf-layers", {"hidden": []})
         self.assertIn("ȘURUB", texts())
+
+        # the drawing's own colors (the red hatch), then black again
+        def reds(v):
+            png, _h = self.req("GET", f"/api/doc/{doc_id}/page/0/render?scale=1&v={v}", raw=True)
+            img = Image.open(io.BytesIO(png)).convert("RGB")
+            return sum(1 for r, g, b in img.get_flattened_data() if r > 180 and g < 80 and b < 80)
+
+        res = self.req("POST", f"/api/doc/{doc_id}/dxf-layers", {"hidden": [], "colors": True})
+        self.assertTrue(res["colors"])
+        self.assertGreater(reds(res["lv"]), 50)
+        self.assertIn("ȘURUB", texts())  # same objects: search, snap and removals still match
+        res = self.req("POST", f"/api/doc/{doc_id}/dxf-layers", {"hidden": [], "colors": False})
+        self.assertEqual(reds(res["lv"]), 0)
 
     def test_dxf_export_vector(self):
         import zipfile
