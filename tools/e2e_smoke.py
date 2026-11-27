@@ -387,6 +387,24 @@ def main(url, out):
         cl_up(110, 70)
         page.keyboard.press("Enter")
         assert last_lines(4)[1] == [[100, 75], [130, 75]], last_lines(4)  # the copy goes right after its source
+        # EXTEND along a fence: a click beside the objects, a click across two short lines
+        for pts in (("105,76.5", "@10,0"), ("105,78.5", "@10,0")):
+            page.keyboard.press("i")
+            typed(*pts)
+            page.keyboard.press("Escape")
+            page.keyboard.press("Escape")
+        page.click("#cmdIn")
+        typed("EX")
+        cl_up(113, 79.3)
+        cl_up(113, 75.8)
+        assert last_lines(2) == [[[105, 76.5], [130, 76.5]], [[105, 78.5], [130, 78.5]]], last_lines(2)
+        page.keyboard.press("Escape")
+        # one undo step for the whole fence, then the two lines go (the later steps work on the last lines)
+        page.keyboard.press("Control+z")
+        assert last_lines(2) == [[[105, 76.5], [115, 76.5]], [[105, 78.5], [115, 78.5]]], last_lines(2)
+        page.keyboard.press("Control+z")
+        page.keyboard.press("Control+z")
+        assert last_lines(1) == [[[110, 85], [130, 85]]], last_lines(1)
         page.screenshot(path=str(out / "taie_prelungeste.png"))
         # 19. typed snap override: CEN, then a click on the edge of the Ø10 hole takes its center
         page.evaluate("() => { const v = window.cotare.view; v.zoom = 2.2; v.panX = -125*72/25.4*2.2; v.panY = -80*72/25.4*2.2; v.afterZoom(); }")

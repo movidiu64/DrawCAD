@@ -532,10 +532,15 @@ Ovidiu's confirmation (behaviour in his AutoCAD, or a product choice) before it 
   shape that nothing crosses is erased whole; a circle becomes an arc, a rectangle or closed polyline an
   open polyline. EXTEND moves the end nearer to the pick (along the path) to the nearest boundary:
   lines, the end segments of open polylines, arcs along their circle. **Shift + click** swaps the two.
+- **Fence:** a click beside the objects starts a line, a second click ends it; every drawn shape it
+  crosses is trimmed at each crossing (EXTEND: the end nearer the crossing goes), in one undo step —
+  AutoCAD's drag across objects, as two clicks.
 - Objects are picked at the cursor without snap; OFFSET's side point snaps. The part that would go
   (TRIM, red dashed) or be added (EXTEND) is previewed under the cursor. `U` undoes the last change
   inside the command; Enter, right click or Esc ends.
-- Not yet: fence / crossing in TRIM, the Edge (extend to the apparent intersection) option, OFFSET
+- Edges are looked up only around the shape for TRIM (the drawing's grid), and the result is kept
+  while the cursor stays on the same shape, so a page with 60 000 drawing lines stays fluid.
+- Not yet: the Edge (extend to the apparent intersection) option, OFFSET
   Erase / Layer options, trimming hatches, dimensions or the PDF itself.
 - **Code:** geometry in `js/modify.js` (pure, `tests/modify.test.js`), the commands in
   `js/app/modify.js` (tool kind `"pick"`); e2e step 18b.
@@ -548,7 +553,9 @@ Ovidiu's confirmation (behaviour in his AutoCAD, or a product choice) before it 
   replaced, as a redefined block. Types that belong to their drawing are left out (removal, cover,
   struck value, comment, origin, watermark, hole table).
 - **`I` / INSERT:** places the chosen symbol at each click (with snap, the preview follows the cursor)
-  until Enter / Esc; `L` opens the library. The placed annotations are independent (exploded, in
+  until Enter / Esc; `L` opens the library, `R` sets the rotation (any angle when every item can
+  turn freely, else the nearest quarter turn, as grips), `S` the scale; both are also in the context
+  bar. The placed annotations are independent (exploded, in
   AutoCAD terms) and selected after placing, so grips rotate or scale them.
 - Library in `localStorage` (`drawcad.symbols`), as the title blocks; files `.drawcad-sym.json` (one
   symbol or `{ kind: "drawcad-symbols", symbols }`), cleaned on import (known types only, image data

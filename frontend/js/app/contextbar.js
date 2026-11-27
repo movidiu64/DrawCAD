@@ -54,6 +54,16 @@ export class ContextBar {
         const ds = this.drawStyle;
         const cur = LINE_PRESETS.find((p) => p.ltype === ds.ltype && Math.abs(p.w - ds.w) < 1e-6);
         defs = `<label class="cdef">Linie<select id="ctxLine" title="Tipul și grosimea liniilor noi (ISO 128-24)">${cur ? "" : `<option selected>${esc(tr("Personalizată"))}</option>`}${LINE_PRESETS.map((p) => `<option value="${p.id}" ${cur && cur.id === p.id ? "selected" : ""}>${esc(tr(p.name))} · ${fmtNum(p.w, this.settings.sep || ",", 2)}</option>`).join("")}</select></label>`;
+      } else if (t.id === "symbol") {
+        // INSERT: the chosen symbol (opens the library), its rotation and scale
+        const sym = this.currentSymbol();
+        const rots = [0, 90, 180, 270];
+        const rot = Number(this.symRot) || 0;
+        const k = this.symScale > 0 ? this.symScale : 1;
+        const ks = [0.5, 1, 1.5, 2];
+        defs = `<button class="ca" data-ctx="symlib" title="${esc(tr("Biblioteca de simboluri (L)"))}">${esc(sym ? sym.name : tr("Alege simbolul"))} ▾</button>`
+          + `<label class="cdef">${esc(tr("Rotație"))}<select id="ctxSymRot" class="num" title="${esc(tr("Unghiul simbolului, în sens trigonometric (R pentru alt unghi)"))}">${rots.includes(rot) ? "" : `<option selected>${fmtNum(rot, ",", 1)}°</option>`}${rots.map((v) => `<option value="${v}" ${v === rot ? "selected" : ""}>${v}°</option>`).join("")}</select></label>`
+          + `<label class="cdef">${esc(tr("Scară"))}<select id="ctxSymScale" class="num" title="${esc(tr("Mărimea simbolului față de cea salvată (S pentru altă valoare)"))}">${ks.includes(k) ? "" : `<option selected>× ${fmtNum(k, ",", 2)}</option>`}${ks.map((v) => `<option value="${v}" ${v === k ? "selected" : ""}>× ${fmtNum(v, ",", 1)}</option>`).join("")}</select></label>`;
       } else if (FAMILY_OF[t.id] === "dims" || FAMILY_OF[t.id] === "tol" || FAMILY_OF[t.id] === "notes") {
         const h = this.settings.textH || 3.5;
         const hs = [2.5, 3.5, 5, 7];
@@ -90,6 +100,18 @@ export class ContextBar {
       if (p) this.setDrawStyle({ ltype: p.ltype, w: p.w });
       this.panel.render();
     });
+    const sr = box.querySelector("#ctxSymRot");
+    if (sr) sr.addEventListener("change", () => {
+      this.symRot = parseFloat(sr.value) || 0;
+      this.updateCmdPrompt();
+      this.renderCtx();
+    });
+    const sk = box.querySelector("#ctxSymScale");
+    if (sk) sk.addEventListener("change", () => {
+      this.symScale = parseFloat(sk.value) || 1;
+      this.updateCmdPrompt();
+      this.renderCtx();
+    });
     const th = box.querySelector("#ctxTextH");
     if (th) th.addEventListener("change", () => this.setSettings({ textH: parseFloat(th.value) }));
     const td = box.querySelector("#ctxTol");
@@ -115,6 +137,7 @@ export class ContextBar {
     if (k === "move" || k === "copy") this.moveCmd(k === "move" ? "moveSel" : "copySel");
     else if (k === "zoom") this.zoomSelection();
     else if (k === "del") this.deleteSelected();
+    else if (k === "symlib") this.openSymbolLibrary();
     else if ((k === "dco" || k === "dba") && one && one.type === "dim") {
       const d = one;
       this.setTool(k === "dco" ? "dimCont" : "dimBase");

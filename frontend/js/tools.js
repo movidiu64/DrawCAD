@@ -341,7 +341,7 @@ export const TOOLS = [
       app.view.overlay = { prims: app.symbolPreview(pt), snap: sn };
       app.view.redraw();
     },
-    hint: "Click pune simbolul ales, cu punctul lui de bază sub cursor · L = biblioteca (alt simbol) · repetă până la Enter / Esc" },
+    hint: "Click pune simbolul ales, cu punctul lui de bază sub cursor · R = rotație, S = scară, L = biblioteca (alt simbol) · repetă până la Enter / Esc" },
   { id: "symSave", label: "Salvează ca simbol", key: "", group: "Documentare", hidden: true, icon: "M4 4h7v7H4zM15.5 4a3.5 3.5 0 1 0 0.01 0M12 15v6M9 18h6",
     kind: "clicks", n: 1, hint: "Punctul de bază: cel care stă sub cursor când pui simbolul (de ex. vârful unei săgeți, un colț) · Esc renunță",
     make(pts, app) {
@@ -352,9 +352,9 @@ export const TOOLS = [
   { id: "offset", label: "Decalare", key: "", group: "Modificare", icon: "M4 18L18 4M8 20L20 8M3 12l3 3",
     kind: "pick", ...MODIFY, snaps: (app) => app.clicks.length > 0, hint: "Distanța (sau T = prin punct) → click pe linie, polilinie, dreptunghi, cerc sau arc → click pe partea copiei · repetă până la Enter / Esc" },
   { id: "trim", label: "Taie", key: "", group: "Modificare", icon: "M4 12h16M12 4v16M15 9l5-5M17 4h3v3",
-    kind: "pick", ...MODIFY, hint: "Click pe bucata de tăiat: dispare până la cele mai apropiate intersecții (cu desenul sau cu alte linii desenate) · fără intersecții se șterge tot obiectul · Shift + click prelungește · Enter / Esc termină" },
+    kind: "pick", ...MODIFY, hint: "Click pe bucata de tăiat: dispare până la cele mai apropiate intersecții (cu desenul sau cu alte linii desenate) · fără intersecții se șterge tot obiectul · click în gol + click: o linie care taie tot ce traversează · Shift + click prelungește · Enter / Esc termină" },
   { id: "extend", label: "Prelungește", key: "", group: "Modificare", icon: "M20 4v16M4 12h11M12 9l3 3-3 3",
-    kind: "pick", ...MODIFY, hint: "Click lângă capătul de prelungit: merge până la cea mai apropiată margine (desenul sau alte linii desenate) · Shift + click taie · Enter / Esc termină" },
+    kind: "pick", ...MODIFY, hint: "Click lângă capătul de prelungit: merge până la cea mai apropiată margine (desenul sau alte linii desenate) · click în gol + click: o linie care prelungește tot ce traversează · Shift + click taie · Enter / Esc termină" },
   { id: "calib", label: "Calibrare", key: "K", group: "Revizie", icon: "M3 17h18M5 17v-4M9 17v-2M13 17v-4M17 17v-2M21 17v-4M3 7h18M3 7l3-2M3 7l3 2M21 7l-3-2M21 7l-3 2", kind: "clicks", n: 2,
     hint: "Click pe capetele unei cote cunoscute → introduci valoarea reală",
     preview(pts, cur) { return { line: [pts[0], cur] }; } },
@@ -387,8 +387,8 @@ const PROMPTS = {
   offset: ["Obiectul de decalat", "Un punct pe partea copiei"],
   symbol: ["Punctul de inserție"],
   symSave: ["Punctul de bază al simbolului"],
-  trim: ["Obiectul de tăiat (Shift = prelungește)"],
-  extend: ["Obiectul de prelungit (Shift = taie)"],
+  trim: ["Obiectul de tăiat (Shift = prelungește), sau click în gol pentru o linie peste mai multe", "Capătul liniei: tot ce taie se scurtează"],
+  extend: ["Obiectul de prelungit (Shift = taie), sau click în gol pentru o linie peste mai multe", "Capătul liniei: tot ce taie se prelungește"],
 };
 const PLACE_PROMPTS = {
   dimOrd: "Poziția rândului de cote",
@@ -451,7 +451,11 @@ const OPTIONS = {
     { key: "T", label: "Prin punct", en: ["THROUGH"], when: (app) => !app.clicks.length, run: (app) => { app.offsetDist = null; } },
     { key: "U", label: "Anulează", en: ["UNDO"], when: (app) => !!(app.cmdState && app.cmdState.done), run: (app) => app.modUndo() },
   ],
-  symbol: [{ key: "L", label: "Bibliotecă", en: ["LIBRARY", "BLOCKS"], run: (app) => app.openSymbolLibrary() }],
+  symbol: [
+    { key: "L", label: "Bibliotecă", en: ["LIBRARY", "BLOCKS"], run: (app) => app.openSymbolLibrary() },
+    { key: "R", label: "Rotație", en: ["ROTATE"], run: (app) => app.askSymbolRot() },
+    { key: "S", label: "Scară", en: ["SCALE"], run: (app) => app.askSymbolScale() },
+  ],
   trim: [{ key: "U", label: "Anulează", en: ["UNDO"], when: (app) => !!(app.cmdState && app.cmdState.done), run: (app) => app.modUndo() }],
   extend: [{ key: "U", label: "Anulează", en: ["UNDO"], when: (app) => !!(app.cmdState && app.cmdState.done), run: (app) => app.modUndo() }],
   ucs: [{ key: "W", label: "Colțul paginii", en: ["WORLD"], run: (app) => app.ucsWorld() }],
@@ -491,7 +495,9 @@ export function promptFor(t, app) {
   if (app.cmdState && app.cmdState.axis) text += ` (pe ${app.cmdState.axis.toUpperCase()})`;
   if (t.id === "symbol" && app.currentSymbol) {
     const s = app.currentSymbol();
-    if (s) text += ` (${s.name})`;
+    const rot = Number(app.symRot) || 0;
+    const k = app.symScale > 0 ? app.symScale : 1;
+    if (s) text += ` (${s.name}${rot ? `, ${String(rot).replace(".", ",")}°` : ""}${k !== 1 ? `, × ${String(k).replace(".", ",")}` : ""})`;
   }
   if (t.id === "offset" && !n) text += app.offsetDist > 0 ? ` (${String(app.offsetDist).replace(".", ",")} mm)` : " (prin punct)";
   const opts = (OPTIONS[t.id] || []).filter((o) => !o.when || o.when(app));

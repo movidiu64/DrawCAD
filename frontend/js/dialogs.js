@@ -1289,7 +1289,7 @@ export function symbolDialog(app) {
     const rows = list.map(({ s, i }) => {
       const { n, img } = symbolSummary(s);
       return `<div class="symcard${s.id === app.symCur ? " cur" : ""}">
-        <button class="symput" data-symput="${i}" title="Pune pe desen"><img class="symthumb" src="${app.symbolThumb(s)}" alt=""><span class="symname">${esc(s.name)}</span>
+        <button class="symput" data-symput="${i}" title="Pune pe desen"><img class="symthumb" src="${app.symbolThumb(s)}" alt=""${symbolSummary(s).img ? ` data-symimg="${i}"` : ""}><span class="symname">${esc(s.name)}</span>
           <span class="sub">${n} ${n === 1 ? "obiect" : "obiecte"}${img ? ` · ${img} ${img === 1 ? "imagine" : "imagini"}` : ""}</span></button>
         <div class="symacts"><button class="ghost" data-symren="${i}">Redenumește</button>
           <button class="ghost" data-symexp="${i}">Exportă</button>
@@ -1308,6 +1308,11 @@ export function symbolDialog(app) {
         <button class="ghost" id="symExpAll" ${all.length ? "" : "disabled"}>Exportă tot</button>
         <input type="file" id="symFile" accept=".json,application/json" hidden></div>
       <div class="foot"><button class="ghost" data-close>Închide</button></div>`);
+    // symbols with images: the picture again once the images are decoded
+    d.querySelectorAll("img[data-symimg]").forEach(async (im) => {
+      const s = all[Number(im.dataset.symimg)];
+      if (s) im.src = await app.symbolThumbFull(s);
+    });
     const qi = d.querySelector("#symQ");
     if (qi) {
       qi.addEventListener("input", () => {

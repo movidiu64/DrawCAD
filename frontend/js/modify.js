@@ -208,6 +208,21 @@ function pieceOf(els, kind) {
   return { kind: "poly", pts, closed: false };
 }
 
+/** Distance from p to the shape itself (its ends and arc range included), Infinity if not a path. */
+export function shapeGap(a, p) {
+  const path = toPath(a);
+  return path ? pathParam(path, p).d : Infinity;
+}
+
+/** Where the segment [x1, y1, x2, y2] crosses the shape (for a fence across several shapes). */
+export function shapeCrossings(a, seg) {
+  const path = toPath(a);
+  if (!path) return [];
+  const out = [];
+  for (const e of path.els) for (const t of cutsOn(e, { segs: [seg], arcs: [] })) out.push(elPoint(e, t));
+  return out;
+}
+
 // ------------------------------------------------------------------ TRIM
 
 /**
@@ -216,13 +231,26 @@ function pieceOf(els, kind) {
  * Quick mode when nothing crosses it) or { err: "kind" | "one" }.
  */
 export function trimShape(a, pick, edges) {
+  return trimAt(trimPrep(a, edges), a, pick);
+}
+
+/** The part of TRIM that does not depend on the picked point: the path and its cuts (kept while hovering). */
+export function trimPrep(a, edges) {
   if (!TRIM_KINDS.has(a.kind)) return { err: "kind" };
   const path = toPath(a);
   if (!path) return { err: "kind" };
   const n = path.els.length;
-  const { s } = pathParam(path, pick);
   let cuts = pathCuts(path, edges);
   if (!path.closed) cuts = cuts.filter((c) => c > 1e-7 && c < n - 1e-7);
+  return { path, cuts };
+}
+
+/** TRIM at the picked point, from trimPrep. */
+export function trimAt(prep, a, pick) {
+  if (prep.err) return prep;
+  const { path, cuts } = prep;
+  const n = path.els.length;
+  const { s } = pathParam(path, pick);
   const whole = { pieces: [], gone: elsPoints(path.els), whole: true };
   if (!cuts.length) return whole;
   if (path.closed) {
@@ -275,6 +303,28 @@ function circleHits(c, r, edges) {
   return out;
 }
 
+/** Whether the picked point is nearer the start of the path than its end, measured along the path. */
+function nearStart(path, pick) {
+  const { s } = pathParam(path, pick);
+  let before = 0;
+  let total = 0;
+  path.els.forEach((e, i) => {
+    const L = elLen(e);
+    total += L;
+    if (i < Math.floor(s)) before += L;
+    else if (i === Math.floor(s)) before += L * (s - i);
+  });
+  return before < total / 2;
+}
+
+/** The end EXTEND would move for this pick ("start" / "end"), or null (closed or other shape). */
+export function extendEnd(a, pick) {
+  if (!EXTEND_KINDS.has(a.kind)) return null;
+  const path = toPath(a);
+  if (!path || path.closed) return null;
+  return nearStart(path, pick) ? "start" : "end";
+}
+
 /**
  * EXTEND the end nearest to the picked point up to the nearest boundary edge.
  * Returns { shape: shape fields, added: [points] } or { err: "kind" | "closed" | "none" }.
@@ -285,17 +335,7 @@ export function extendShape(a, pick, edges) {
   if (!path) return { err: "kind" };
   if (path.closed) return { err: "closed" };
   const n = path.els.length;
-  // which end: the one nearer along the path
-  const { s } = pathParam(path, pick);
-  let before = 0;
-  let total = 0;
-  path.els.forEach((e, i) => {
-    const L = elLen(e);
-    total += L;
-    if (i < Math.floor(s)) before += L;
-    else if (i === Math.floor(s)) before += L * (s - i);
-  });
-  const atStart = before < total / 2;
+  const atStart = nearStart(path, pick);
   if (path.els[0].t === "A") {
     const e = path.els[0];
     const sg = e.sw > 0 ? 1 : -1;

@@ -3,7 +3,7 @@
 
 import { K, fmtNum, newId } from "../annots.js";
 import * as dlg from "../dialogs.js";
-import { offsetShape, trimShape, extendShape, shapeDistance, toPath, elsPoints, OFFSET_KINDS, TRIM_KINDS, EXTEND_KINDS } from "../modify.js";
+import { offsetShape, trimPrep, trimAt, extendShape, extendEnd, shapeCrossings, shapeGap, shapeDistance, toPath, elsPoints, OFFSET_KINDS, TRIM_KINDS, EXTEND_KINDS } from "../modify.js";
 
 const KIND_HINT = {
   offset: "Alege o linie, polilinie, dreptunghi, cerc sau arc desenat",
@@ -17,20 +17,101 @@ export class Modify {
     return this.annotsAt(raw).find((a) => a.type === "shape" && kinds.has(a.kind)) || null;
   }
 
-  /** Cutting / boundary edges: every other drawn shape on the page and the drawing's own geometry. */
-  modEdges(exceptId) {
+  /**
+   * Cutting / boundary edges: every other drawn shape on the page and the drawing's own geometry; with
+   * a box, only those that reach into it (TRIM cuts lie on the shape, so its box is enough).
+   */
+  modEdges(exceptId, box = null) {
     const segs = [];
     const arcs = [];
+    const over = (b) => !box || (b && b[0] <= box[2] && b[2] >= box[0] && b[1] <= box[3] && b[3] >= box[1]);
     for (const { a, built } of this.visibleBuilt()) {
-      if (a.type !== "shape" || a.id === exceptId || !built.snap) continue;
-      segs.push(...built.snap.segs);
-      if (built.snap.arcs) arcs.push(...built.snap.arcs);
+      if (a.type !== "shape" || a.id === exceptId || !built.snap || !over(built.bbox)) continue;
+      for (const g of built.snap.segs || []) segs.push(g);
+      for (const g of built.snap.arcs || []) arcs.push(g);
     }
-    if (!this.hidden.has("orig") && this.snapper) {
-      segs.push(...(this.snapper.segs || []));
-      arcs.push(...(this.snapper.arcs || []));
+    const sn = this.snapper;
+    if (!this.hidden.has("orig") && sn) {
+      // copied one by one: a drawing has up to 60 000 of each, too many for push(...list)
+      if (box && sn.sg) {
+        for (const g of sn.sg.query(box[0], box[1], box[2], box[3], new Set())) segs.push(g);
+        for (const g of sn.ag.query(box[0], box[1], box[2], box[3], new Set())) arcs.push(g);
+      } else {
+        for (const g of sn.segs || []) segs.push(g);
+        for (const g of sn.arcs || []) arcs.push(g);
+      }
     }
     return { segs, arcs };
+  }
+
+  /**
+   * TRIM / EXTEND for this shape and pick, computed once per shape (and per end for EXTEND) while the
+   * cursor stays on it; the cache goes with any change of the annotations or the drawing's geometry.
+   */
+  modResult(a, raw, ext, many = false) {
+    const built = this.builtOf(a);
+    const key = ext ? extendEnd(a, raw) : "trim";
+    // one shape under the cursor, or several along a fence
+    const c = this._modCache;
+    const ok = c && c.annots === this.annots && c.n === this.annots.length && c.snapper === this.snapper && c.hidden === this.hidden.has("orig");
+    if (!ok || (!many && c.map.size > 1)) {
+      this._modCache = { annots: this.annots, n: this.annots.length, snapper: this.snapper, hidden: this.hidden.has("orig"), map: new Map() };
+    }
+    const map = this._modCache.map;
+    let entry = map.get(a);
+    if (!entry || entry.built !== built) map.set(a, (entry = { built, res: {} }));
+    const memo = entry.res;
+    if (ext) {
+      if (!(key in memo)) memo[key] = extendShape(a, raw, this.modEdges(a.id));
+      return memo[key];
+    }
+    if (!memo.prep) {
+      const bb = built.bbox;
+      memo.prep = trimPrep(a, this.modEdges(a.id, bb ? [bb[0] - 1, bb[1] - 1, bb[2] + 1, bb[3] + 1] : null));
+    }
+    return trimAt(memo.prep, a, raw);
+  }
+
+  /** The drawn shapes the fence from p to q crosses, with the crossing points. */
+  fenceHits(p, q, kinds) {
+    const seg = [p[0], p[1], q[0], q[1]];
+    const box = [Math.min(p[0], q[0]), Math.min(p[1], q[1]), Math.max(p[0], q[0]), Math.max(p[1], q[1])];
+    const out = [];
+    for (const { a, built } of this.visibleBuilt()) {
+      if (a.type !== "shape" || !kinds.has(a.kind)) continue;
+      const bb = built.bbox;
+      if (bb && (bb[0] > box[2] || bb[2] < box[0] || bb[1] > box[3] || bb[3] < box[1])) continue;
+      const pts = shapeCrossings(a, seg);
+      if (pts.length) out.push({ a, pts });
+    }
+    return out;
+  }
+
+  /**
+   * TRIM or EXTEND along a fence: every shape it crosses, at each crossing (AutoCAD's drag across
+   * objects), in one undo step. Returns how many shapes changed.
+   */
+  fenceApply(p, q, ext) {
+    const hits = this.fenceHits(p, q, ext ? EXTEND_KINDS : TRIM_KINDS);
+    let changed = 0;
+    let first = true;
+    for (const { a: a0, pts } of hits) {
+      let ids = [a0.id];
+      for (const pt of ext ? pts.slice(0, 1) : pts) {
+        // the piece of the shape (it may already be cut) that lies at this crossing
+        const a = this.annots.find((x) => ids.includes(x.id) && shapeGap(x, pt) < 0.5);
+        if (!a) continue;
+        const edges = this.modEdges(a.id);
+        const r = ext ? extendShape(a, pt, edges) : trimAt(trimPrep(a, edges), a, pt);
+        if (r.err) continue;
+        const pieces = ext ? [{ ...a, ...r.shape }] : r.pieces.map((x) => ({ ...a, ...x }));
+        const made = this.modApply(a, pieces, false, !first);
+        first = false;
+        ids = ids.filter((id) => id !== a.id).concat(made.map((x) => x.id));
+        changed++;
+      }
+    }
+    return changed;
   }
 
   /** The OFFSET distance in pt, or null for Through. */
@@ -77,17 +158,21 @@ export class Modify {
       }
     } else {
       const ext = (t.id === "extend") !== !!shift; // Shift swaps TRIM and EXTEND, as in AutoCAD
-      const a = this.modTarget(raw, ext ? EXTEND_KINDS : TRIM_KINDS);
-      if (!a) return dlg.toast(KIND_HINT[ext ? "extend" : "trim"]);
-      const edges = this.modEdges(a.id);
-      if (ext) {
-        const r = extendShape(a, raw, edges);
-        if (r.err) this.modError(r.err);
-        else this.modApply(a, [{ ...a, ...r.shape }]);
+      if (this.clicks.length) {
+        // the end of a fence: everything it crosses
+        const p = this.clicks[0];
+        this.clicks = [];
+        if (!this.fenceApply(p, raw, ext)) dlg.toast(ext ? "Linia nu trece peste nimic de prelungit" : "Linia nu trece peste nimic de tăiat");
       } else {
-        const r = trimShape(a, raw, edges);
-        if (r.err) this.modError(r.err);
-        else this.modApply(a, r.pieces.map((p) => ({ ...a, ...p })));
+        const a = this.modTarget(raw, ext ? EXTEND_KINDS : TRIM_KINDS);
+        if (!a) {
+          // a click beside the objects starts a fence, as dragging across them in AutoCAD
+          this.clicks = [raw];
+        } else {
+          const r = this.modResult(a, raw, ext);
+          if (r.err) this.modError(r.err);
+          else this.modApply(a, ext ? [{ ...a, ...r.shape }] : r.pieces.map((p) => ({ ...a, ...p })));
+        }
       }
     }
     this.modPreview(t, raw, pt, shift);
@@ -106,8 +191,9 @@ export class Modify {
   }
 
   /** Replaces the shape with the pieces (none: deleted; copy: the pieces are added next to it), one undo step. */
-  modApply(a, pieces, copy = false) {
-    this.pushHistory();
+  modApply(a, pieces, copy = false, sameStep = false) {
+    this._modCache = null; // edges of the other shapes may change with this one
+    if (!sameStep) this.pushHistory();
     const i = this.annots.indexOf(a);
     const items = pieces.map((p, k) => {
       const it = { ...p, id: copy || k ? newId() : a.id, page: a.page };
@@ -120,8 +206,9 @@ export class Modify {
       this.sel.delete(a.id);
       if (this.selectedId === a.id) this.selectedId = null;
     }
-    this.cmdState.done = (this.cmdState.done || 0) + 1;
+    if (!sameStep) this.cmdState.done = (this.cmdState.done || 0) + 1;
     this.changed();
+    return items;
   }
 
   /** U inside the command: the last change goes back. */
@@ -151,13 +238,25 @@ export class Modify {
       }
     } else {
       const ext = (t.id === "extend") !== !!shift;
-      const a = this.modTarget(raw, ext ? EXTEND_KINDS : TRIM_KINDS);
-      if (a) {
-        const edges = this.modEdges(a.id);
-        const r = ext ? extendShape(a, raw, edges) : trimShape(a, raw, edges);
-        if (r.err) outline(a, "edgray", 0.9, true);
-        else if (ext) prims.push({ t: "P", p: r.added.flat(), close: false, w: 0.9, c: "preview", dash: true });
-        else if (r.gone && r.gone.length > 1) prims.push({ t: "P", p: r.gone.flat(), close: false, w: 1.6, c: "edred", dash: true });
+      if (this.clicks.length) {
+        // the fence and what it crosses
+        const p = this.clicks[0];
+        prims.push({ t: "P", p: [p[0], p[1], raw[0], raw[1]], close: false, w: 0.8, c: "preview", dash: true });
+        for (const { a, pts } of this.fenceHits(p, raw, ext ? EXTEND_KINDS : TRIM_KINDS)) {
+          // what each crossing would remove or add (the first crossing of each shape, as a hint)
+          const r = this.modResult(a, pts[0], ext, true);
+          if (r.err) outline(a, "edgray", 0.9, true);
+          else if (ext) prims.push({ t: "P", p: r.added.flat(), close: false, w: 0.9, c: "preview", dash: true });
+          else if (r.gone && r.gone.length > 1) prims.push({ t: "P", p: r.gone.flat(), close: false, w: 1.6, c: "edred", dash: true });
+        }
+      } else {
+        const a = this.modTarget(raw, ext ? EXTEND_KINDS : TRIM_KINDS);
+        if (a) {
+          const r = this.modResult(a, raw, ext);
+          if (r.err) outline(a, "edgray", 0.9, true);
+          else if (ext) prims.push({ t: "P", p: r.added.flat(), close: false, w: 0.9, c: "preview", dash: true });
+          else if (r.gone && r.gone.length > 1) prims.push({ t: "P", p: r.gone.flat(), close: false, w: 1.6, c: "edred", dash: true });
+        }
       }
     }
     this.view.overlay = { prims: prims.length ? prims : null, snap: sn };

@@ -6,6 +6,7 @@ import * as api from "../api.js";
 import * as dlg from "../dialogs.js";
 import { drawPrims } from "../view.js";
 import { finalize } from "../tools.js";
+import { rotateFree, rotateAbout, scaleAbout, freeRotatable } from "../pages.js";
 import { SYMBOL_STORE, SYMBOL_TYPES, symbolItems, placeItems, cleanSymbol, addSymbol, symbolId } from "../blocks.js";
 
 const IMG_MAX = 300 * 1024;
@@ -101,13 +102,55 @@ export class Blocks {
     dlg.toast(replaced ? `Simbolul „${sym.name}” a fost înlocuit (${sym.items.length} obiecte)` : `Simbol salvat: ${sym.name} (${sym.items.length} obiecte) · I sau INSERT îl pune pe desen`, 5000);
   }
 
+  /**
+   * The symbol's items with the base point at pt, turned by symRot (degrees counter-clockwise; by
+   * quarter turns when an item cannot turn freely, as grips do) and scaled by symScale.
+   */
+  symbolAt(sym, pt) {
+    const items = placeItems(sym.items, pt);
+    const k = this.symScale > 0 ? this.symScale : 1;
+    const deg = Number(this.symRot) || 0;
+    if (k !== 1) for (const it of items) scaleAbout(it, k, pt);
+    if (deg) {
+      if (items.every(freeRotatable)) for (const it of items) rotateFree(it, deg, pt);
+      else {
+        const q = ((Math.round(deg / 90) % 4) + 4) % 4;
+        const cw = (360 - q * 90) % 360;
+        for (const it of items) rotateAbout(it, cw, pt, this.S(), this.measure);
+      }
+    }
+    return items;
+  }
+
+  /** INSERT's R and S options: the angle (degrees, counter-clockwise) and the scale of the next symbols. */
+  askSymbolRot() {
+    this.askValue(`Rotația simbolului în grade, în sens trigonometric (acum: ${String(Number(this.symRot) || 0).replace(".", ",")}°)`, (v) => {
+      const d = Number(String(v).replace(",", "."));
+      if (!Number.isFinite(d) || Math.abs(d) > 3600) return false;
+      this.symRot = Math.round((((d % 360) + 360) % 360) * 10) / 10;
+      const sym = this.currentSymbol();
+      if (sym && this.symRot % 90 && !sym.items.every((it) => freeRotatable(it)))
+        dlg.toast("Simbolul are elemente care se rotesc doar cu sferturi de tură (simboluri, tabele, chenare): se pune la cel mai apropiat multiplu de 90°", 6000);
+      return true;
+    });
+  }
+
+  askSymbolScale() {
+    this.askValue(`Scara simbolului (acum: ${String(this.symScale > 0 ? this.symScale : 1).replace(".", ",")})`, (v) => {
+      const k = Number(String(v).replace(",", "."));
+      if (!(k >= 0.05 && k <= 20)) return false;
+      this.symScale = Math.round(k * 1000) / 1000;
+      return true;
+    });
+  }
+
   /** The symbol's items at pt, for the preview (images as their outline). */
   symbolPreview(pt) {
     const sym = this.currentSymbol();
     if (!sym) return null;
     const S = this.S();
     const prims = [];
-    placeItems(sym.items, pt).forEach((it, i) => {
+    this.symbolAt(sym, pt).forEach((it, i) => {
       try {
         prims.push(...build({ ...it, id: `_sym${i}`, layer: "add" }, S, this.measure).prims);
       } catch (_) { /* an item that cannot be drawn */ }
@@ -123,7 +166,7 @@ export class Blocks {
       return;
     }
     const docId = this.doc.id;
-    const items = placeItems(sym.items, pt);
+    const items = this.symbolAt(sym, pt);
     if (!this.symImg || this.symImg.doc !== docId) this.symImg = { doc: docId, map: new Map() };
     const upload = async (data) => {
       const m = this.symImg.map;
@@ -167,8 +210,24 @@ export class Blocks {
     this.changed();
   }
 
-  /** A small picture of the symbol for the library (PNG data URL). */
-  symbolThumb(sym, w = 132, h = 84) {
+  /** The library picture with the symbol's images drawn in (they decode asynchronously). */
+  async symbolThumbFull(sym) {
+    const imgs = new Map();
+    for (const it of sym.items) {
+      const data = it.type === "image" ? it.data : it.type === "tblock" && it.tpl && it.tpl.logo ? it.tpl.logo.data : null;
+      if (!data || imgs.has(data)) continue;
+      const im = new Image();
+      im.src = data;
+      try {
+        await im.decode();
+        imgs.set(data, im);
+      } catch (_) { /* not drawn */ }
+    }
+    return this.symbolThumb(sym, 132, 84, imgs);
+  }
+
+  /** A small picture of the symbol for the library (PNG data URL); images from `imgs` (data → image). */
+  symbolThumb(sym, w = 132, h = 84, imgs = null) {
     const S = this.S();
     const prims = [];
     let box = null;
@@ -191,6 +250,12 @@ export class Blocks {
     const ctx = cv.getContext("2d");
     ctx.setTransform(k * dpr, 0, 0, k * dpr, (w / 2 - ((box[0] + box[2]) / 2) * k) * dpr, (h / 2 - ((box[1] + box[3]) / 2) * k) * dpr);
     drawPrims(ctx, prims, k, undefined, 0.8);
+    if (imgs) {
+      for (const it of sym.items) {
+        const im = it.type === "image" && imgs.get(it.data);
+        if (im && Array.isArray(it.r)) ctx.drawImage(im, it.r[0], it.r[1], it.r[2] - it.r[0], it.r[3] - it.r[1]);
+      }
+    }
     return cv.toDataURL("image/png");
   }
 }

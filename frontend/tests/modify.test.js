@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { offsetShape, trimShape, extendShape, shapeDistance } from "../js/modify.js";
+import { offsetShape, trimShape, extendShape, shapeDistance, trimPrep, trimAt, extendEnd, shapeCrossings, shapeGap } from "../js/modify.js";
 import { arcGeom } from "../js/shapes.js";
 
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} ≠ ${b}`);
@@ -129,4 +129,24 @@ test("offset through: the distance to the shape", () => {
   near(shapeDistance(line([0, 0], [10, 0]), [50, 4]), 4);
   near(shapeDistance({ kind: "circle", pts: [[0, 0], [10, 0]] }, [0, 15]), 5);
   near(shapeDistance({ kind: "rect", pts: [[0, 0], [10, 10]] }, [5, 12]), 2);
+});
+
+test("fence helpers: crossings, distance on the shape itself, prepared trim, the end to extend", () => {
+  const c = { type: "shape", kind: "circle", pts: [[0, 0], [10, 0]] };
+  const hits = shapeCrossings(c, [-20, 0, 20, 0]);
+  assert.equal(hits.length, 2);
+  const xs = hits.map((p) => Math.round(p[0])).sort((a, b) => a - b);
+  assert.deepEqual(xs, [-10, 10]);
+  const arc = { type: "shape", kind: "arc", pts: [[0, 0], [10, 0], [-10, 0]], ccw: true }; // upper half
+  near(shapeGap(arc, [0, -10]), 0);
+  assert.ok(shapeGap(arc, [0, 10]) > 9, "the lower half is not on the arc");
+  near(shapeDistance(arc, [0, 10]), 0); // the radial distance alone would say it is
+  const l = line([0, 0], [100, 0]);
+  const prep = trimPrep(l, { segs: [seg(30, -10, 30, 10), seg(70, -10, 70, 10)], arcs: [] });
+  assert.equal(prep.cuts.length, 2);
+  assert.equal(trimAt(prep, l, [50, 0]).pieces.length, 2);
+  assert.equal(trimAt(prep, l, [90, 0]).pieces.length, 1);
+  assert.equal(extendEnd(l, [10, 0]), "start");
+  assert.equal(extendEnd(l, [90, 0]), "end");
+  assert.equal(extendEnd(c, [10, 0]), null);
 });
