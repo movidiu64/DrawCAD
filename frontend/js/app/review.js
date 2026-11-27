@@ -168,7 +168,7 @@ export class Review {
       const blob = await api.compare(this.doc.id, { ...c.body, format: "pdf",
         legend: `${tr("doar în")} ${c.otherName}|${tr("doar în")} ${this.doc.name}|${tr("în ambele")}` });
       const base = this.doc.name.replace(/\.[^.]+$/, "");
-      await dlg.saveBlob(blob, `${base}_comparare.pdf`);
+      await dlg.saveBlob(blob, `${base}_${this.settings.dlang === "en" ? "compare" : "comparare"}.pdf`);
     } catch (err) {
       dlg.toast(err.message, 6000);
     }

@@ -20,7 +20,8 @@ export class RadialMenu {
     switch (id) {
       case "last": {
         const last = this.lastTool && TOOL_BY_ID[this.lastTool];
-        return last ? tool(last.id) : tool("dimLin");
+        // as a typed command: MOVE / COPY / BLOCK take the current selection (or ask for one)
+        return last ? { ...tool(last.id), run: () => this.runCommand(last.id) } : tool("dimLin");
       }
       case "undo":
         return { id, label: "Anulează acțiunea", icon: MM_ICONS.undo, run: () => this.doUndo() };

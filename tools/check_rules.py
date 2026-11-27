@@ -4,7 +4,8 @@
    the two themes); in the JS only inside the `COLORS` and `COLORS_LIGHT` objects of view.js.
 2. i18n: every interface text that tools/i18n_extract.py finds has a key in i18n_en.js
    (exact, or a `{}` pattern, or composed of translated pieces, as i18n.js looks it up).
-   Duplicate keys in i18n_en.js are errors too.
+   Messages of the server shown in the interface (_err / Rejected / Response / {"error": …} in
+   backend/app) need a key as well. Duplicate keys in i18n_en.js are errors too.
 3. Overlays: modals, dialogs, toasts and other overlays are created only in dialogs.js
    (showModal / closeModal / toast). In app.css only `.modal` and `.toast` are position: fixed.
 4. Agent skills: every .claude/skills/<name>/SKILL.md has front matter with `name: <name>` and a
@@ -55,6 +56,11 @@ EXCEPTIONS = [
     ("i18n", "js/tblock.js", "Title", "title block label for drawings in English (dlang = en)"),
     ("i18n", "js/tblock.js", "Proprietar", "title block label on drawings in Romanian (dlang = ro): drawing text, not interface"),
     ("i18n", "*", "ISO 7200", "name of the standard, the same in every language"),
+    # the note quick-add lines go onto the drawing, in its language (panel.js html_note, translate="no")
+    *[("i18n", "js/panel.js", t, "note line on the drawing, in the drawing language (dlang)") for t in (
+        "All dimensions in mm", "Break all sharp edges {}×45°", "Free of burrs and sharp edges", "General tolerances {}",
+        "Hardened and tempered 48–52 HRC", "Unspecified radii R{}", "Muchiile nespecificate se teșesc {}×45°",
+        "Razele nespecificate R{}")],
     ("i18n", "js/dialogs.js", "PENTRU EXECUȚIE", "stamp word on drawings in Romanian (dlang = ro): drawing text, not interface"),
     ("i18n", "js/dialogs.js", "COPIE NECONTROLATĂ", "stamp word on drawings in Romanian (dlang = ro): drawing text, not interface"),
     ("i18n", "js/dialogs.js", "FOR PRODUCTION", "stamp word on drawings in English (dlang = en)"),
@@ -77,8 +83,6 @@ EXCEPTIONS = [
     ("i18n", "js/app/keys.js", "Backspace", "KeyboardEvent.key value"),
     ("i18n", "js/app/input.js", "Backspace", "KeyboardEvent.key value"),
     ("i18n", "js/app/keys.js", "Delete", "KeyboardEvent.key value"),
-    ("i18n", "js/app/keys.js", "Tab", "KeyboardEvent.key value"),
-    ("i18n", "js/app/input.js", "Tab", "KeyboardEvent.key value"),
     ("i18n", "js/app/mouse.js", "Tab", "selection cycling label: name (i/n, Tab), the same in English"),
     ("i18n", "js/dialogs.js", "Home", "KeyboardEvent.key value (settings tab list)"),
     ("i18n", "js/dialogs.js", "End", "KeyboardEvent.key value (settings tab list)"),
@@ -163,8 +167,12 @@ def make_lookup(keys):
         t = norm(t)
         if not t or t in exact or not re.search(r"[A-Za-zĂÂÎȘȚăâîșț]", t):
             return True
-        if any(p.match(t) for p in pats):
-            return True
+        for p in pats:
+            m = p.match(t)
+            # a pattern counts when what fills its {} is a value or is translated itself: "Pagina {}"
+            # does not translate "Pagina se reîncarcă" (the rest would stay Romanian)
+            if m and all(not re.search(r"[a-zăâîșț]{3}", g, re.I) or "{}" in g or (depth < 3 and look(g, depth + 1)) for g in m.groups()):
+                return True
         m = re.match(r"^([·•—–]\s+)(.+)$", t)
         if m and depth < 3 and look(m.group(2), depth + 1):
             return True
@@ -196,6 +204,14 @@ def check_i18n():
     for seg in i18n_extract.segments((FRONT / "index.html").read_text("utf-8")):
         if i18n_extract.is_ui(seg):
             found.setdefault(re.sub(r"\s+", " ", seg).strip(), set()).add("index.html")
+    # messages of the server that the interface shows (error toasts): they need their key too
+    back = FRONT.parent / "backend" / "app"
+    msg = re.compile(r'(?:_err|Rejected|Response)\(\s*f?"([^"]+)"|\{"error":\s*f?"([^"]+)"')
+    for f in sorted(back.glob("*.py")):
+        for m in msg.finditer(f.read_text("utf-8")):
+            text = re.sub(r"\{[^{}]*\}", "{}", m.group(1) or m.group(2)).strip()
+            if i18n_extract.is_ui(text.replace("{}", "\x00")):
+                found.setdefault(re.sub(r"\s+", " ", text), set()).add(f"backend/app/{f.name}")
     for text, files in sorted(found.items()):
         if look(text):
             continue

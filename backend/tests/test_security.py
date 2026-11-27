@@ -175,6 +175,25 @@ class SecurityTest(unittest.TestCase):
             appmain._child_cmd = real
             appmain._warm.broken = False
 
+    def test_allowed_hosts_and_health(self):
+        """With DRAWCAD_ALLOWED_HOSTS other host names get 421, except the health check (the container's
+        own check calls it as 127.0.0.1); the interface is served with Cache-Control: no-cache."""
+        from starlette.testclient import TestClient
+
+        old = appmain.ALLOWED_HOSTS
+        appmain.ALLOWED_HOSTS = {"192.168.1.10", "unraid.local"}
+        try:
+            local = TestClient(appmain.app, base_url="http://127.0.0.1:8080")
+            self.assertEqual(local.get("/api/health").status_code, 200)
+            self.assertEqual(local.get("/api/docs").status_code, 421)
+            ok = TestClient(appmain.app, base_url="http://unraid.local:8080")
+            self.assertEqual(ok.get("/api/docs").status_code, 200)
+            r = ok.get("/js/main.js")
+            self.assertEqual(r.headers.get("cache-control"), "no-cache")
+            self.assertEqual(ok.get("/js/main.js", headers={"If-None-Match": r.headers["etag"]}).status_code, 304)
+        finally:
+            appmain.ALLOWED_HOSTS = old
+
     def test_serve_job_checked(self):
         """--serve runs exactly one job of the usual arguments; anything else is refused."""
         import subprocess

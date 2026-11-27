@@ -319,6 +319,8 @@ Ovidiu's confirmation (behaviour in his AutoCAD, or a product choice) before it 
 | CMD-D14 | Hot-grip modes, grip input, grips on several objects, several hot grips, grip menus | done (v1.1) | 6 |
 | CMD-D15 | F2 history window with prompts and messages | done (v1.1) | 2 |
 | CMD-D16 | Additional and relative polar angles, PolarSnap | done (v1.1) | 6 |
+| CMD-D17 | OFFSET, TRIM, EXTEND on drawn shapes (Quick mode, fence) | done (v1.5) | — |
+| CMD-D18 | BLOCK / INSERT: own symbol library | done (v1.5) | — |
 
 ### CMD-D1 — Point syntax parser
 

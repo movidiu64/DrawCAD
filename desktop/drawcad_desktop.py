@@ -142,6 +142,14 @@ def choose_port(requested: int | None):
     h = health(port)
     if h and h.get("desktop"):
         return port, True
+    # the fixed port is taken by another program: the next ones in a fixed order, so the address (and
+    # with it what the interface keeps in the browser: libraries, keys, tabs) is the same on each start
+    for p in range(port + 1, port + 10):
+        if port_free(p):
+            return p, False
+        h = health(p)
+        if h and h.get("desktop"):
+            return p, True
     return free_port(), False
 
 
@@ -173,16 +181,19 @@ class Bridge:
         # levels, "maximum recursion depth"), which froze startup and every page load
         self._window = None
 
-    def save_file(self, name, b64):
+    def save_file(self, name, b64, lang="ro"):
         import webview
 
         ext = os.path.splitext(name)[1].lower()
+        # the file types in the interface's language
+        en = lang == "en"
         types = {
-            ".pdf": ("Document PDF (*.pdf)",),
-            ".dxf": ("Desen DXF (*.dxf)",),
-            ".zip": ("Arhivă ZIP (*.zip)",),
-            ".csv": ("Tabel CSV (*.csv)",),
-        }.get(ext, ("Toate fișierele (*.*)",))
+            ".pdf": ("PDF document (*.pdf)",) if en else ("Document PDF (*.pdf)",),
+            ".dxf": ("DXF drawing (*.dxf)",) if en else ("Desen DXF (*.dxf)",),
+            ".zip": ("ZIP archive (*.zip)",) if en else ("Arhivă ZIP (*.zip)",),
+            ".csv": ("CSV table (*.csv)",) if en else ("Tabel CSV (*.csv)",),
+            ".json": ("DrawCAD symbols (*.json)",) if en else ("Simboluri DrawCAD (*.json)",),
+        }.get(ext, ("All files (*.*)",) if en else ("Toate fișierele (*.*)",))
         kind = getattr(getattr(webview, "FileDialog", None), "SAVE", None)
         if kind is None:
             kind = webview.SAVE_DIALOG

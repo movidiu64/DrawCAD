@@ -1998,9 +1998,10 @@ class SecurityMiddleware:
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
         hdr = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers", [])}
-        if ALLOWED_HOSTS:
+        if ALLOWED_HOSTS and scope.get("path") != "/api/health":
             # protects the local server from "DNS rebinding": a foreign site whose name points to
-            # 127.0.0.1 would pass the origin check, but not the host name check
+            # 127.0.0.1 would pass the origin check, but not the host name check. The health check
+            # (no data; the container's own check calls it as 127.0.0.1) is answered for any name
             hname = hdr.get("host", "").rsplit(":", 1)[0].strip("[]").lower()
             if hname not in ALLOWED_HOSTS:
                 resp = Response("Gazdă nepermisă", status_code=421)
@@ -2045,6 +2046,10 @@ class SecurityMiddleware:
                 headers = list(message.get("headers", []))
                 have = {k.lower() for k, _ in headers}
                 headers += [(k, v) for k, v in SECURITY_HEADERS if k not in have]
+                if b"cache-control" not in have and not scope.get("path", "").startswith("/api/"):
+                    # the interface (ES modules, no build step, no versioned names): checked again at
+                    # each load, so after an upgrade old and new modules are never mixed (ETag: 304)
+                    headers.append((b"cache-control", b"no-cache"))
                 if new_cookie and b"set-cookie" not in have:
                     secure = scope.get("scheme") == "https" or hdr.get("x-forwarded-proto") == "https"
                     c = f"{WS_COOKIE}={new_cookie}; Path=/; HttpOnly; SameSite=Strict"

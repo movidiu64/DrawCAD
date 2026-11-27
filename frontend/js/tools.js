@@ -194,9 +194,10 @@ export const TOOLS = [
 
   { id: "rough", label: "Rugozitate", key: "Q", group: "Toleranțe", icon: "M3 13l3 5 8-14h7M6.5 13h5", kind: "clicks", n: 2,
     hint: "Punct pe suprafață → al doilea click în același loc = simbol direct, în altă parte = cu linie de indicație",
-    make(pts) {
+    make(pts, app) {
       const near = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]) < 3 * K;
-      return { type: "rough", target: pts[0], pos: near ? null : pts[1], kind: "remove", val: "Ra 3,2", method: "", rot: 0 };
+      const val = app && app.settings && app.settings.sep === "." ? "Ra 3.2" : "Ra 3,2"; // the drawing's decimal separator
+      return { type: "rough", target: pts[0], pos: near ? null : pts[1], kind: "remove", val, method: "", rot: 0 };
     },
     preview(pts, cur) { return this.make([pts[0], cur]); } },
   { id: "gdt", label: "Cadru GD&T", key: "G", group: "Toleranțe", icon: "M2 8h20v8H2zM9 8v8M16 8v8M3.5 12a2 2 0 1 0 4 0a2 2 0 1 0 -4 0", kind: "clicks", n: 2,

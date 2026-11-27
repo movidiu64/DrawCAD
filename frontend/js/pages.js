@@ -1,6 +1,6 @@
 // Page operations (rotate, delete, move): annotations are transformed with the page so they
 // stay on the drawing. Coordinates are visual (points, y down); rotation is clockwise, like /Rotate.
-import { build, moveAnnot, SCALABLE, SCALE_MIN, SCALE_MAX } from "./annots.js";
+import { build, moveAnnot, gdtAnchor, SCALABLE, SCALE_MIN, SCALE_MAX } from "./annots.js";
 
 const POINT_KEYS = ["p1", "p2", "p3", "c", "p", "v", "target", "pos", "vp", "tp", "elbow", "base", "lp"];
 // annotations that always stay horizontal (tables, title blocks, QR codes): moved whole by their
@@ -113,7 +113,14 @@ export function rotateAnnot(a, deg, W, H, S = null, measure = null) {
   else if (quarter && a.type === "dim" && a.kind !== "ali" && !a.orient) a.orient = "v";
   if (quarter && a.type === "rough" && !a.pos) a.rot = a.rot ? 0 : 90;
   if (a.type === "image") a.rot = ((a.rot || 0) + deg) % 360;
+  fixGdtAnchor(a);
   return a;
+}
+
+/** A GD&T frame stays upright: after its points turned or mirrored, the side of the frame the leader
+ *  leaves from follows where the feature now is (as when its grips are dragged). */
+function fixGdtAnchor(a) {
+  if (a.type === "gdt" && !a.elbow && a.target && a.pos) a.anchor = gdtAnchor(a.target, a.pos);
 }
 
 // ------------------------------------------------------------------ grip edits (CMD-D14)
@@ -173,6 +180,9 @@ export function mirrorAbout(a, axis, base, S = null, measure = null) {
     if (axis === "h" && a.axis !== "y") a.row = 2 * base[1] - a.row;
   }
   if (a.type === "shape" && a.kind === "hatch") a.angle = ((180 - (a.angle ?? 45)) % 180 + 180) % 180;
+  // a mirror reverses the turning direction: the arc keeps its own part of the circle
+  if (a.type === "shape" && a.kind === "arc") a.ccw = a.ccw === false;
+  fixGdtAnchor(a);
   return a;
 }
 

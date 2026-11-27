@@ -49,6 +49,8 @@ function lookup(text, depth = 0) {
   if (!k) return null;
   if (exact.has(k)) return exact.get(k);
   if (!/[A-Za-zĂÂÎȘȚăâîșț]/.test(k)) return null;
+  const ps = parenSplit(k, depth);
+  if (ps != null) return ps;
   const whole = lookupPattern(k, depth);
   if (whole != null) return whole;
   // "· text" at the start of a fragment
@@ -69,6 +71,21 @@ function lookup(text, depth = 0) {
     if (any) return out.join(" · ");
   }
   return null;
+}
+
+/**
+ * A known text followed by states in parentheses (a prompt and "(orizontal)", "(pe X)", a symbol's
+ * name): the text, and each parenthesis translated when it is known, kept as it is otherwise (a name).
+ */
+function parenSplit(k, depth) {
+  const m = depth < 4 ? /^(.+?)\s*(\([^()]+\))$/.exec(k) : null;
+  if (!m) return null;
+  const known = exact.get(m[1]) ?? parenSplit(m[1], depth + 1);
+  const tailT = exact.get(m[2]) ?? lookupPattern(m[2], depth + 1);
+  // a head found only through a pattern counts when the parenthesis is known too ("Punctul 2 (pe X)")
+  const head = known ?? (tailT != null ? lookupPattern(m[1], depth + 1) : null);
+  if (head == null) return null;
+  return `${head} ${tailT ?? m[2]}`;
 }
 
 function lookupPattern(k, depth) {
@@ -99,7 +116,7 @@ export function tr(text) {
   return s.match(/^\s*/)[0] + t + s.match(/\s*$/)[0];
 }
 
-const ATTRS = ["title", "placeholder", "aria-label", "alt"];
+const ATTRS = ["title", "placeholder", "aria-label", "alt", "label"];
 const SKIP = new Set(["SCRIPT", "STYLE", "TEXTAREA", "CODE"]);
 
 function skipEl(el) {

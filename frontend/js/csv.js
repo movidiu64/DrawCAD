@@ -31,9 +31,9 @@ export function tableCsv(a, S = {}) {
   return `\uFEFF${lines.join("\r\n")}\r\n`;
 }
 
-/** File name: the document's name, the table's kind, `.csv`. */
-export function csvName(docName, a) {
+/** File name: the document's name, the table's kind (in the drawing's language), `.csv`. */
+export function csvName(docName, a, dlang = "ro") {
   const base = String(docName || "desen").replace(/\.[^.]+$/, "").replace(/[\\/:*?"<>|]+/g, "_");
-  const kind = { revtab: "revizii", bom: "componente", holes: "gauri" }[a.type] || "tabel";
+  const kind = (dlang === "en" ? { revtab: "revisions", bom: "parts", holes: "holes" } : { revtab: "revizii", bom: "componente", holes: "gauri" })[a.type] || (dlang === "en" ? "table" : "tabel");
   return `${base}_${kind}.csv`;
 }

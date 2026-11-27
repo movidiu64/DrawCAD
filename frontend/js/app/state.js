@@ -7,6 +7,8 @@ import { build, derive, hit, fmtNum, onBoxEdge } from "../annots.js";
 import * as dlg from "../dialogs.js";
 import { today, $, hashStr } from "./util.js";
 
+const UNSAVED_KEY = "drawcad.unsaved";
+
 export class StateHistory {
   // ------------------------------------------------------------ state and history
   stateJson() {
@@ -31,17 +33,20 @@ export class StateHistory {
   async saveNow(id, json) {
     this.unsaved = this.unsaved || new Map();
     this.unsaved.set(id, json);
+    this.keepUnsaved();
     const cur = () => this.doc && this.doc.id === id;
     if (cur()) this.setSaveState("saving");
     try {
       await api.saveState(id, json);
       if (this.unsaved.get(id) === json) this.unsaved.delete(id);
+      this.keepUnsaved();
       if (cur() && !this.saveTimer && !this.unsaved.has(id)) this.setSaveState("saved");
       return true;
     } catch (e) {
       if (e.status === 404) {
         // the document is gone (deleted, expired): there is nowhere to save it
         this.unsaved.delete(id);
+        this.keepUnsaved();
         return false;
       }
       if (cur()) this.setSaveState("error", e.message);
@@ -49,6 +54,50 @@ export class StateHistory {
       this.retryTimer = setTimeout(() => this.retrySaves(), 5000);
       return false;
     }
+  }
+
+  /** The states not confirmed yet, also in this browser's storage: a closed tab or a crash keeps them
+   *  until the next start (restoreUnsaved). */
+  keepUnsaved() {
+    try {
+      if (this.unsaved && this.unsaved.size) {
+        const now = Date.now();
+        const out = {};
+        for (const [id, state] of this.unsaved) out[id] = { state, t: now };
+        localStorage.setItem(UNSAVED_KEY, JSON.stringify(out));
+      } else localStorage.removeItem(UNSAVED_KEY);
+    } catch (_) { /* storage full or unavailable: kept in memory only */ }
+  }
+
+  /**
+   * At start: states a previous session could not save are sent again (and shown with their document),
+   * unless the server has a newer state of that document (saved since from another browser).
+   */
+  async restoreUnsaved() {
+    this.unsaved = new Map();
+    let v = {};
+    try {
+      v = JSON.parse(localStorage.getItem(UNSAVED_KEY) || "{}") || {};
+    } catch (_) { /* nothing kept */ }
+    for (const [id, e] of Object.entries(v)) {
+      if (!/^[a-f0-9]{32}$/.test(id) || !e || !e.state || !Array.isArray(e.state.annots)) continue;
+      try {
+        const r = await fetch(`api/doc/${id}`);
+        if (!r.ok) continue; // gone
+        const meta = await r.json();
+        if ((Number(meta.updated) || 0) * 1000 > (Number(e.t) || 0)) continue; // newer on the server
+      } catch (_) { /* server unreachable: kept, sent when it answers */ }
+      this.unsaved.set(id, e.state);
+    }
+    this.keepUnsaved();
+    if (this.unsaved.size) setTimeout(() => this.retrySaves(), 1000);
+  }
+
+  /** Something the server has not confirmed (asked before the page closes). */
+  hasUnsaved() {
+    if (this.unsaved && this.unsaved.size) return true;
+    // a waiting save too large for the page-close beacon (64 kB)
+    return !!(this.saveTimer && this.doc && JSON.stringify(this.stateJson()).length > 60000);
   }
 
   /** Every state not yet confirmed, sent again (the open document's as it is now). */

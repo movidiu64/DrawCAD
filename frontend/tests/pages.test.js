@@ -111,3 +111,15 @@ test("mirrorAbout flips across a horizontal or vertical axis", () => {
   const hatch = mirrorAbout({ type: "shape", kind: "hatch", pts: [[0, 0], [1, 0], [1, 1]], angle: 45 }, "v", [0, 0]);
   assert.equal(hatch.angle, 135);
 });
+
+test("mirror keeps an arc's own part of the circle; a GD&T frame's leader side follows its feature", async () => {
+  const { arcGeom } = await import("../js/shapes.js");
+  const arc = { type: "shape", kind: "arc", pts: [[0, 0], [10, 0], [0, -10]], ccw: true }; // a quarter, 90°
+  for (const axis of ["v", "h"]) {
+    const m = mirrorAbout(JSON.parse(JSON.stringify(arc)), axis, [0, 0]);
+    assert.ok(Math.abs(Math.abs(arcGeom(m).sw) - Math.PI / 2) < 1e-9, `${axis}: still 90°`);
+  }
+  const gdt = { type: "gdt", target: [100, 100], pos: [150, 100], anchor: "l", sym: "flat", val: "0,05" };
+  assert.equal(mirrorAbout({ ...gdt }, "v", [100, 100]).anchor, "r", "the feature is now to the right of the frame");
+  assert.equal(rotateAnnot({ ...gdt }, 90, 600, 400).anchor, "c", "after a quarter turn the frame is below the feature");
+});

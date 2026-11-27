@@ -4,7 +4,7 @@ import { K, fmtNum, parseNum, DEFAULT_SETTINGS, derive, build, primsBBox } from 
 import { MM_POSITIONS, MM_DEFAULT, MM_SPECIAL, markingConfig } from "./mmenu.js";
 import { TOOLS, FAMILIES, TOOL_BY_ID } from "./tools.js";
 import { EN } from "./i18n_en.js";
-import { lang as uiLang, setLang, LANGS } from "./i18n.js";
+import { lang as uiLang, setLang, LANGS, tr } from "./i18n.js";
 import { SHEETS } from "./pages.js";
 import { revName } from "./revision.js";
 import { isoTemplate, cleanTemplate, templateFields } from "./tblock.js";
@@ -128,7 +128,7 @@ export function bindRecent(container, app, onOpen) {
     app.loadDoc(b.dataset.doc);
   }));
   container.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", async () => {
-    if (!window.confirm(`Ștergi „${b.dataset.name}” de pe server? Cotele nesalvate în PDF se pierd.`)) return;
+    if (!window.confirm(tr(`Ștergi „${b.dataset.name}” de pe server? Cotele nesalvate în PDF se pierd.`))) return;
     try {
       await api.deleteDoc(b.dataset.del);
       if (app.forgetTab) app.forgetTab(b.dataset.del);
@@ -499,7 +499,7 @@ export async function saveBlob(blob, fileName) {
       r.onerror = () => reject(new Error("Fișierul nu a putut fi pregătit"));
       r.readAsDataURL(blob);
     });
-    const res = await bridge.save_file(fileName, b64);
+    const res = await bridge.save_file(fileName, b64, uiLang());
     if (!res || !res.ok) {
       if (res && res.error) throw new Error(res.error);
       return null;
@@ -743,10 +743,12 @@ export function settingsDialog(app, startPane = null) {
     { id: "fonts", doc: false, label: "Fonturi DXF / DWG", scope: "Server · pentru desenele DXF / DWG deschise de acum înainte" },
     ...(ws ? [{ id: "ws", doc: false, label: "Spațiu de lucru" }] : []),
   ];
-  let cur = "style";
+  // without a document (start page) only the settings of all documents can be changed
+  const noDoc = !app.doc;
+  let cur = noDoc ? "ui" : "style";
   try {
     const last = startPane || localStorage.getItem("cotare.stab");
-    if (PANES.some((p) => p.id === last)) cur = last;
+    if (PANES.some((p) => p.id === last && !(noDoc && p.doc))) cur = last;
   } catch (_) { /* storage unavailable */ }
   const navItem = (p) => `<button role="tab" id="stab-${p.id}" data-stab="${p.id}" aria-controls="spane-${p.id}">${p.label}</button>`;
   const pane = (id, body) => {
@@ -759,8 +761,7 @@ export function settingsDialog(app, startPane = null) {
     <h2>Setări</h2>
     <div class="setlay">
       <nav class="snav" role="tablist" aria-orientation="vertical" aria-label="Secțiuni setări">
-        <div class="sgrp">Documentul curent</div>
-        ${PANES.filter((p) => p.doc).map(navItem).join("")}
+        ${noDoc ? "" : `<div class="sgrp">Documentul curent</div>${PANES.filter((p) => p.doc).map(navItem).join("")}`}
         <div class="sgrp">Toate documentele</div>
         ${PANES.filter((p) => !p.doc).map(navItem).join("")}
         <div class="sver" translate="no">DrawCAD ${esc(app.version || "dev")}</div>
@@ -1019,17 +1020,25 @@ export function settingsDialog(app, startPane = null) {
     toast("Meniul radial a revenit la implicit");
   });
   $d("#sSave").addEventListener("click", () => {
+    if (noDoc) {
+      closeModal(); // the other panes save as they change
+      return;
+    }
     pending.revNo = $d("#sRev").value.trim() || "1";
     pending.author = $d("#sAuth").value.trim();
     const sc = parseNum($d("#sScale").value);
     if (sc && sc > 0) pending.scale = sc;
     app.setSettings(pending);
     if ($d("#sDef").checked) {
-      // the style only: not this document's scale or revision
-      const { scale, revNo, exportedRev, ...style } = { ...app.settings };
+      // the style only: not this document's scale (also per DXF layout), revision, revision date or
+      // blackening of its drawing
+      const { scale, scaleBySrc, revNo, revDate, exportedRev, ink, ...style } = { ...app.settings };
       void scale;
+      void scaleBySrc;
       void revNo;
+      void revDate;
       void exportedRev;
+      void ink;
       try {
         localStorage.setItem("cotare.defaults", JSON.stringify(style));
       } catch (_) { /* storage unavailable */ }
@@ -1207,7 +1216,7 @@ export function tblockDialog(app, opts = {}) {
     dlg.querySelectorAll("[data-tbren]").forEach((b) => b.addEventListener("click", () => {
       const list2 = lib();
       const t = list2[Number(b.dataset.tbren)];
-      const name = window.prompt("Numele indicatorului", t.name);
+      const name = window.prompt(tr("Numele indicatorului"), t.name);
       if (name && name.trim()) {
         t.name = name.trim().slice(0, 80);
         save(list2);
@@ -1231,13 +1240,13 @@ export function tblockDialog(app, opts = {}) {
     dlg.querySelectorAll("[data-tbdel]").forEach((b) => b.addEventListener("click", () => {
       const list2 = lib();
       const t = list2[Number(b.dataset.tbdel)];
-      if (!window.confirm(`Ștergi indicatorul „${t.name}” din bibliotecă? Desenele pe care e pus nu se schimbă.`)) return;
+      if (!window.confirm(tr(`Ștergi indicatorul „${t.name}” din bibliotecă? Desenele pe care e pus nu se schimbă.`))) return;
       list2.splice(Number(b.dataset.tbdel), 1);
       save(list2);
     }));
     dlg.querySelector("#tbNew").addEventListener("click", () => tblockGenerator(app, () => tblockDialog(app, opts)));
     dlg.querySelector("#tbSel").addEventListener("click", async () => {
-      const name = window.prompt("Numele indicatorului", "Indicatorul meu");
+      const name = window.prompt(tr("Numele indicatorului"), tr("Indicatorul meu"));
       if (!name) return;
       const t = await app.tblockFromSelection(name.trim().slice(0, 80));
       if (!t) {
@@ -1336,7 +1345,7 @@ export function symbolDialog(app) {
     d.querySelectorAll("[data-symren]").forEach((b) => b.addEventListener("click", () => {
       const list2 = lib();
       const s = list2[Number(b.dataset.symren)];
-      const name = window.prompt("Numele simbolului", s.name);
+      const name = window.prompt(tr("Numele simbolului"), s.name);
       if (!name || !name.trim()) return;
       const clean = name.replace(/\s+/g, " ").trim().slice(0, 80);
       if (list2.some((x) => x !== s && x.name.toLowerCase() === clean.toLowerCase())) {
@@ -1353,7 +1362,7 @@ export function symbolDialog(app) {
     d.querySelectorAll("[data-symdel]").forEach((b) => b.addEventListener("click", () => {
       const list2 = lib();
       const s = list2[Number(b.dataset.symdel)];
-      if (!window.confirm(`Ștergi simbolul „${s.name}” din bibliotecă? Desenele pe care e pus nu se schimbă.`)) return;
+      if (!window.confirm(tr(`Ștergi simbolul „${s.name}” din bibliotecă? Desenele pe care e pus nu se schimbă.`))) return;
       list2.splice(Number(b.dataset.symdel), 1);
       if (app.symCur === s.id) app.symCur = null;
       save(list2);
@@ -1364,7 +1373,7 @@ export function symbolDialog(app) {
       app.runCommand("symSave");
     });
     d.querySelector("#symExpAll").addEventListener("click", async () => {
-      await saveBlob(new Blob([symbolsFile(lib())], { type: "application/json" }), "simboluri.drawcad-sym.json");
+      await saveBlob(new Blob([symbolsFile(lib())], { type: "application/json" }), `${uiLang() === "en" ? "symbols" : "simboluri"}.drawcad-sym.json`);
     });
     d.querySelector("#symImp").addEventListener("click", () => d.querySelector("#symFile").click());
     d.querySelector("#symFile").addEventListener("change", async (e) => {
@@ -1472,13 +1481,14 @@ const SETTINGS_PAGES = [
   ["ui", "Interfață", "limbă bara de unelte etichete temă"],
   ["cmds", "Comenzi și meniu", "taste directe comenzi AutoCAD meniu radial"],
   ["fonts", "Fonturi DXF / DWG", "font lipsă ISOCPEUR AIGDT GDT SHX TrueType simboluri"],
+  ["ws", "Spațiu de lucru", "cod alt calculator browser documente continuă mută"],
 ];
 
 /** Ctrl+K: finds a tool, an action or a settings page by name (Romanian or English), alias or what it
  *  does; ↑ ↓ Enter runs it, Esc closes. */
 export function commandSearch(app) {
   const cfg = keyConfig();
-  const extra = SETTINGS_PAGES.map(([id, label, desc]) => ({ id: `settings:${id}`, kind: "settings", label: `Setări → ${label}`, group: "Setări", key: "", aliases: [], desc }));
+  const extra = SETTINGS_PAGES.filter(([id]) => id !== "ws" || (app.mode && app.mode !== "personal")).map(([id, label, desc]) => ({ id: `settings:${id}`, kind: "settings", label: `Setări → ${label}`, group: "Setări", key: "", aliases: [], desc }));
   const dlg = showModal(`
     <div class="palette">
       <input type="search" id="pkQ" class="pk" placeholder="Caută o comandă: cotă, rază, DLI, export, scară…" autocomplete="off" spellcheck="false" aria-label="Caută o comandă">
@@ -1531,7 +1541,8 @@ export function generalKeysHtml(ac) {
       <b>Shift</b> ortho · <b>Alt</b> fără snap · <b>Esc</b> renunță · <b>Del</b> șterge selecția<br>
       <b>Ctrl+C / Ctrl+V</b> copiază / lipește la cursor · <b>Ctrl+D</b> duplică · <b>Ctrl+A</b> selectează tot · <b>Ctrl+F</b> caută text / OCR<br>
       <b>Shift+click</b> sau dreptunghi pe zonă goală = selecție multiplă · <b>săgeți</b> mută 0,5 mm<br>
-      <b>Ctrl+Z / Ctrl+Y</b> anulează / refă · <b>F</b> potrivește · <b>Shift+F</b> zoom pe selecție · <b>dublu-click</b> editează · rotița = zoom · Space+tragere = mută`;
+      <b>Ctrl+Z / Ctrl+Y</b> anulează / refă · <b>F</b> potrivește · <b>Shift+F</b> zoom pe selecție · <b>dublu-click</b> editează · rotița = zoom · Space+tragere = mută<br>
+      <b>F3</b> snap · <b>F8</b> ortho · <b>F10</b> polar · <b>F11</b> urmărire · <b>F12</b> intrare dinamică · <b>Tab</b> următorul punct de snap · <b>PageUp / PageDown</b> pagina · <b>Ctrl+S</b> export · <b>Ctrl+0</b> ecran curat`;
 }
 
 /** ? / F1: every tool by family with its key and commands, the general keys, a filter. */
@@ -1541,7 +1552,9 @@ export function shortcutSheet(app) {
   const cl = Object.fromEntries(commandList(cfg).map((c) => [c.id, c]));
   const row = (c) => `<div class="ssrow" data-q="${esc(`${c.label} ${EN[c.label] || ""} ${c.aliases.join(" ")}`.toLowerCase())}"><span>${esc(c.label)}</span><i class="mono">${esc(c.aliases.slice(0, 2).join(" · "))}</i>${!ac && c.key ? `<kbd class="mono">${esc(c.key)}</kbd>` : "<kbd></kbd>"}</div>`;
   const fams = FAMILIES.map((f) => `<div class="ssfam"><div class="ssh">${esc(f.label)}</div>${f.tools.map((id) => cl[id] && row(cl[id])).filter(Boolean).join("")}</div>`).join("");
-  const acts = commandList(cfg).filter((c) => c.kind === "action");
+  // tools outside the rail families (MOVE, COPY, BLOCK, CALIB…): with the commands
+  const inFam = new Set(FAMILIES.flatMap((f) => f.tools));
+  const acts = commandList(cfg).filter((c) => c.kind === "action" || (!inFam.has(c.id) && c.aliases.length && !["select", "pan"].includes(c.id)));
   const dlg = showModal(`
     <h2>Taste și comenzi${ac ? " · comenzi AutoCAD" : ""}</h2>
     <div class="field"><label for="ssQ">Filtrează</label><input type="search" id="ssQ" placeholder="ex.: cerc, DLI, rază" autocomplete="off"></div>
@@ -1765,7 +1778,10 @@ export function storedDefaults() {
   // new documents: drawing texts and the decimal separator follow the UI language
   const byLang = uiLang() === "en" ? { dlang: "en", sep: "." } : { dlang: "ro" };
   try {
-    return { ...DEFAULT_SETTINGS, ...byLang, ...JSON.parse(localStorage.getItem("cotare.defaults") || "{}") };
+    // defaults saved by earlier versions may hold one document's values: those are left out
+    const { scale, scaleBySrc, revNo, revDate, exportedRev, ink, ...saved } = JSON.parse(localStorage.getItem("cotare.defaults") || "{}") || {};
+    void [scale, scaleBySrc, revNo, revDate, exportedRev, ink];
+    return { ...DEFAULT_SETTINGS, ...byLang, ...saved };
   } catch (_) {
     return { ...DEFAULT_SETTINGS, ...byLang };
   }

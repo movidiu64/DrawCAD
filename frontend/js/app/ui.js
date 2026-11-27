@@ -338,7 +338,15 @@ export class Interface {
     $("btnPanelClose").addEventListener("click", () => this.setPanelOpen(false));
     // a pending save is not lost when the tab closes
     window.addEventListener("pagehide", () => this.flushSaveBeacon());
-    $("btnSettings").addEventListener("click", () => this.doc && dlg.settingsDialog(this));
+    // changes the server never confirmed: the browser asks before the page goes (a beacon may not
+    // carry them: over 64 kB, or the server is down — they also wait in this browser for the next start)
+    window.addEventListener("beforeunload", (e) => {
+      if (this.hasUnsaved()) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    });
+    $("btnSettings").addEventListener("click", () => dlg.settingsDialog(this));
     $("btnText").addEventListener("click", () => this.doc && dlg.textDialog(this));
     document.querySelectorAll(".langsw [data-uilang]").forEach((b) => {
       b.classList.toggle("on", b.dataset.uilang === uiLang());
@@ -404,7 +412,7 @@ export class Interface {
     $("btnExportMenu").disabled = !has;
     $("btnExport").disabled = !has;
     $("btnClose").hidden = !has;
-    $("btnSettings").disabled = !has;
+    $("btnSettings").disabled = false; // without a document: the settings of all documents
     $("btnText").disabled = !has;
     $("btnUndo").disabled = !this.undo.length;
     $("btnRedo").disabled = !this.redo.length;

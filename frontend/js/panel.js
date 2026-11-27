@@ -546,20 +546,21 @@ export class Panel {
   }
 
   html_note(a) {
-    const tpl = [
-      "Muchiile nespecificate se teșesc 0,5×45°",
-      "Razele nespecificate R0,5",
-      `Toleranțe generale ${gtolLabel(this.app.settings) || "ISO 2768-mK"}`,
-      "Toate dimensiunile în mm",
-      "Călire + revenire 48–52 HRC",
-      "Fără bavuri și muchii tăietoare",
-    ];
+    // the lines go onto the drawing: in its language and with its decimal separator
+    const S = this.app.settings;
+    const n = (v) => (S.sep === "." ? v : v.replace(".", ","));
+    const g = gtolLabel(S) || "ISO 2768-mK";
+    const tpl = S.dlang === "en"
+      ? [`Break all sharp edges ${n("0.5")}×45°`, `Unspecified radii R${n("0.5")}`, `General tolerances ${g}`, "All dimensions in mm",
+        "Hardened and tempered 48–52 HRC", "Free of burrs and sharp edges"]
+      : [`Muchiile nespecificate se teșesc ${n("0.5")}×45°`, `Razele nespecificate R${n("0.5")}`, `Toleranțe generale ${g}`, "Toate dimensiunile în mm",
+        "Călire + revenire 48–52 HRC", "Fără bavuri și muchii tăietoare"];
     return `<div class="sec"><div class="h">Conținut</div>
       <div class="field"><label for="nTit">Titlu (opțional)</label><input type="text" id="nTit" data-f="title" value="${esc(a.title || "")}" placeholder="NOTE"></div>
       <div class="field"><label for="nTxt">Note — un rând pe linie</label><textarea id="nTxt" data-f="text" rows="7" spellcheck="false">${esc(a.text || "")}</textarea></div>
       ${this.symRow("#nTxt")}
       <div class="lbl">Adaugă rapid</div>
-      <div class="opts">${tpl.map((t) => `<button data-act="ntpl" data-v="${esc(t)}">${esc(t)}</button>`).join("")}</div></div>
+      <div class="opts" translate="no">${tpl.map((t) => `<button data-act="ntpl" data-v="${esc(t)}">${esc(t)}</button>`).join("")}</div></div>
       <div class="sec"><div class="h">Aspect</div>
       <div class="seg"><button data-act="nnum" class="${a.numbered ? "on" : ""}">Numerotate</button><button data-act="nframe" class="${a.frame ? "on" : ""}">Cu chenar</button></div>
       <div class="field"><span class="lbl">Înălțime text (mm)</span><div class="seg">
@@ -1158,7 +1159,7 @@ export class Panel {
         break;
       case "csv": {
         const a = app.selected();
-        if (a && (a.rows || []).length) saveBlob(new Blob([tableCsv(a, app.settings)], { type: "text/csv;charset=utf-8" }), csvName(app.doc && app.doc.name, a));
+        if (a && (a.rows || []).length) saveBlob(new Blob([tableCsv(a, app.settings)], { type: "text/csv;charset=utf-8" }), csvName(app.doc && app.doc.name, a, app.settings.dlang));
         else toast("Tabelul nu are rânduri.");
         break;
       }

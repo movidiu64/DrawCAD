@@ -337,7 +337,7 @@ export class Keyboard {
       export: () => needDoc() && dlg.exportDialog(this),
       open: () => $("btnOpen").click(),
       close: () => this.doc && this.closeDoc(),
-      settings: () => needDoc() && dlg.settingsDialog(this),
+      settings: () => dlg.settingsDialog(this),
       keys: () => dlg.keysDialog(this),
       osnap: () => this.toggleSnapFlag("on"),
       ortho: () => this.toggleSnapFlag("ortho"),

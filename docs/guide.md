@@ -140,6 +140,7 @@ The app was originally called "Cotare": the old `COTARE_*` variables are still a
 | `DRAWCAD_FONTS` | — | more folders with fonts for DXF / DWG texts (separated by `:`, `;` on Windows), besides `<data>/fonts` |
 | `DRAWCAD_MAX_IMAGE_MB` | `40` | maximum size of an image placed on a drawing (logo, photo) |
 | `DRAWCAD_PASSWORD` | empty | HTTP Basic password (user `drawcad`); empty = no password |
+| `DRAWCAD_USER` | `drawcad` | the user name for that password |
 | `DRAWCAD_ALLOWED_HOSTS` | empty | the host names the server answers to, separated by commas (as in the browser's address bar, without the port: `192.168.1.10,unraid.local,drawcad.example.com`); other names get 421. Protects against DNS rebinding (a foreign site whose name points to your server); recommended in `personal` mode without a password. Empty = any name |
 | `DRAWCAD_ALLOWED_ORIGINS` | empty | other origins (`https://proxy.example.com`) allowed to send changes, when a proxy uses another domain than the address bar |
 | `DRAWCAD_CACHE_MB` | `256` | maximum memory of the in-RAM caches (PDFs, renders); only used as needed |
@@ -147,6 +148,9 @@ The app was originally called "Cotare": the old `COTARE_*` variables are still a
 | `DRAWCAD_OCR_LANG` | `ron+eng` | OCR languages (Tesseract codes; the image includes Romanian and English) |
 | `DRAWCAD_OCR_TIMEOUT` | `150` | maximum seconds for OCR of one page |
 | `DRAWCAD_VECTOR_TIMEOUT` | `240` | maximum seconds for vectorizing one scanned page |
+| `DRAWCAD_INGEST_TIMEOUT_S` | `120` | maximum seconds for reading one uploaded file (PDF, image, DXF / DWG) |
+| `DRAWCAD_WORKER_MEM_MB` | `3072` | memory limit of the process that reads an uploaded file (Linux / Docker) |
+| `DRAWCAD_WORKER_CPU_S` | `120` | CPU-time limit of that process (Linux / Docker) |
 | `DRAWCAD_WARM_WORKER` | `1` | keep one file-reading process started ahead (about 70–100 MB idle), so opening does not wait for it to start; `0` = start it per file |
 
 ## Usage
@@ -584,9 +588,14 @@ frontend/   HTML + ES modules, no build step (canvas 2D, osifont font)
   js/gdt.js      ISO 1101 symbols
   js/view.js     display, zoom, snap
   js/main.js     the editor object (App): state, start-up; its methods are grouped in js/app/
+  js/tools.js    the tools (rail families, prompts, options); js/commands.js aliases and keys
+  js/shapes.js   drawn shapes; js/modify.js OFFSET / TRIM / EXTEND geometry; js/osnap.js snaps
+  js/blocks.js   own symbols (BLOCK / INSERT); js/csv.js tables as CSV; js/pages.js page operations
+  js/dialogs.js  every dialog, toast and overlay; js/i18n.js + i18n_en.js English interface
   js/app/        state.js (history, autosave), mouse.js, keys.js (command line), input.js (typed
                  points), grips.js, edit.js (erase, move, copy, paste), ui.js (rail, panels),
-                 contextbar.js, documents.js, review.js, sheet.js, radial.js, util.js
+                 contextbar.js, documents.js, tabs.js (documents as tabs), review.js (compare),
+                 sheet.js, radial.js, measure.js, modify.js, blocks.js, util.js
 backend/    Starlette
   app/pdfcore.py rendering (PDFium), geometry for snap, objects in an area,
                  object removal, vector overlay (reportlab + pikepdf), attachments
@@ -598,6 +607,8 @@ backend/    Starlette
   app/dxfin.py   DXF / DWG opening: drawing → vector PDF (ezdxf drawing add-on), pages and scale,
                  the DXF export of the original drawing
   app/vectorize.py vectorization of scans, in a separate process (thinning, graph, arcs, circles)
+  app/compare.py revision compare (aligned renders, changed areas, overlay PNG / PDF)
+  app/images.py  images placed on drawings (checked, re-encoded); app/scansnap.py snap on scans
 desktop/    the Windows app: launcher (pywebview), PyInstaller spec, Inno Setup installer
 ```
 
@@ -617,8 +628,9 @@ The frontend computes the geometry of each dimension once and sends it to the ex
 | img2pdf | LGPL-3.0 |
 | Starlette, uvicorn | BSD |
 | osifont | LGPL-3 with a font exception |
-| ezdxf | MIT |
+| ezdxf, fontTools | MIT |
 | NumPy | BSD |
+| Pillow | MIT-CMU (HPND) |
 | Tesseract OCR | Apache-2.0 |
 | LibreDWG (`dwg2dxf`, run as a separate program to open DWG; GPL text and source link shipped next to it, its source tarball attached to every release) | GPL-3.0-or-later |
 | pywebview | BSD |

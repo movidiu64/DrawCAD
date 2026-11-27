@@ -565,6 +565,7 @@ export class Grips {
       this.retentionDays = 0;
     }
     this.buildToolbar();
+    await this.restoreUnsaved();
     this.bindUi();
     this.bindSnapUi();
     this.bindCanvas();

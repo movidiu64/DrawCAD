@@ -301,13 +301,54 @@ export class Editing {
   }
 
   // ------------------------------------------------------------ copy / paste
+  /**
+   * Images (and title-block logos) belong to the document they were added to: pasted into another
+   * document they are copied into it first. One that cannot be copied (its document is gone) is left out.
+   */
+  async pasteImages(items, from) {
+    const docId = this.doc.id;
+    const done = new Map();
+    const copy = async (img) => {
+      if (!done.has(img)) {
+        done.set(img, (async () => {
+          const r = await fetch(api.imageUrl(from, img));
+          if (!r.ok) throw new Error(String(r.status));
+          return api.uploadImage(docId, await r.blob());
+        })());
+      }
+      return done.get(img);
+    };
+    const out = [];
+    let lost = 0;
+    for (const x of items) {
+      const c = JSON.parse(JSON.stringify(x));
+      try {
+        if (c.type === "image" && c.img) {
+          const res = await copy(c.img);
+          c.img = res.img;
+          c.iw = res.w;
+          c.ih = res.h;
+        } else if (c.type === "tblock" && c.tpl && c.tpl.logo && c.tpl.logo.img) {
+          c.tpl.logo.img = (await copy(c.tpl.logo.img)).img;
+        }
+        out.push(c);
+      } catch (_) {
+        lost++;
+      }
+    }
+    if (lost) dlg.toast(`${lost === 1 ? "O imagine nu a putut fi copiată" : `${lost} imagini nu au putut fi copiate`} (documentul din care vin nu mai există)`, 6000);
+    return out;
+  }
+
   copySelected(silent) {
     const list = this.selectedAll();
     if (!list.length) return false;
-    const keep = list.filter((a) => a.type !== "redact");
-    if (keep.length < list.length) dlg.toast("Ștergerile din original țin de obiectele de sub ele și nu se copiază.");
+    // removal and blackening name objects of this page's original: elsewhere they would hit other objects
+    const keep = list.filter((a) => a.type !== "redact" && a.type !== "ink");
+    if (keep.length < list.length) dlg.toast("Ștergerile și înnegririle din original țin de obiectele de sub ele și nu se copiază.");
     if (!keep.length) return false;
-    this.clip = JSON.stringify(keep);
+    // with the document they come from: its images are copied into another document on paste
+    this.clip = JSON.stringify({ doc: this.doc && this.doc.id, items: keep });
     try {
       localStorage.setItem("cotare.clip", this.clip);
     } catch (_) { /* storage unavailable */ }
@@ -315,7 +356,7 @@ export class Editing {
     return true;
   }
 
-  paste(duplicate) {
+  async paste(duplicate) {
     if (!this.doc) return;
     let raw = this.clip;
     if (!raw) {
@@ -325,7 +366,15 @@ export class Editing {
     }
     if (!raw) return;
     let src = JSON.parse(raw);
+    let from = null;
+    if (src && !Array.isArray(src) && Array.isArray(src.items)) {
+      from = src.doc || null;
+      src = src.items;
+    }
     if (!Array.isArray(src)) src = [src];
+    src = src.filter((x) => x && x.type !== "ink" && x.type !== "redact");
+    if (from && from !== this.doc.id) src = await this.pasteImages(src, from);
+    if (!src.length || !this.doc) return;
     const items = src.map((x) => {
       const c = { ...x };
       delete c.id;
@@ -475,7 +524,7 @@ export class Editing {
    * datums); the first one is a flatness frame. Ø only where the characteristic allows it. */
   gdtDefaults() {
     const last = [...this.annots].reverse().find((a) => a.type === "gdt");
-    if (!last) return { sym: "flat", dia: false, val: "0,05", mods: [], datums: ["A", "", ""] };
+    if (!last) return { sym: "flat", dia: false, val: this.settings.sep === "." ? "0.05" : "0,05", mods: [], datums: ["A", "", ""] };
     return {
       sym: last.sym, dia: !!last.dia && diaAllowed(last.sym), val: last.val || "", mods: [...(last.mods || [])],
       datums: [...(last.datums || ["", "", ""])], ...(last.scale && last.scale !== 1 ? { scale: last.scale } : {}),

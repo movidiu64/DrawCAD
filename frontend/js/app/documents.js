@@ -71,6 +71,8 @@ export class Documents {
     if (this.doc && this.doc.id !== meta.id) {
       this._tabFrom = this._tabFrom || this.doc.id;
       this.leaveDoc(meta.id);
+      // a command in progress belongs to the document it started on (its U would undo the other one)
+      if (this.tool !== "select") this.setTool("select");
     }
     // changes the server has not confirmed yet (a save failed) are newer than what it sent
     const mine = this.unsavedState(meta.id);
