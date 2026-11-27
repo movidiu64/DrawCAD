@@ -822,9 +822,10 @@ async def api_compare(request: Request):
 
     doc_id = request.path_params["doc_id"]
     try:
-        body = await _json_body(request, 64 * 1024)
+        # the drawn annotations of both pages travel along (as for an export): a few hundred kB is normal
+        body = await _json_body(request, 8 * 1024 * 1024)
     except (OverflowError, ValueError):
-        return _err("Cerere invalidă")
+        return _err("Cerere invalidă sau prea mare", 413)
     if not isinstance(body, dict):
         return _err("Cerere invalidă")
     other = str(body.get("other", ""))

@@ -502,6 +502,38 @@ def render_array(pdf_bytes: bytes, page_index: int, scale: float, gray: bool = T
             bmp.close()
 
 
+def render_gray_strips(pdf_bytes: bytes, page_index: int, scale: float, rows: int = 1536):
+    """The page in gray like render_array(gray=True), rendered in horizontal strips: only one strip's
+    color bitmap exists at a time (a whole A0 at 300 DPI is ~240 MB of BGRA, a strip a few tens)."""
+    with PDFIUM_LOCK:
+        doc = pdfium.PdfDocument(pdf_bytes)
+        try:
+            W, H = PageGeo.of(doc[page_index]).visual_size
+        finally:
+            doc.close()
+    total = max(1, math.ceil(H * scale - 1e-9))  # as PDFium sizes the bitmap
+    if total <= rows:
+        return render_array(pdf_bytes, page_index, scale, gray=True)
+    out = None
+    y = 0
+    while y < total:
+        n = min(rows, total - y)
+        bmp = _render_bitmap(pdf_bytes, page_index, scale, None, (0, y / scale, W, (y + n) / scale))
+        try:
+            g = to_gray(_bitmap_array(bmp))
+        finally:
+            with PDFIUM_LOCK:
+                bmp.close()
+        if out is None:
+            out = np.full((total, g.shape[1]), 255, dtype=np.uint8)
+        k = min(n, g.shape[0], total - y)
+        w = min(out.shape[1], g.shape[1])
+        out[y:y + k, :w] = g[:k, :w]
+        del g
+        y += n
+    return out
+
+
 def _render_bitmap(pdf_bytes, page_index, scale, removals, clip):
     with PDFIUM_LOCK:
         doc = pdfium.PdfDocument(pdf_bytes)

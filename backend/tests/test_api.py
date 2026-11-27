@@ -277,6 +277,11 @@ class ApiTest(unittest.TestCase):
                       {"other": old["id"], "page": 0, "otherPage": 0, "prims": line, "otherPrims": []})
         self.assertGreater(r2["added"], 0)
         self.assertTrue(any(b[0] < 300 < b[2] and b[1] <= 550 <= b[3] for b in r2["regions"]), r2["regions"])
+        # a page with many annotations (here ~200 kB of primitives) is compared too
+        many = [{"t": "L", "p": [150 + i % 300, 560, 151 + i % 300, 570], "w": 0.35, "c": "add"} for i in range(3000)]
+        r3 = self.req("POST", f"/api/doc/{same['id']}/compare",
+                      {"other": old["id"], "page": 0, "otherPage": 0, "prims": many, "otherPrims": many})
+        self.assertTrue(r3["image"].startswith("data:image/png;base64,"))
         pdf, h = self.req("POST", f"/api/doc/{new['id']}/compare",
                           {"other": old["id"], "page": 0, "otherPage": 0, "format": "pdf", "legend": "vechi|nou|ambele"}, raw=True)
         self.assertTrue(pdf.startswith(b"%PDF"))

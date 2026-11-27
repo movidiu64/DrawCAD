@@ -110,21 +110,48 @@ def render_gray(pdf_bytes: bytes, n: int, page_wh) -> tuple[np.ndarray, float]:
     scale = DPI / 72
     if w * h * scale * scale > MAX_PX:
         scale = (MAX_PX / (w * h)) ** 0.5
-    # straight to a gray array, without an intermediate PNG (at 60 MP: ~60 MB instead of a few hundred)
-    return pdfcore.render_array(pdf_bytes, n, scale, gray=True), scale
+    # straight to a gray array, without an intermediate PNG, and in strips: at 60 MP the color bitmap of
+    # the whole page alone would be ~240 MB
+    return pdfcore.render_gray_strips(pdf_bytes, n, scale), scale
 
 
 def remove_long_lines(gray: np.ndarray, px_mm: float, min_mm: float = 7.0, dark: int = 150, ragged: bool = True,
-                      inplace: bool = False) -> np.ndarray:
+                      inplace: bool = False, strip: int = 1024) -> np.ndarray:
     """Removes horizontal and vertical lines longer than `min_mm` (frames, dimension lines, borders),
-    so letters are free for OCR. Text stays almost intact."""
-    b = gray < dark
+    so letters are free for OCR. Text stays almost intact.
+
+    Worked in strips: horizontal lines in bands of rows, vertical lines in bands of columns, each band
+    with a few rows of margin (closing, the ragged edges and the thin-stroke test look up to 4 rows
+    away), so the result is the same as on the whole page; only the mask of pixels to clear is page-sized
+    (at 60 MP the whole-page masks took ~180 MB more)."""
     L = max(8, int(min_mm * px_mm))
+    H, W = gray.shape
+    kill = np.zeros((H, W), dtype=bool)
+    M = 4
+    for i in range(0, H, strip):
+        a0, a1 = max(0, i - M), min(H, i + strip + M)
+        k = _line_pixels(gray[a0:a1] < dark, L, ragged)
+        kill[i:i + strip] |= k[i - a0:i - a0 + min(strip, H - i)]
+    gT = gray.T
+    for j in range(0, W, strip):
+        a0, a1 = max(0, j - M), min(W, j + strip + M)
+        k = _line_pixels(gT[a0:a1] < dark, L, ragged)
+        kill[:, j:j + strip] |= k[j - a0:j - a0 + min(strip, W - j)].T
+    if not kill.any():
+        return gray
+    # in place only on an array we own (np.asarray of a PIL image is read-only)
+    out = gray if inplace and gray.flags.writeable else gray.copy()
+    out[kill] = 255
+    return out
+
+
+def _line_pixels(b: np.ndarray, L: int, ragged: bool) -> np.ndarray:
+    """The pixels of the horizontal lines longer than L in the dark mask `b` (rows), with their ragged
+    edges when `ragged`. Vertical lines: the same on the transposed mask."""
 
     def runs(mask, L=L):  # per row: the pixels in continuous runs longer than L
         out = np.zeros_like(mask)
         for r in np.nonzero(mask.any(axis=1))[0]:
-            # row by row: no int8 copies of the whole image (at 60 MP, 2 × 60 MB)
             d = np.diff(mask[r].view(np.int8), prepend=np.int8(0), append=np.int8(0))
             st = np.nonzero(d == 1)[0]
             en = np.nonzero(d == -1)[0]
@@ -134,7 +161,6 @@ def remove_long_lines(gray: np.ndarray, px_mm: float, min_mm: float = 7.0, dark:
         return out
 
     def close(mask, r=1):  # closing along rows: gaps of up to 2r pixels (scan noise) are filled
-        # shifts are done in place, on slices, not with new arrays for each one
         d = mask.copy()
         for k in range(1, r + 1):
             d[:, k:] |= mask[:, :-k]
@@ -161,50 +187,41 @@ def remove_long_lines(gray: np.ndarray, px_mm: float, min_mm: float = 7.0, dark:
         thin &= mask
         near &= thin
         del thin
-        np.greater(near, core, out=near)  # near and not core (in place, without ~core)
+        np.greater(near, core, out=near)  # near and not core
         return near
 
-    hk = runs(close(b))
-    hk &= b
-    vk = runs(close(b.T))
-    vk &= b.T
-    if ragged:
-        kill = edges(hk, b)
-        kill |= hk
-        del hk
-        ev = edges(vk, b.T)
-        ev |= vk
-        del vk
-        kill |= ev.T
-        del ev
-    else:
-        kill = hk | vk.T
-        del hk, vk
-    del b
-    if not kill.any():
-        return gray
-    # in place only on an array we own (np.asarray of a PIL image is read-only)
-    out = gray if inplace and gray.flags.writeable else gray.copy()
-    out[kill] = 255
-    return out
+    core = runs(close(b))
+    core &= b
+    if not ragged:
+        return core
+    k = edges(core, b)
+    k |= core
+    return k
 
 
 def _denoise(gray: np.ndarray) -> np.ndarray:
     """Scans have specks and an uneven background: 3×3 median filter and Otsu threshold → clean black and white.
-    Clean renders of vector PDFs pass practically unchanged."""
+    Works in place on a writable array (the caller gives up `gray`). Clean renders of vector PDFs pass
+    practically unchanged."""
     from PIL import ImageFilter
 
     from .vectorize import otsu_hist
 
-    # in strips (with a one-row margin for the filter): the extra memory is one strip;
-    # the Otsu threshold comes from the histogram of the whole filtered image
+    # in strips (with a one-row margin for the filter), in place when the array is ours: the extra
+    # memory is one strip; the row above a strip is kept as it was before the strip above was filtered.
+    # The Otsu threshold comes from the histogram of the whole filtered image
     h = gray.shape[0]
-    out = np.empty_like(gray)
+    out = gray if gray.flags.writeable else np.array(gray)
     hist = np.zeros(256, dtype=np.int64)
     S = 1024
+    above = None
     for i in range(0, h, S):
         a0, a1 = max(0, i - 1), min(h, i + S + 1)
-        f = np.asarray(Image.fromarray(np.ascontiguousarray(gray[a0:a1])).filter(ImageFilter.MedianFilter(3)))
+        block = np.array(out[a0:a1])
+        if above is not None:
+            block[0] = above
+        above = np.array(out[min(h, i + S) - 1])
+        f = np.asarray(Image.fromarray(block).filter(ImageFilter.MedianFilter(3)))
         f = f[i - a0:i - a0 + min(S, h - i)]
         out[i:i + f.shape[0]] = f
         hist += np.bincount(f.ravel(), minlength=256)

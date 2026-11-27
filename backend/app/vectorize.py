@@ -25,7 +25,11 @@ PT_MM = 25.4 / 72
 
 
 def otsu(gray: np.ndarray) -> int:
-    return otsu_hist(np.bincount(gray.ravel(), minlength=256))
+    # counted in strips: np.bincount works on 64-bit integers, a whole A0 page would be ~500 MB
+    hist = np.zeros(256, dtype=np.int64)
+    for i in range(0, gray.shape[0], 512):
+        hist += np.bincount(gray[i:i + 512].ravel(), minlength=256)
+    return otsu_hist(hist)
 
 
 def otsu_hist(hist) -> int:
@@ -58,6 +62,37 @@ def _neighbors_code(img: np.ndarray) -> np.ndarray:
     return code
 
 
+_STRIP = 512
+
+
+def _strips(img: np.ndarray):
+    """Bands of rows with one row of margin: (first row, the band with its margin, offset of the band in it)."""
+    h = img.shape[0]
+    for i in range(0, h, _STRIP):
+        a0, a1 = max(0, i - 1), min(h, i + _STRIP + 1)
+        yield i, img[a0:a1], i - a0
+
+
+def _strip_code(band: np.ndarray, off: int, n: int) -> np.ndarray:
+    """The neighbor codes of the n rows of the band from `off` (the band has the rows around them)."""
+    code = _neighbors_code(band)
+    return code[off:off + n]
+
+
+def _deletions(img: np.ndarray, test) -> np.ndarray:
+    """Flat indices of the pixels for which test(code, rows) holds, decided band by band on the image as it
+    is (every deletion of a step is decided before any is made), with band-sized work arrays only."""
+    w = img.shape[1]
+    out = []
+    for i, band, off in _strips(img):
+        n = min(_STRIP, img.shape[0] - i)
+        m = test(_strip_code(band, off, n), band[off:off + n])
+        idx = np.flatnonzero(m)
+        if idx.size:
+            out.append(idx + i * w)
+    return np.concatenate(out) if out else np.zeros(0, np.intp)
+
+
 def _zs_luts():
     lut = [np.zeros(256, bool), np.zeros(256, bool)]
     for c in range(256):
@@ -75,16 +110,17 @@ _LUT = _zs_luts()
 
 
 def thin(b: np.ndarray, max_iter: int = 60) -> np.ndarray:
-    img = b.astype(np.uint8)
+    """Zhang-Suen thinning. A writable bool array is thinned in place (as 0 / 1 bytes): the caller gives
+    it up. The neighbor codes are computed in bands of rows, so the extra memory is one band."""
+    img = b.view(np.uint8) if b.dtype == bool and b.flags.writeable and b.flags.c_contiguous else b.astype(np.uint8)
+    flat = img.reshape(-1)
     for _ in range(max_iter):
         changed = False
         for step in (0, 1):
-            code = _neighbors_code(img)
-            m = _LUT[step][code]
-            del code
-            m &= img.view(bool)  # img holds only 0 / 1
-            if m.any():
-                img[m] = 0
+            lut = _LUT[step]
+            gone = _deletions(img, lambda code, rows, lut=lut: lut[code] & rows.view(bool))
+            if gone.size:
+                flat[gone] = 0
                 changed = True
         if not changed:
             break
@@ -97,9 +133,8 @@ def thin(b: np.ndarray, max_iter: int = 60) -> np.ndarray:
         (N | W, S | E | SE),
     ]
     for need, none in rules:
-        code = _neighbors_code(img)
-        m = (img == 1) & ((code & need) == need) & ((code & none) == 0)
-        img[m] = 0
+        gone = _deletions(img, lambda code, rows, need=need, none=none: (rows == 1) & ((code & need) == need) & ((code & none) == 0))
+        flat[gone] = 0
     return img
 
 
@@ -110,17 +145,21 @@ def trace(sk: np.ndarray):
     """Pixel chains between endpoints / nodes, plus closed loops. Coordinates in pixels."""
     h, w = sk.shape
     Wp = w + 2
-    pad = np.pad(sk, 1).astype(np.uint8)
-    code = _neighbors_code(sk)
-    deg_img = np.zeros_like(pad)
+    # the degree (number of skeleton neighbors) of each skeleton pixel, 0 elsewhere, with a one-pixel
+    # border; built band by band. A pixel reached as a neighbor of another is skeleton exactly when
+    # its degree is not 0, so the degrees also stand for the skeleton itself
     popcnt = np.array([bin(i).count("1") for i in range(256)], np.uint8)
-    deg_img[1:-1, 1:-1] = np.where(sk == 1, popcnt[code], 0)
-    S = bytes(pad.ravel())
+    deg_img = np.zeros((h + 2, Wp), np.uint8)
+    for i, band, off in _strips(sk):
+        n = min(_STRIP, h - i)
+        rows = band[off:off + n]
+        deg_img[1 + i:1 + i + n, 1:-1] = np.where(rows == 1, popcnt[_strip_code(band, off, n)], 0)
+    flat = _flat_skeleton(sk, Wp)
     D = bytes(deg_img.ravel())
-    del code
-    offs = (-Wp - 1, -Wp, -Wp + 1, -1, 1, Wp - 1, Wp, Wp + 1)
-    flat = np.flatnonzero(pad.ravel())
     degf = deg_img.ravel()[flat]
+    del deg_img
+    S = D
+    offs = (-Wp - 1, -Wp, -Wp + 1, -1, 1, Wp - 1, Wp, Wp + 1)
     nodes = flat[degf != 2].tolist()
 
     # adjacent nodes (≥3 neighbors) form a single node
@@ -224,6 +263,15 @@ def trace(sk: np.ndarray):
             pts[-1] = cpts[kb[1]]
         out.append([ka, kb, pts])
     return out, loops
+
+
+def _flat_skeleton(sk: np.ndarray, Wp: int) -> np.ndarray:
+    """Flat indices of the skeleton pixels in the image with a one-pixel border, band by band."""
+    out = []
+    for i in range(0, sk.shape[0], _STRIP):
+        y, x = np.nonzero(sk[i:i + _STRIP])
+        out.append((y + i + 1) * Wp + x + 1)
+    return np.concatenate(out) if out else np.zeros(0, np.intp)
 
 
 def _length(pts):
@@ -641,8 +689,12 @@ def vectorize(gray: np.ndarray, px_per_pt: float, masks=(), deskew=True) -> dict
         X0, Y0 = max(0, int(x0 * px_per_pt) - 1), max(0, int(y0 * px_per_pt) - 1)
         X1, Y1 = int(math.ceil(x1 * px_per_pt)) + 1, int(math.ceil(y1 * px_per_pt)) + 1
         b[Y0:Y1, X0:X1] = False
-    sk = thin(b)
+    h, w = gray.shape
+    del gray  # only the size is needed from here (main passes the only reference)
+    sk = thin(b)  # in place: `b` becomes the skeleton
+    del b
     edges, loops = trace(sk)
+    del sk
     edges = clean_graph(edges, px_mm)
     tol = max(1.3, 0.16 * px_mm)
     polys, circles = [], []
@@ -654,7 +706,6 @@ def vectorize(gray: np.ndarray, px_per_pt: float, masks=(), deskew=True) -> dict
     for pts in loops:
         kind, val = to_primitives(pts, True, px_mm, tol)
         (circles if kind == "circle" else polys).append(val)
-    h, w = gray.shape
     skew = estimate_skew(polys) if deskew else 0.0
     if skew:
         polys, circles = rotate_all(polys, circles, skew, w / 2, h / 2)
@@ -699,14 +750,15 @@ def main(argv):
     out = argv[2]
     try:
         Image.MAX_IMAGE_PIXELS = 120_000_000
-        gray = np.asarray(Image.open(argv[1]).convert("L"))
         scale = float(argv[3])
         masks = []
         if len(argv) > 4:
             with open(argv[4], encoding="utf-8") as f:
                 masks = [m for m in json.load(f) if isinstance(m, list) and len(m) == 4]
         # "nodeskew": keep the image as shown (snap on a scan), no straightening
-        res = vectorize(gray, scale, masks, deskew=not (len(argv) > 5 and argv[5] == "nodeskew"))
+        # the image is passed without a name here, so vectorize can drop it after binarization
+        res = vectorize(np.asarray(Image.open(argv[1]).convert("L")), scale, masks,
+                        deskew=not (len(argv) > 5 and argv[5] == "nodeskew"))
         with open(out, "w", encoding="utf-8") as f:
             json.dump(res, f)
         _emit(out, {"ok": True, "polys": len(res["polys"]), "circles": len(res["circles"])})
