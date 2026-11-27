@@ -29,12 +29,14 @@ Open a PDF exported from CAD, a DXF or DWG drawing, or a scan or photo of a draw
 - 🔀 **Revision compare**: lay an older revision over the page: red = removed, green = added, step through the changes and save the comparison as a PDF; an export at another scale or rotated lines up with two reference points.
 - 🖍️ **Review markup**: highlighter, comments exported as PDF notes, stamps (APPROVED, CHECKED…, with date and name) and a watermark.
 - 🗂️ **Title blocks, images and QR codes**: an ISO 7200 title block generator and your own templates (kept in the browser) with fields filled from the document, logos and pictures (also pasted with Ctrl+V), and a QR code with the drawing number and revision.
-- 🧾 **Drawing tools**: notes, parts list, section and detail views, balloons, lines, arcs, hatches, break lines, with ISO 128 line types.
+- 🧾 **Drawing tools**: notes, parts list, section and detail views, balloons, lines, arcs, hatches, break lines, with ISO 128 line types; OFFSET, TRIM and EXTEND that use the drawing's own lines as edges; the revision table, parts list and hole table export as CSV.
+- 🧩 **Own symbols**: save a group of annotations (a standard note, a company mark) with `B` / BLOCK and place it on any drawing with `I` / INSERT; the library moves between computers as a file.
 - 🧽 **Edit the original**: white-out or truly remove PDF objects, turn faint colored drawings black for printing, rotate, reorder and resize pages (with undo).
 - 🔎 **Search and OCR**: Ctrl+F finds any text; scans are recognized with Tesseract (English and Romanian included) and can be exported as searchable PDFs.
 - 📂 **Opens DXF and DWG** (DWG through LibreDWG): layouts become pages at their scale, model space is fitted on an ISO sheet; print it to PDF, annotate it, export it back as the original DXF plus your annotations. Missing fonts are drawn in osifont, GD&T symbol fonts (AIGDT, gdt.shx) are converted, and you can add your own CAD fonts (TTF / SHX).
 - 📐 **DXF export** for AutoCAD / Allplan: real lines, arcs, circles and texts, at paper size or true scale. Scans can be vectorized (experimental).
 - ⌨️ **AutoCAD habits**: command line (`L`, `C`, `PL`, `DLI`…) with prompts and options, typed points (`x,y`, `@dx,dy`, `@d<a`) from a page origin or a UCS, snap overrides (`END`, `CEN`…) and Tab cycling, MOVE / COPY / ERASE, hot grips (Space: stretch, move, rotate at any angle, scale, mirror), `acad.pgp` import, command history (F2), typed length and angle while drawing, area and perimeter (`DI` → `A`). **Ctrl+K** finds any command by name, **?** lists every key.
+- 🗃️ **Several documents** open as tabs; the start screen shows recent drawings as thumbnails.
 - 🌗 **Dark or light** interface (or as the system), in English or Romanian.
 - 🔒 **Self-hosted and private**: hardened container (read-only, no extra privileges), active content removed from uploaded PDFs, optional password, per-browser workspaces.
 
