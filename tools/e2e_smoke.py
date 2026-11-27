@@ -873,6 +873,26 @@ def main(url, out):
 
         show_tab(other)
         show_tab(cur)
+        # a save that fails (server not answering) is not lost when another tab is shown: it is kept,
+        # shown again with its document, and sent once the server answers
+        show_tab(other)
+        k_err = len(errors)
+        page.route("**/api/doc/*/state", lambda r: r.abort() if r.request.method == "PUT" else r.continue_())
+        n0 = page.evaluate("window.cotare.annots.length")
+        page.keyboard.press("i")
+        typed("20,20", "@30,0")
+        page.keyboard.press("Escape")
+        page.keyboard.press("Escape")
+        page.wait_for_function("document.getElementById('saveState').textContent.includes('Nesalvat')", timeout=10000)
+        show_tab(cur)
+        show_tab(other)
+        assert page.evaluate("window.cotare.annots.length") == n0 + 1
+        show_tab(cur)
+        page.unroute("**/api/doc/*/state")
+        page.wait_for_function("!(window.cotare.unsaved && window.cotare.unsaved.size)", timeout=15000)
+        errors[k_err:] = [e for e in errors[k_err:] if "ERR_FAILED" not in e]  # the saves refused on purpose
+        saved = page.evaluate(f"fetch('api/doc/{other}').then(r => r.json()).then(j => j.state.annots.length)")
+        assert saved == n0 + 1, (saved, n0)
         while page.evaluate("window.cotare.tabs.length") > 1:
             if crowd():
                 page.click("#docTabs .tabmore")

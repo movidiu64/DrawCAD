@@ -288,13 +288,34 @@ def font_dirs() -> list[Path]:
     return [d for d in out if d.is_dir()]
 
 
+_FONTS_SIG = None
+
+
+def _fonts_sig() -> tuple:
+    """What the font folders hold: names, sizes and times of their files (a listing, no reading)."""
+    out = []
+    for d in font_dirs():
+        try:
+            for f in sorted(d.iterdir()):
+                if f.is_file():
+                    st = f.stat()
+                    out.append((str(f), st.st_size, int(st.st_mtime)))
+        except OSError:
+            continue
+    return tuple(out)
+
+
 def _use_fonts() -> None:
     """Texts in osifont (ISO 3098) when the drawing's font is not on this machine: SHX fonts (romans,
     simplex, isocp, txt…) and CAD TrueType fonts (ISOCPEUR, AIGDT) are usually missing, others may be
     here (Arial on Windows). Fonts the user added (`font_dirs`) are used first, SHX files too."""
-    global _FONTS_READY
-    if _FONTS_READY:
+    global _FONTS_READY, _FONTS_SIG
+    sig = _fonts_sig()
+    if _FONTS_READY and sig == _FONTS_SIG:
         return
+    # a reader started ahead set the fonts up before its file came: a font copied into a folder since
+    # then is scanned now (scan_folder adds what is new)
+    _FONTS_SIG = sig
     from ezdxf.fonts import fonts
 
     from . import pdfcore

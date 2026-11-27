@@ -7,7 +7,9 @@ async function jsonOrThrow(r) {
       const j = await r.json();
       if (j.error) msg = j.error;
     } catch (_) { /* no JSON body */ }
-    throw new Error(msg);
+    const err = new Error(msg);
+    err.status = r.status;
+    throw err;
   }
   return r.json();
 }

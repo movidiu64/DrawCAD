@@ -12,12 +12,12 @@ const MAX_IMAGE_CHARS = 420 * 1024; // a data URL of about 300 kB
 
 /**
  * Annotation types a symbol can hold. Left out: what belongs to the original under it (removal, cover,
- * strike-through), the page origin, review comments, the page watermark and the hole table (its letters
- * belong to holes of this drawing).
+ * blackening of its objects — their ids are those of this page —, strike-through), the page origin,
+ * review comments, the page watermark and the hole table (its letters belong to holes of this drawing).
  */
 export const SYMBOL_TYPES = new Set([
   "dim", "rad", "ang", "ord", "lead", "text", "rough", "gdt", "datum", "note", "revtab", "bom", "shape",
-  "section", "detail", "balloon", "image", "tblock", "cloud", "mark", "stamp", "qr", "ink",
+  "section", "detail", "balloon", "image", "tblock", "cloud", "mark", "stamp", "qr",
 ]);
 
 const clone = (x) => JSON.parse(JSON.stringify(x));
@@ -85,13 +85,19 @@ export function symbolsFile(list) {
   return JSON.stringify({ kind: SYMBOL_FILE_KIND, v: 1, symbols: list.map((s) => ({ name: s.name, items: s.items })) }, null, 1);
 }
 
-/** Adds a symbol; one with the same name is replaced (as a redefined block). Returns { list, replaced }. */
+/**
+ * Adds a symbol; one with the same name is replaced (as a redefined block). Returns { list, replaced,
+ * full }: a new name in a full library is not added (full: true), nothing is dropped to make room.
+ */
 export function addSymbol(list, sym) {
   const i = list.findIndex((s) => s.name.toLowerCase() === sym.name.toLowerCase());
-  if (i < 0) return { list: [...list, sym].slice(-MAX_SYMBOLS), replaced: false };
+  if (i < 0) {
+    if (list.length >= MAX_SYMBOLS) return { list, replaced: false, full: true };
+    return { list: [...list, sym], replaced: false, full: false };
+  }
   const out = [...list];
   out[i] = { ...sym, id: list[i].id };
-  return { list: out, replaced: true };
+  return { list: out, replaced: true, full: false };
 }
 
 export function symbolId() {

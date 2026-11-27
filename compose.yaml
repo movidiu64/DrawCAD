@@ -28,6 +28,9 @@ services:
       DRAWCAD_MAX_IMAGE_MPX: ${DRAWCAD_MAX_IMAGE_MPX:-400}
       # optional password (user "drawcad"); empty = no password, as on a home network
       DRAWCAD_PASSWORD: ${DRAWCAD_PASSWORD:-}
+      # the names you open DrawCAD by (IP, host name, proxy domain), comma-separated; recommended in
+      # personal mode without a password (protects against DNS rebinding); empty = any name
+      DRAWCAD_ALLOWED_HOSTS: ${DRAWCAD_ALLOWED_HOSTS:-}
       DRAWCAD_OCR_LANG: ${DRAWCAD_OCR_LANG:-ron+eng}
     # hardening: no extra privileges, read-only filesystem (writes only to /data and /tmp),
     # limited number of processes; the remaining capabilities only serve to prepare the /data folder

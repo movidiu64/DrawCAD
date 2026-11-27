@@ -8,7 +8,7 @@ import { lang as uiLang, setLang, LANGS } from "./i18n.js";
 import { SHEETS } from "./pages.js";
 import { revName } from "./revision.js";
 import { isoTemplate, cleanTemplate, templateFields } from "./tblock.js";
-import { symbolsFromFile, symbolsFile, addSymbol, symbolSummary, SYMBOL_TYPES } from "./blocks.js";
+import { symbolsFromFile, symbolsFile, addSymbol, symbolSummary, SYMBOL_TYPES, MAX_SYMBOLS } from "./blocks.js";
 import { COLORS, drawPrims } from "./view.js";
 import { searchCommands, commandList, conflicts, defaultKeyConfig, keyConfig, saveKeyConfig, labelOf, RESERVED_KEYS, DEFAULT_ALIASES, ACTIONS, parsePgp, importPgp } from "./commands.js";
 
@@ -1343,7 +1343,7 @@ export function symbolDialog(app) {
         toast(`Există deja un simbol „${clean}”`);
         return;
       }
-      s.name = clean;
+      list2[Number(b.dataset.symren)] = { ...s, name: clean }; // a new object: the kept library is not changed before saving
       save(list2);
     }));
     d.querySelectorAll("[data-symexp]").forEach((b) => b.addEventListener("click", async () => {
@@ -1374,13 +1374,17 @@ export function symbolDialog(app) {
         const got = symbolsFromFile(await file.text());
         let list2 = lib();
         let repl = 0;
+        let left = 0;
         for (const s of got) {
           const r = addSymbol(list2, s);
           list2 = r.list;
           if (r.replaced) repl++;
+          if (r.full) left++;
         }
         save(list2);
-        toast(`Importat: ${got.length} ${got.length === 1 ? "simbol" : "simboluri"}${repl ? ` (${repl} cu același nume înlocuite)` : ""}`, 5000);
+        const n = got.length - left;
+        toast(`Importat: ${n} ${n === 1 ? "simbol" : "simboluri"}${repl ? ` (${repl} cu același nume înlocuite)` : ""}`
+          + (left ? ` · ${left} nu au încăput: biblioteca are cel mult ${MAX_SYMBOLS}` : ""), left ? 9000 : 5000);
       } catch (err) {
         toast(`Nu s-a putut importa: ${err.message}`, 6000);
       }

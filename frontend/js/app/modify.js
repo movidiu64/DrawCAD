@@ -11,6 +11,40 @@ const KIND_HINT = {
   extend: "Alege o linie, o polilinie deschisă sau un arc desenat",
 };
 
+/** The parts of the segment outside every rectangle (each [x0, y0, x1, y1]). */
+export function clipOut(seg, rects) {
+  let parts = [seg];
+  for (const r of rects) {
+    const next = [];
+    for (const p of parts) {
+      const dx = p[2] - p[0];
+      const dy = p[3] - p[1];
+      // the parameter range inside the rectangle (Liang–Barsky)
+      let t0 = 0;
+      let t1 = 1;
+      let hit = true;
+      for (const [q, d] of [[p[0] - r[0], -dx], [r[2] - p[0], dx], [p[1] - r[1], -dy], [r[3] - p[1], dy]]) {
+        if (d === 0) {
+          if (q < 0) hit = false;
+        } else {
+          const t = q / d;
+          if (d < 0) t0 = Math.max(t0, t);
+          else t1 = Math.min(t1, t);
+        }
+      }
+      if (!hit || t0 >= t1) {
+        next.push(p);
+        continue;
+      }
+      const at = (t) => [p[0] + dx * t, p[1] + dy * t];
+      if (t0 > 1e-9) next.push([p[0], p[1], ...at(t0)]);
+      if (t1 < 1 - 1e-9) next.push([...at(t1), p[2], p[3]]);
+    }
+    parts = next;
+  }
+  return parts;
+}
+
 export class Modify {
   /** The drawn shape under the cursor that the command can change, or null. */
   modTarget(raw, kinds) {
@@ -32,16 +66,45 @@ export class Modify {
     }
     const sn = this.snapper;
     if (!this.hidden.has("orig") && sn) {
+      // the drawing's lines without what the user removed or covered (the snap data is the original's)
+      const { objs, zones } = this.removedAreas();
+      const inside = (x, y, b) => x >= b[0] - 0.5 && x <= b[2] + 0.5 && y >= b[1] - 0.5 && y <= b[3] + 0.5;
+      const gone = (x0, y0, x1, y1) => objs.some((b) => inside(x0, y0, b) && inside(x1, y1, b));
+      const addSeg = (g) => {
+        if (gone(g[0], g[1], g[2], g[3])) return;
+        if (!zones.length) return segs.push(g);
+        for (const piece of clipOut([g[0], g[1], g[2], g[3]], zones)) segs.push(piece);
+      };
+      const addArc = (g) => {
+        const bb = [g[0] - g[2], g[1] - g[2], g[0] + g[2], g[1] + g[2]];
+        if (!gone(bb[0], bb[1], bb[2], bb[3]) && !zones.some((z) => inside(bb[0], bb[1], z) && inside(bb[2], bb[3], z))) arcs.push(g);
+      };
       // copied one by one: a drawing has up to 60 000 of each, too many for push(...list)
       if (box && sn.sg) {
-        for (const g of sn.sg.query(box[0], box[1], box[2], box[3], new Set())) segs.push(g);
-        for (const g of sn.ag.query(box[0], box[1], box[2], box[3], new Set())) arcs.push(g);
+        for (const g of sn.sg.query(box[0], box[1], box[2], box[3], new Set())) addSeg(g);
+        for (const g of sn.ag.query(box[0], box[1], box[2], box[3], new Set())) addArc(g);
       } else {
-        for (const g of sn.segs || []) segs.push(g);
-        for (const g of sn.arcs || []) arcs.push(g);
+        for (const g of sn.segs || []) addSeg(g);
+        for (const g of sn.arcs || []) addArc(g);
       }
     }
     return { segs, arcs };
+  }
+
+  /**
+   * What of the original is gone on this page: boxes of removed objects, and areas removed whole,
+   * covered with white or with a color (their content is not seen, so it is no edge either).
+   */
+  removedAreas() {
+    const objs = [];
+    const zones = [];
+    const rect = (r) => [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.max(r[0], r[2]), Math.max(r[1], r[3])];
+    for (const a of this.annots) {
+      if (a.page !== this.page || !Array.isArray(a.r) || a.r.length !== 4) continue;
+      if (a.type === "white" || (a.type === "redact" && (a.mode === "zone" || a.mode === "cover"))) zones.push(rect(a.r));
+      else if (a.type === "redact") for (const o of a.objs || []) if (Array.isArray(o.bbox) && o.bbox.length === 4) objs.push(rect(o.bbox));
+    }
+    return { objs, zones };
   }
 
   /**

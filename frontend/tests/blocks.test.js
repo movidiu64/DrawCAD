@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { symbolItems, placeItems, cleanSymbol, symbolsFromFile, symbolsFile, addSymbol, SYMBOL_TYPES } from "../js/blocks.js";
+import { symbolItems, placeItems, cleanSymbol, symbolsFromFile, symbolsFile, addSymbol, SYMBOL_TYPES, MAX_SYMBOLS } from "../js/blocks.js";
 
 const annots = [
   { id: "a1", page: 0, type: "text", p: [110, 220], text: "NOTA" },
@@ -20,7 +20,8 @@ test("a symbol keeps the allowed annotations, relative to the base point, withou
   const placed = placeItems(items, [300, 50]);
   assert.deepEqual(placed[1].pts, [[300, 50], [340, 50]]);
   assert.deepEqual(items[1].pts, [[0, 0], [40, 0]], "placing copies");
-  for (const t of ["redact", "white", "strike", "ucs", "holes", "comment", "watermark"]) assert.ok(!SYMBOL_TYPES.has(t), t);
+  // ink: the ids of objects of this page's original would blacken other objects elsewhere
+  for (const t of ["redact", "white", "ink", "strike", "ucs", "holes", "comment", "watermark"]) assert.ok(!SYMBOL_TYPES.has(t), t);
 });
 
 test("cleaning: unknown types, server images and bad image data go; a name is always there", () => {
@@ -63,4 +64,17 @@ test("file round trip, one symbol or a library; same name replaces", () => {
   assert.equal(r2.list.length, 2);
   assert.equal(r2.list[0].id, a.id, "the replaced symbol keeps its id");
   assert.deepEqual(r2.list[0].items, b.items);
+});
+
+test("a full library takes no new name and drops nothing; a known name is still replaced", () => {
+  const mk = (name) => cleanSymbol({ name, items: [{ type: "text", p: [0, 0], text: name }] });
+  const full = Array.from({ length: MAX_SYMBOLS }, (_, i) => mk(`s${i}`));
+  const r = addSymbol(full, mk("nou"));
+  assert.equal(r.full, true);
+  assert.equal(r.list.length, MAX_SYMBOLS);
+  assert.equal(r.list[0].name, "s0", "the oldest stays");
+  const r2 = addSymbol(full, mk("S5"));
+  assert.equal(r2.full, false);
+  assert.equal(r2.replaced, true);
+  assert.equal(r2.list.length, MAX_SYMBOLS);
 });

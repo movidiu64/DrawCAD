@@ -13,23 +13,69 @@ export class StateHistory {
     return { v: 1, settings: this.settings, annots: this.annots };
   }
 
+  /**
+   * Saves the open document now when it has a change the server has not confirmed: one waiting for
+   * its timer, or one whose save failed. Before another document replaces it, so nothing is lost.
+   */
   async flushSave() {
-    if (!this.doc || !this.saveTimer) return;
+    if (!this.doc || !(this.saveTimer || (this.unsaved && this.unsaved.has(this.doc.id)))) return;
     clearTimeout(this.saveTimer);
     this.saveTimer = null;
+    if (!(await this.saveNow(this.doc.id, this.stateJson()))) dlg.toast("Salvare eșuată: modificările se păstrează aici și se trimit din nou automat.", 6000);
+  }
+
+  /**
+   * Sends one document's state; until the server confirms it, the state is kept here (`unsaved`) and
+   * sent again every 5 s — also after switching to another document. Resolves to true when saved.
+   */
+  async saveNow(id, json) {
+    this.unsaved = this.unsaved || new Map();
+    this.unsaved.set(id, json);
+    const cur = () => this.doc && this.doc.id === id;
+    if (cur()) this.setSaveState("saving");
     try {
-      await api.saveState(this.doc.id, this.stateJson());
+      await api.saveState(id, json);
+      if (this.unsaved.get(id) === json) this.unsaved.delete(id);
+      if (cur() && !this.saveTimer && !this.unsaved.has(id)) this.setSaveState("saved");
+      return true;
     } catch (e) {
-      dlg.toast(`Salvare eșuată: ${e.message}`);
+      if (e.status === 404) {
+        // the document is gone (deleted, expired): there is nowhere to save it
+        this.unsaved.delete(id);
+        return false;
+      }
+      if (cur()) this.setSaveState("error", e.message);
+      clearTimeout(this.retryTimer);
+      this.retryTimer = setTimeout(() => this.retrySaves(), 5000);
+      return false;
     }
   }
 
+  /** Every state not yet confirmed, sent again (the open document's as it is now). */
+  retrySaves() {
+    for (const [id, json] of [...(this.unsaved || new Map())]) {
+      if (this.doc && this.doc.id === id) {
+        if (this.saveTimer) continue; // its own timer sends the newest state
+        this.saveNow(id, this.stateJson());
+      } else this.saveNow(id, json);
+    }
+  }
+
+  /** The state of a document that the server has not confirmed yet (newer than the server's), or null. */
+  unsavedState(id) {
+    return (this.unsaved && this.unsaved.get(id)) || null;
+  }
+
   flushSaveBeacon() {
-    if (!this.doc || !this.saveTimer) return;
+    // the page is going away: every state not confirmed goes as a beacon, the open document's as it is now
+    const out = new Map(this.unsaved || []);
+    if (this.doc && (this.saveTimer || out.has(this.doc.id))) out.set(this.doc.id, this.stateJson());
     clearTimeout(this.saveTimer);
     this.saveTimer = null;
-    const blob = new Blob([JSON.stringify(this.stateJson())], { type: "application/json" });
-    navigator.sendBeacon(`api/doc/${this.doc.id}/state`, blob);
+    for (const [id, json] of out) {
+      const blob = new Blob([JSON.stringify(json)], { type: "application/json" });
+      navigator.sendBeacon(`api/doc/${id}/state`, blob);
+    }
   }
 
   markExported() {
@@ -86,15 +132,8 @@ export class StateHistory {
     this.setSaveState("pending");
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
-      this.setSaveState("saving");
-      api.saveState(id, this.stateJson()).then(() => {
-        if (!this.saveTimer) this.setSaveState("saved");
-      }).catch((e) => {
-        // no network / server down: retried automatically, nothing is lost in the browser
-        this.setSaveState("error", e.message);
-        clearTimeout(this.retryTimer);
-        this.retryTimer = setTimeout(() => this.doc && this.doc.id === id && this.scheduleSave(), 5000);
-      });
+      // no network / server down: kept and sent again automatically, nothing is lost in the browser
+      if (this.doc && this.doc.id === id) this.saveNow(id, this.stateJson());
     }, 700);
   }
 

@@ -140,6 +140,8 @@ The app was originally called "Cotare": the old `COTARE_*` variables are still a
 | `DRAWCAD_FONTS` | — | more folders with fonts for DXF / DWG texts (separated by `:`, `;` on Windows), besides `<data>/fonts` |
 | `DRAWCAD_MAX_IMAGE_MB` | `40` | maximum size of an image placed on a drawing (logo, photo) |
 | `DRAWCAD_PASSWORD` | empty | HTTP Basic password (user `drawcad`); empty = no password |
+| `DRAWCAD_ALLOWED_HOSTS` | empty | the host names the server answers to, separated by commas (as in the browser's address bar, without the port: `192.168.1.10,unraid.local,drawcad.example.com`); other names get 421. Protects against DNS rebinding (a foreign site whose name points to your server); recommended in `personal` mode without a password. Empty = any name |
+| `DRAWCAD_ALLOWED_ORIGINS` | empty | other origins (`https://proxy.example.com`) allowed to send changes, when a proxy uses another domain than the address bar |
 | `DRAWCAD_CACHE_MB` | `256` | maximum memory of the in-RAM caches (PDFs, renders); only used as needed |
 | `DRAWCAD_RETENTION_DAYS` | `30` | days after which an unused document is deleted from the server; `0` = never |
 | `DRAWCAD_OCR_LANG` | `ron+eng` | OCR languages (Tesseract codes; the image includes Romanian and English) |
@@ -558,7 +560,7 @@ Uploaded files are treated as untrusted:
 - **Limits:** file size (`DRAWCAD_MAX_UPLOAD_MB`, read as a stream, never held fully in memory), number of pages (`DRAWCAD_MAX_PAGES`), megapixels per image (`DRAWCAD_MAX_IMAGE_MPX`, protects against "decompression bombs"), page size and the size of the data received on export.
 - **Browser.** A strict Content-Security-Policy (only the app's scripts, no `eval`), `nosniff`, no referrer and no framing by other sites. Data-changing requests coming from another site are refused, so a foreign page open in the browser cannot upload or delete documents.
 - **Container:** runs as an unprivileged user, with `no-new-privileges`, without capabilities beyond those needed to prepare the `/data` folder, with a read-only filesystem (writes only to `/data` and `/tmp`) and a limited number of processes.
-- **Access:** the app has no accounts; it is meant for the local network. If you make it reachable from outside, put it behind a reverse proxy with HTTPS and set `DRAWCAD_PASSWORD` (user `drawcad`). If the proxy uses another domain than the one in the browser's address bar, add it to `DRAWCAD_ALLOWED_ORIGINS`.
+- **Access:** the app has no accounts; it is meant for the local network. If you make it reachable from outside, put it behind a reverse proxy with HTTPS and set `DRAWCAD_PASSWORD` (user `drawcad`). If the proxy uses another domain than the one in the browser's address bar, add it to `DRAWCAD_ALLOWED_ORIGINS`. In `personal` mode without a password, set `DRAWCAD_ALLOWED_HOSTS` to the names you open the app by: otherwise a page from the internet that points its own name at your server (DNS rebinding) could read and delete your documents from a browser on your network. The server writes a warning at start when this combination is left open.
 
 CI checks all of this on the built container (`tools/security_smoke.py`), with a "trojan" test PDF.
 

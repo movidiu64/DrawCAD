@@ -1938,6 +1938,10 @@ async def lifespan(_app):
             await asyncio.sleep(6 * 3600)
 
     task = asyncio.create_task(periodic())
+    if MODE == "personal" and not AUTH_PASSWORD and not ALLOWED_HOSTS:
+        logging.getLogger("drawcad").warning(
+            "personal mode without DRAWCAD_PASSWORD and without DRAWCAD_ALLOWED_HOSTS: a web page could reach "
+            "the documents through DNS rebinding; set DRAWCAD_ALLOWED_HOSTS to the names you open the app by")
     _warm.refill()  # the first file opens without waiting for a reader to start
     try:
         yield

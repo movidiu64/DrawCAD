@@ -150,3 +150,11 @@ test("fence helpers: crossings, distance on the shape itself, prepared trim, the
   assert.equal(extendEnd(l, [90, 0]), "end");
   assert.equal(extendEnd(c, [10, 0]), null);
 });
+
+test("edges: the parts of the drawing's lines outside removed or covered areas", async () => {
+  const { clipOut } = await import("../js/app/modify.js");
+  assert.deepEqual(clipOut([0, 5, 20, 5], [[5, 0, 10, 10]]), [[0, 5, 5, 5], [10, 5, 20, 5]]);
+  assert.deepEqual(clipOut([6, 5, 8, 5], [[5, 0, 10, 10]]), [], "inside: gone");
+  assert.deepEqual(clipOut([0, 20, 20, 20], [[5, 0, 10, 10]]), [[0, 20, 20, 20]], "outside: kept");
+  assert.deepEqual(clipOut([0, 0, 20, 20], [[5, 0, 10, 10], [12, 12, 30, 30]]), [[0, 0, 5, 5], [10, 10, 12, 12]]);
+});

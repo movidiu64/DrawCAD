@@ -504,34 +504,50 @@ def render_array(pdf_bytes: bytes, page_index: int, scale: float, gray: bool = T
 
 def render_gray_strips(pdf_bytes: bytes, page_index: int, scale: float, rows: int = 1536):
     """The page in gray like render_array(gray=True), rendered in horizontal strips: only one strip's
-    color bitmap exists at a time (a whole A0 at 300 DPI is ~240 MB of BGRA, a strip a few tens)."""
+    color bitmap exists at a time (a whole A0 at 300 DPI is ~240 MB of BGRA, a strip a few tens).
+    Each strip is the same window of rows of the whole-page render (PDFium draws the page at full size
+    and the crop only shifts it), so the result equals the whole-page render."""
     with PDFIUM_LOCK:
         doc = pdfium.PdfDocument(pdf_bytes)
         try:
-            W, H = PageGeo.of(doc[page_index]).visual_size
+            page = doc[page_index]
+            # the bitmap size as pypdfium2 computes it (after the page's own rotation)
+            full_w = math.ceil(page.get_width() * scale)
+            total = math.ceil(page.get_height() * scale)
+            page.close()
         finally:
             doc.close()
-    total = max(1, math.ceil(H * scale - 1e-9))  # as PDFium sizes the bitmap
     if total <= rows:
         return render_array(pdf_bytes, page_index, scale, gray=True)
-    out = None
-    y = 0
-    while y < total:
+    out = np.full((total, full_w), 255, dtype=np.uint8)
+    for y in range(0, total, rows):
         n = min(rows, total - y)
-        bmp = _render_bitmap(pdf_bytes, page_index, scale, None, (0, y / scale, W, (y + n) / scale))
-        try:
-            g = to_gray(_bitmap_array(bmp))
-        finally:
-            with PDFIUM_LOCK:
-                bmp.close()
-        if out is None:
-            out = np.full((total, g.shape[1]), 255, dtype=np.uint8)
-        k = min(n, g.shape[0], total - y)
-        w = min(out.shape[1], g.shape[1])
+        g = _render_rows(pdf_bytes, page_index, scale, y, total - y - n)
+        k = min(n, g.shape[0])
+        w = min(full_w, g.shape[1])
         out[y:y + k, :w] = g[:k, :w]
         del g
-        y += n
     return out
+
+
+def _render_rows(pdf_bytes, page_index, scale, top_px: int, bottom_px: int) -> np.ndarray:
+    """Rows of the whole-page render without the first top_px and the last bottom_px, in gray. The
+    crop (in pt) is chosen so that PDFium's ceil(crop × scale) gives exactly those pixel counts."""
+    pt = lambda k: 0.0 if k <= 0 else (k - 0.25) / scale  # noqa: E731
+    with PDFIUM_LOCK:
+        doc = pdfium.PdfDocument(pdf_bytes)
+        try:
+            page = doc[page_index]
+            bmp = page.render(scale=scale, rotation=0, crop=(0, pt(bottom_px), 0, pt(top_px)), may_draw_forms=True,
+                              draw_annots=True, rev_byteorder=True)
+            page.close()
+        finally:
+            doc.close()
+    try:
+        return to_gray(_bitmap_array(bmp))
+    finally:
+        with PDFIUM_LOCK:
+            bmp.close()
 
 
 def _render_bitmap(pdf_bytes, page_index, scale, removals, clip):

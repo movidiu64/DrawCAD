@@ -1554,4 +1554,7 @@ export const EN = {
   "Scara simbolului (acum: {})": "Symbol scale (now: {})",
   "Simbolul are elemente care se rotesc doar cu sferturi de tură (simboluri, tabele, chenare): se pune la cel mai apropiat multiplu de 90°": "The symbol has items that turn only by quarter turns (symbols, tables, frames): it is placed at the nearest multiple of 90°",
   "Unghiul simbolului, în sens trigonometric (R pentru alt unghi)": "Angle of the symbol, counter-clockwise (R for another angle)",
+  "Biblioteca are deja {} de simboluri: șterge sau exportă câteva, apoi salvează din nou.": "The library already has {} symbols: delete or export some, then save again.",
+  "· {} nu au încăput: biblioteca are cel mult {}": "· {} did not fit: the library holds at most {}",
+  "Salvare eșuată: modificările se păstrează aici și se trimit din nou automat.": "Saving failed: the changes are kept here and sent again automatically.",
 };

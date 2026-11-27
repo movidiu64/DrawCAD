@@ -72,6 +72,9 @@ export class Documents {
       this._tabFrom = this._tabFrom || this.doc.id;
       this.leaveDoc(meta.id);
     }
+    // changes the server has not confirmed yet (a save failed) are newer than what it sent
+    const mine = this.unsavedState(meta.id);
+    if (mine) state = mine;
     this.compare = null;
     this.doc = meta;
     localStorage.setItem("cotare.lastDoc", meta.id);
@@ -92,7 +95,7 @@ export class Documents {
     this.unexported = false;
     // the first real change of this session starts a new revision if the current one was exported
     this.revPending = true;
-    this.setSaveState(state ? "saved" : "");
+    this.setSaveState(mine ? "error" : state ? "saved" : "");
     $("docName").textContent = meta.name;
     $("docMeta").textContent = `${{ image: "imagine", dxf: "DXF", dwg: "DWG" }[meta.kind] || "PDF"} · ${meta.pages.length} ${meta.pages.length === 1 ? "pagină" : "pagini"}`;
     document.title = `${meta.name} — DrawCAD`;

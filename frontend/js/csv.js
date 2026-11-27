@@ -19,7 +19,10 @@ export function tableCsv(a, S = {}) {
   if (!cols) return "";
   const sep = (S.sep || ",") === "," ? ";" : ",";
   const cell = (v) => {
-    const s = v == null ? "" : String(v);
+    let s = v == null ? "" : String(v);
+    // Excel runs a cell that starts with = + - @ as a formula (rows can come from a PDF someone else
+    // exported): such text gets a leading apostrophe; plain numbers (-0,02, +5) stay numbers
+    if (/^[=+\-@\t\r]/.test(s) && !/^[+-]?\d+(?:[.,]\d+)?$/.test(s)) s = `'${s}`;
     const quote = s.includes(sep) || s.includes(QUOTE) || /[\r\n]/.test(s) || s.trim() !== s;
     return quote ? QUOTE + s.split(QUOTE).join(QUOTE + QUOTE) + QUOTE : s;
   };

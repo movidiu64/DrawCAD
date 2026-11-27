@@ -527,6 +527,34 @@ class DxfToPdfTest(unittest.TestCase):
         self.assertIn("ISOCPEUR", info["fonts_missing"])
         self.assertNotIn(b"Liberation", pdf)
 
+    def test_font_added_after_setup(self):
+        """A reader that set its fonts up before a font was copied into the folder (the reader started
+        ahead) still finds it: the folders are listed again before each drawing."""
+        import os
+        import shutil
+        import tempfile
+
+        from ezdxf.fonts import fonts
+
+        from app import pdfcore
+
+        with tempfile.TemporaryDirectory() as d:
+            old = os.environ.get("DRAWCAD_FONTS")
+            os.environ["DRAWCAD_FONTS"] = d
+            dxfin._FONTS_READY = False
+            try:
+                dxfin._use_fonts()  # as at the reader's start: the folder is empty
+                self.assertFalse(fonts.font_manager.has_font("latefont.ttf"))
+                shutil.copy(pdfcore.FONT_PATH, Path(d) / "latefont.ttf")
+                dxfin._use_fonts()  # before the file: the new font is scanned
+                self.assertTrue(fonts.font_manager.has_font("latefont.ttf"))
+            finally:
+                if old is None:
+                    os.environ.pop("DRAWCAD_FONTS", None)
+                else:
+                    os.environ["DRAWCAD_FONTS"] = old
+                dxfin._FONTS_READY = False
+
     def test_added_font(self):
         """A font the user added (a folder in DRAWCAD_FONTS) is used: a GD&T font present here keeps
         its letters, and it is not reported missing."""

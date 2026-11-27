@@ -94,6 +94,7 @@ Download `DrawCAD-<version>-setup.exe` from [Releases](https://github.com/movidi
 |---|---|---|
 | `DRAWCAD_MODE` | `private` | `private`: each browser has its own documents. `personal`: single user, documents visible from any browser. `session`: like private, but only until the browser closes. |
 | `DRAWCAD_PASSWORD` | *(empty)* | HTTP Basic password (user `drawcad`). Leave empty on a trusted LAN. |
+| `DRAWCAD_ALLOWED_HOSTS` | *(empty)* | Names you open the app by (`192.168.1.10,unraid.local`); others are refused. Set it in `personal` mode without a password (DNS rebinding). |
 | `DRAWCAD_RETENTION_DAYS` | `30` | Unused documents are deleted after this many days (`0` = never). |
 | `DRAWCAD_MAX_UPLOAD_MB` | `200` | Maximum upload size. |
 | `DRAWCAD_OCR_LANG` | `ron+eng` | Tesseract languages. |

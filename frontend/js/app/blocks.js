@@ -7,23 +7,38 @@ import * as dlg from "../dialogs.js";
 import { drawPrims } from "../view.js";
 import { finalize } from "../tools.js";
 import { rotateFree, rotateAbout, scaleAbout, freeRotatable } from "../pages.js";
-import { SYMBOL_STORE, SYMBOL_TYPES, symbolItems, placeItems, cleanSymbol, addSymbol, symbolId } from "../blocks.js";
+import { SYMBOL_STORE, SYMBOL_TYPES, MAX_SYMBOLS, symbolItems, placeItems, cleanSymbol, addSymbol, symbolId } from "../blocks.js";
 
 const IMG_MAX = 300 * 1024;
 
 export class Blocks {
+  /**
+   * The library (a copy of the list; the symbols themselves are shared, so change one by replacing it).
+   * Read from storage once and kept: INSERT asks for it at every mouse move. Another tab that changes
+   * the library makes it read again.
+   */
   symbolLib() {
-    try {
-      const v = JSON.parse(localStorage.getItem(SYMBOL_STORE) || "[]");
-      return Array.isArray(v) ? v.map(cleanSymbol).filter(Boolean) : [];
-    } catch (_) {
-      return [];
+    if (!this._symLib) {
+      let list = [];
+      try {
+        const v = JSON.parse(localStorage.getItem(SYMBOL_STORE) || "[]");
+        if (Array.isArray(v)) list = v.map(cleanSymbol).filter(Boolean);
+      } catch (_) { /* storage unavailable or damaged: an empty library */ }
+      this._symLib = list;
+      if (!this._symListen) {
+        this._symListen = true;
+        window.addEventListener("storage", (e) => {
+          if (e.key === SYMBOL_STORE || e.key === null) this._symLib = null;
+        });
+      }
     }
+    return [...this._symLib];
   }
 
   saveSymbolLib(list) {
     try {
       localStorage.setItem(SYMBOL_STORE, JSON.stringify(list));
+      this._symLib = [...list];
       return true;
     } catch (_) {
       dlg.toast("Biblioteca de simboluri nu a putut fi salvată: spațiul browserului e plin (imagini prea mari?).", 7000);
@@ -96,7 +111,11 @@ export class Blocks {
     const sym = cleanSymbol({ v: 1, id: symbolId(), name, items });
     this.setTool("select");
     if (!sym) return;
-    const { list, replaced } = addSymbol(this.symbolLib(), sym);
+    const { list, replaced, full } = addSymbol(this.symbolLib(), sym);
+    if (full) {
+      dlg.toast(`Biblioteca are deja ${MAX_SYMBOLS} de simboluri: șterge sau exportă câteva, apoi salvează din nou.`, 7000);
+      return;
+    }
     if (!this.saveSymbolLib(list)) return;
     this.symCur = list.find((s) => s.name === sym.name).id;
     dlg.toast(replaced ? `Simbolul „${sym.name}” a fost înlocuit (${sym.items.length} obiecte)` : `Simbol salvat: ${sym.name} (${sym.items.length} obiecte) · I sau INSERT îl pune pe desen`, 5000);
@@ -210,8 +229,10 @@ export class Blocks {
     this.changed();
   }
 
-  /** The library picture with the symbol's images drawn in (they decode asynchronously). */
+  /** The library picture with the symbol's images drawn in (they decode asynchronously); kept per symbol. */
   async symbolThumbFull(sym) {
+    this._symThumbFull = this._symThumbFull || new WeakMap();
+    if (this._symThumbFull.has(sym)) return this._symThumbFull.get(sym);
     const imgs = new Map();
     for (const it of sym.items) {
       const data = it.type === "image" ? it.data : it.type === "tblock" && it.tpl && it.tpl.logo ? it.tpl.logo.data : null;
@@ -223,11 +244,22 @@ export class Blocks {
         imgs.set(data, im);
       } catch (_) { /* not drawn */ }
     }
-    return this.symbolThumb(sym, 132, 84, imgs);
+    const url = this.symbolThumb(sym, 132, 84, imgs);
+    this._symThumbFull.set(sym, url);
+    return url;
   }
 
   /** A small picture of the symbol for the library (PNG data URL); images from `imgs` (data → image). */
   symbolThumb(sym, w = 132, h = 84, imgs = null) {
+    // the plain picture is kept per symbol: the library is drawn again at each key in its search box
+    this._symThumb = this._symThumb || new WeakMap();
+    if (!imgs && this._symThumb.has(sym)) return this._symThumb.get(sym);
+    const url = this.symbolThumbDraw(sym, w, h, imgs);
+    if (!imgs) this._symThumb.set(sym, url);
+    return url;
+  }
+
+  symbolThumbDraw(sym, w, h, imgs) {
     const S = this.S();
     const prims = [];
     let box = null;
